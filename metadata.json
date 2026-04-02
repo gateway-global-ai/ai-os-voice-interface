@@ -1,0 +1,5 @@
+{
+  "name": "AI OS - Voice Interface",
+  "description": "An intent-driven application primarily driven by voice with a polished PTT interface.",
+  "requestFramePermissions": ["microphone"]
+}
