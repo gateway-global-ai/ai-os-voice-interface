@@ -10,15 +10,19 @@ import {
   getDocumentVersions,
   checkConflicts,
   listPrimitives,
-  createAmendmentWorkflowRun,
   getAmendmentWorkflowRun,
+  loadAmendmentWorkflowRunsList,
+  loadAmendmentWorkflowTemplatesList,
   getActionPlan,
   type DocumentListItem,
   type DocumentDetail,
   type ConflictScanResult,
   type AmendmentWorkflowRunState,
+  type AmendmentWorkflowRunSummary,
+  type AmendmentLoadState,
   type ActionPlanBundle,
 } from './canvasBridge';
+import { classifyAmendmentRunStatus, type AmendmentStatusBucket } from './amendmentStatus';
 import { pickReviewPinnedDocuments } from './governancePinned';
 import { formalGovernanceDocumentsInRegistryOrder } from './governanceFormal';
 import {
@@ -84,9 +88,52 @@ export type GovernanceLifecyclePayload = {
   versions: Array<Record<string, unknown>>;
 };
 
+export type AmendmentHubRunRow = {
+  run_id: string;
+  template_id: string;
+  title: string;
+  status: string;
+  /** Derived bucket for display — raw `status` is still authoritative for audit. */
+  statusBucket: AmendmentStatusBucket;
+  updated_at: string;
+  amendment_id?: string;
+};
+
+/** Per-resource load truth: `empty` = success with zero rows; `error` = fetch failed. */
+export type AmendmentHubResourceLoad = {
+  loadState: AmendmentLoadState;
+  errorMessage?: string;
+};
+
+export type GovernanceAmendmentHubPayload = {
+  view: 'amendment_hub';
+  runsLoad: AmendmentHubResourceLoad;
+  templatesLoad: AmendmentHubResourceLoad;
+  workspace: {
+    inProgress: AmendmentHubRunRow[];
+    completed: AmendmentHubRunRow[];
+    /** Status string did not map to in-progress or completed — verify before acting. */
+    unknownStatus: AmendmentHubRunRow[];
+  };
+  templates: Array<{
+    template_id: string;
+    title: string;
+    amendment_id: string;
+    affected_documents: string[];
+  }>;
+  summary: {
+    totalRuns: number;
+    inProgressCount: number;
+    completedCount: number;
+    unknownCount: number;
+  };
+};
+
 export type GovernanceAmendmentWorkflowPayload = {
   view: 'amendment_workflow';
   run: AmendmentWorkflowRunState;
+  /** Loaded run surface: editing vs reviewing without advancing steps. */
+  mode: 'edit' | 'review';
 };
 
 export type GovernanceActionPlanPayload = {
@@ -95,19 +142,54 @@ export type GovernanceActionPlanPayload = {
   bundle: ActionPlanBundle;
 };
 
+/** Google Workspace governed hub (AIOS-SPEC-007 Phase 1 read plane UI shell). */
+export type GovernanceWorkspaceHubPayload = {
+  view: 'workspace_hub';
+  phase: 1;
+  specRef: 'AIOS-SPEC-007';
+};
+
+export type GovernanceWorkspaceCalendarHubPayload = {
+  view: 'workspace_calendar_hub';
+  phase: 1;
+  specRef: 'AIOS-SPEC-007';
+};
+
 export type GovernanceViewPayload =
   | GovernanceHubPayload
   | GovernanceReviewDocsPayload
   | GovernanceDiscussPayload
   | GovernancePlanningPayload
   | GovernanceResearchPayload
+  | GovernanceAmendmentHubPayload
   | GovernanceAmendmentWorkflowPayload
   | GovernanceActionPlanPayload
   | GovernanceListPayload
   | GovernanceDocumentPayload
   | GovernanceConflictPayload
   | GovernanceCompliancePayload
-  | GovernanceLifecyclePayload;
+  | GovernanceLifecyclePayload
+  | GovernanceWorkspaceHubPayload
+  | GovernanceWorkspaceCalendarHubPayload;
+
+function summaryToHubRow(r: AmendmentWorkflowRunSummary): AmendmentHubRunRow {
+  const meta = r.meta ?? {};
+  const title =
+    (typeof meta.title === 'string' && meta.title) ||
+    (typeof meta.amendment_id === 'string' && meta.amendment_id) ||
+    r.run_id;
+  const amendment_id = typeof meta.amendment_id === 'string' ? meta.amendment_id : undefined;
+  const statusBucket = classifyAmendmentRunStatus(r.status);
+  return {
+    run_id: r.run_id,
+    template_id: r.template_id,
+    title,
+    status: r.status,
+    statusBucket,
+    updated_at: r.updated_at,
+    amendment_id,
+  };
+}
 
 function pickResearchLibrary(documents: DocumentListItem[]): DocumentListItem[] {
   const research = documents.filter((d) => {
@@ -139,10 +221,19 @@ export function isPayloadEmpty(p: GovernanceViewPayload): boolean {
       return p.primitiveNames.length === 0;
     case 'lifecycle_status':
       return p.documents.length === 0;
+    case 'amendment_hub': {
+      if (p.runsLoad.loadState === 'error' || p.templatesLoad.loadState === 'error') {
+        return false;
+      }
+      return p.summary.totalRuns === 0 && p.templates.length === 0;
+    }
     case 'amendment_workflow':
       return !p.run?.run_id;
     case 'action_plan_review':
       return !p.bundle?.plan;
+    case 'workspace_hub':
+    case 'workspace_calendar_hub':
+      return false;
     default:
       return false;
   }
@@ -151,7 +242,12 @@ export function isPayloadEmpty(p: GovernanceViewPayload): boolean {
 export async function loadGovernancePayload(
   view: CanvasView,
   params:
-    | { documentId?: string; workflowRunId?: string; actionPlanSource?: string }
+    | {
+        documentId?: string;
+        workflowRunId?: string;
+        actionPlanSource?: string;
+        amendmentWorkflowMode?: 'edit' | 'review';
+      }
     | undefined,
   signal?: AbortSignal
 ): Promise<GovernanceViewPayload> {
@@ -226,18 +322,50 @@ export async function loadGovernancePayload(
         registryCount: documents.length,
       };
     }
+    case 'amendment_hub': {
+      abort();
+      const [runsOutcome, templatesOutcome] = await Promise.all([
+        loadAmendmentWorkflowRunsList(),
+        loadAmendmentWorkflowTemplatesList(),
+      ]);
+      abort();
+      const runsRaw = runsOutcome.runs;
+      const rows = runsRaw.map(summaryToHubRow);
+      const inProgress = rows.filter((r) => r.statusBucket === 'in_progress');
+      const completed = rows.filter((r) => r.statusBucket === 'completed');
+      const unknownStatus = rows.filter((r) => r.statusBucket === 'unknown');
+      return {
+        view: 'amendment_hub',
+        runsLoad: {
+          loadState: runsOutcome.loadState,
+          errorMessage: runsOutcome.errorMessage,
+        },
+        templatesLoad: {
+          loadState: templatesOutcome.loadState,
+          errorMessage: templatesOutcome.errorMessage,
+        },
+        workspace: { inProgress, completed, unknownStatus },
+        templates: templatesOutcome.templates,
+        summary: {
+          totalRuns: rows.length,
+          inProgressCount: inProgress.length,
+          completedCount: completed.length,
+          unknownCount: unknownStatus.length,
+        },
+      };
+    }
     case 'amendment_workflow': {
       const workflowRunId = params?.workflowRunId?.trim();
-      if (workflowRunId) {
-        abort();
-        const run = await getAmendmentWorkflowRun(workflowRunId);
-        abort();
-        return { view: 'amendment_workflow', run };
+      if (!workflowRunId) {
+        throw new Error(
+          'Amendment workflow needs a run. Open Amendment Program, then create or resume a run.'
+        );
       }
       abort();
-      const run = await createAmendmentWorkflowRun('AMD-2026-004');
+      const run = await getAmendmentWorkflowRun(workflowRunId);
       abort();
-      return { view: 'amendment_workflow', run };
+      const mode = params?.amendmentWorkflowMode === 'review' ? 'review' : 'edit';
+      return { view: 'amendment_workflow', run, mode };
     }
     case 'document_list': {
       abort();
@@ -295,6 +423,14 @@ export async function loadGovernancePayload(
         sourceName,
         bundle,
       };
+    }
+    case 'workspace_hub': {
+      abort();
+      return { view: 'workspace_hub', phase: 1, specRef: 'AIOS-SPEC-007' };
+    }
+    case 'workspace_calendar_hub': {
+      abort();
+      return { view: 'workspace_calendar_hub', phase: 1, specRef: 'AIOS-SPEC-007' };
     }
     default: {
       throw new Error(`Unhandled canvas view: ${String(view)}`);
