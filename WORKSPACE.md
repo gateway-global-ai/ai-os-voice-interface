@@ -31,7 +31,7 @@ Before calling Workplace integration **live** or **production-ready**, satisfy *
 
 ## Phase 1 calendar read — QA
 
-Manual test matrix for the first governed read path: **[docs/workspace-phase1-calendar-qa.md](docs/workspace-phase1-calendar-qa.md)**.
+Manual QA for the first governed read path: **[docs/workspace-calendar-read-qa.md](docs/workspace-calendar-read-qa.md)**.
 
 ## Related documents
 
