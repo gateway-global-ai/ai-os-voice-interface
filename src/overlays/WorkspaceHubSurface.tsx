@@ -5,12 +5,16 @@
  */
 
 import { motion } from 'motion/react';
-import { Building2, Calendar, ChevronLeft, Shield } from 'lucide-react';
+import { AlertTriangle, Building2, Calendar, ChevronLeft, Loader2, Shield } from 'lucide-react';
 import type { GovernanceDataPhase } from '../governance/GovernanceCanvasContext';
+import type { GovernanceWorkspaceCalendarRead } from '../governance/loadGovernancePayload';
 
 type Props = {
   mode: 'hub' | 'calendar';
   dataPhase: GovernanceDataPhase;
+  dataError?: string | null;
+  /** Calendar read-plane outcome (from `loadGovernancePayload` → control plane). */
+  calendarRead?: GovernanceWorkspaceCalendarRead;
   onClose: () => void;
   onOpenCalendar?: () => void;
   onBackToHub?: () => void;
@@ -19,6 +23,8 @@ type Props = {
 export function WorkspaceHubSurface({
   mode,
   dataPhase,
+  dataError,
+  calendarRead,
   onClose,
   onOpenCalendar,
   onBackToHub,
@@ -46,8 +52,8 @@ export function WorkspaceHubSurface({
                 {mode === 'calendar' ? 'Calendar — read plane' : 'Google Workspace'}
               </h2>
               <p className="text-zinc-500 text-sm mt-1 max-w-xl">
-                Phase 1: read-only intents per AIOS-SPEC-007. Tools are not exposed here — routing
-                goes through the Integration Control Plane and MCP adapter.
+                Phase 1: read-only intents per AIOS-SPEC-007. Routing goes through the Integration
+                Control Plane and MCP adapter (no direct MCP from this UI).
               </p>
             </div>
           </div>
@@ -60,18 +66,36 @@ export function WorkspaceHubSurface({
 
       <div className="flex-1 min-h-0 overflow-y-auto p-6 md:p-8 space-y-4">
         {loading ? (
-          <p className="text-zinc-500 text-sm">Loading…</p>
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <Loader2 className="w-10 h-10 text-sky-500 animate-spin" />
+            <p className="text-zinc-500 text-sm">Loading workspace data…</p>
+          </div>
+        ) : dataError ? (
+          <div
+            role="alert"
+            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950"
+          >
+            <p className="font-bold">Load failed</p>
+            <p className="mt-1">{dataError}</p>
+          </div>
         ) : (
           <>
-            <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4 text-sm text-zinc-700">
-              <p className="font-semibold text-zinc-900 mb-2">Load state: ok</p>
-              <p>
-                Configure <code className="text-xs bg-zinc-200/60 px-1 rounded">VITE_WORKSPACE_MCP_URL</code>{' '}
-                when the Workspace MCP server is deployed. Until then, the control plane returns{' '}
-                <code className="text-xs bg-zinc-200/60 px-1 rounded">not_configured</code> for API
-                calls — the UI shell remains governed and auditable.
-              </p>
-            </div>
+            {mode === 'hub' && (
+              <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4 text-sm text-zinc-700">
+                <p className="font-semibold text-zinc-900 mb-2">Workspace hub</p>
+                <p>
+                  Open Calendar to run <code className="text-xs bg-zinc-200/60 px-1 rounded">workspace.calendar.list</code>{' '}
+                  through the control plane. Configure{' '}
+                  <code className="text-xs bg-zinc-200/60 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> for
+                  live MCP.
+                </p>
+              </div>
+            )}
+
+            {mode === 'calendar' && calendarRead && (
+              <CalendarReadPanel read={calendarRead} />
+            )}
+
             {mode === 'hub' && onOpenCalendar && (
               <button
                 type="button"
@@ -109,5 +133,70 @@ export function WorkspaceHubSurface({
         </button>
       </div>
     </motion.div>
+  );
+}
+
+function CalendarReadPanel({ read }: { read: GovernanceWorkspaceCalendarRead }) {
+  if (read.loadState === 'not_configured') {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <p className="font-bold flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          MCP not configured
+        </p>
+        <p className="mt-2 text-amber-900/90">
+          Set <code className="text-xs bg-amber-100 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> to your
+          Workspace MCP base URL. The control plane returned{' '}
+          <code className="text-xs bg-amber-100 px-1 rounded">not_configured</code>.
+        </p>
+        {read.errorMessage ? (
+          <p className="mt-2 text-xs font-mono text-amber-950/80">{read.errorMessage}</p>
+        ) : null}
+        {read.auditId ? (
+          <p className="mt-2 text-xs text-amber-800">Audit: {read.auditId}</p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (read.loadState === 'error') {
+    return (
+      <div
+        role="alert"
+        className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950"
+      >
+        <p className="font-bold">Calendar read failed</p>
+        <p className="mt-1">{read.errorMessage ?? 'Unknown error'}</p>
+        <p className="mt-2 text-xs text-red-800">
+          {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
+          {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
+        </p>
+        {read.auditId ? <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p> : null}
+      </div>
+    );
+  }
+
+  if (read.loadState === 'empty') {
+    return (
+      <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 text-sm text-zinc-700">
+        <p className="font-semibold text-zinc-900 mb-1">No calendars (empty)</p>
+        <p>The MCP adapter returned an empty list. This is distinct from a load failure.</p>
+        {read.auditId ? <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-zinc-800 space-y-2">
+      <p className="font-semibold text-emerald-900">Calendar data (read plane)</p>
+      <p className="text-xs text-zinc-600">
+        Structured result from <code className="bg-white/80 px-1 rounded">workspace.calendar.list</code> via
+        MCP JSON-RPC.
+      </p>
+      <pre className="text-xs bg-white/90 border border-zinc-100 rounded-xl p-3 overflow-x-auto max-h-48">
+        {JSON.stringify(read.data, null, 2)}
+      </pre>
+      {read.auditId ? <p className="text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
+    </div>
   );
 }

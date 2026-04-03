@@ -1660,6 +1660,10 @@ function AppImpl({
                   <WorkspaceHubSurface
                     mode="calendar"
                     dataPhase={dataPhase}
+                    dataError={dataError}
+                    calendarRead={
+                      payload?.view === 'workspace_calendar_hub' ? payload.calendarRead : undefined
+                    }
                     onClose={closeCanvas}
                     onBackToHub={() => void loadData('workspace_hub')}
                   />

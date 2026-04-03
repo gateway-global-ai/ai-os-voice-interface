@@ -7,3 +7,6 @@ coverage/
 .env*
 !.env.example
 .vite/
+
+# Local scratch / peer-review artifacts (not versioned)
+user uploads/

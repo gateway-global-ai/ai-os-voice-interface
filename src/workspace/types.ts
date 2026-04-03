@@ -51,4 +51,6 @@ export type WorkspaceControlPlaneResult<T = unknown> =
       code: 'policy_denied' | 'invalid_intent' | 'adapter_error' | 'not_configured';
       message: string;
       auditId: string;
+      /** Set when code is `adapter_error` — original MCP adapter failure class. */
+      adapterCode?: 'not_configured' | 'timeout' | 'http_error' | 'auth_error';
     };

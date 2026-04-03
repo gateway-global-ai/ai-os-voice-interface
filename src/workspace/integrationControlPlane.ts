@@ -30,7 +30,10 @@ function validateEnvelope(envelope: WorkspaceRoutingEnvelope): string | null {
  */
 export async function runWorkspaceControlPlane(
   envelope: WorkspaceRoutingEnvelope,
-  options?: { surfaceMode?: 'public' | 'founder' | 'operator' | 'customer' }
+  options?: {
+    surfaceMode?: 'public' | 'founder' | 'operator' | 'customer';
+    signal?: AbortSignal;
+  }
 ): Promise<WorkspaceControlPlaneResult> {
   const auditId = newWorkspaceAuditId();
   const err = validateEnvelope(envelope);
@@ -72,8 +75,11 @@ export async function runWorkspaceControlPlane(
 
   const adapter = await callWorkspaceMcpAdapter({
     tool: envelope.intent,
-    args: { resource_ref: envelope.resource_ref },
-    signal: undefined,
+    args: {
+      resource_ref: envelope.resource_ref,
+      session_id: envelope.session_id,
+    },
+    signal: options?.signal,
   });
 
   if (!adapter.ok) {
@@ -89,8 +95,18 @@ export async function runWorkspaceControlPlane(
       code: adapter.code === 'not_configured' ? 'not_configured' : 'adapter_error',
       message: adapter.message,
       auditId,
+      adapterCode: adapter.code,
     };
   }
+
+  logWorkspaceAudit({
+    intent: envelope.intent,
+    scope_class: scope,
+    tenant_id: envelope.tenant_id,
+    user_binding: envelope.user_binding,
+    policy_decision: 'allow',
+    detail: { auditId, outcome: 'adapter_success' },
+  });
 
   return { ok: true, data: adapter.data, auditId };
 }
