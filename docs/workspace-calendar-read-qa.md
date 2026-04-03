@@ -1,6 +1,17 @@
 # QA checklist — Phase 1 Workspace calendar read
 
+This document verifies **operational correctness** of the calendar read slice and supports **[pre-workplace-checklist.md](./pre-workplace-checklist.md)** (especially **Track C** — no MCP bypass). It complements that gate; satisfy both where applicable.
+
 Use this for the first governed Workspace MCP slice (`workspace.calendar.list` → calendar hub).
+
+## Usage
+
+Execute and record this checklist for any PR that:
+
+- **implements or modifies** Workspace MCP read-plane behavior for **calendar**, or
+- **changes** the **adapter**, **integration control plane**, or **workspace calendar** surfaces (`mcpAdapter.ts`, `integrationControlPlane.ts`, `loadGovernancePayload.ts` → `workspace_calendar_hub`, `WorkspaceHubSurface.tsx` calendar mode).
+
+**Recommended:** Paste results into the PR description using the template in **§7** so reviewers can verify TC-01–TC-10 without rerunning everything.
 
 ## Flow under test
 
