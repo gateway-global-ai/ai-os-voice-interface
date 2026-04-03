@@ -30,6 +30,8 @@ import {
   sortFormalDocumentsByIntroductionTable,
   type PlanningDocumentItem,
 } from './governanceIntroductionOrder';
+import type { WorkspaceRoutingEnvelope } from '../workspace/types';
+import { runWorkspaceControlPlane } from '../workspace/integrationControlPlane';
 
 export type GovernanceHubPayload = {
   view: 'governance_hub';
@@ -149,10 +151,22 @@ export type GovernanceWorkspaceHubPayload = {
   specRef: 'AIOS-SPEC-007';
 };
 
+/** Result of `workspace.calendar.list` via control plane (Phase 1 read plane). */
+export type GovernanceWorkspaceCalendarRead = {
+  loadState: 'ok' | 'empty' | 'error' | 'not_configured';
+  data?: unknown;
+  errorMessage?: string;
+  /** Control plane failure code when `loadState` is `error`. */
+  controlPlaneCode?: string;
+  adapterCode?: 'not_configured' | 'timeout' | 'http_error' | 'auth_error';
+  auditId?: string;
+};
+
 export type GovernanceWorkspaceCalendarHubPayload = {
   view: 'workspace_calendar_hub';
   phase: 1;
   specRef: 'AIOS-SPEC-007';
+  calendarRead: GovernanceWorkspaceCalendarRead;
 };
 
 export type GovernanceViewPayload =
@@ -232,11 +246,30 @@ export function isPayloadEmpty(p: GovernanceViewPayload): boolean {
     case 'action_plan_review':
       return !p.bundle?.plan;
     case 'workspace_hub':
-    case 'workspace_calendar_hub':
       return false;
+    case 'workspace_calendar_hub': {
+      const cr = p.calendarRead;
+      if (!cr) return false;
+      if (cr.loadState === 'empty') return true;
+      return false;
+    }
     default:
       return false;
   }
+}
+
+/** Heuristic: MCP returned no calendar rows (shape varies by server). */
+function workspaceCalendarDataIsEmpty(data: unknown): boolean {
+  if (data == null) return true;
+  if (Array.isArray(data)) return data.length === 0;
+  if (typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    if (Array.isArray(o.calendars)) return o.calendars.length === 0;
+    if (Array.isArray(o.items)) return o.items.length === 0;
+    if (Array.isArray(o.events)) return o.events.length === 0;
+    if (Array.isArray(o.eventList)) return o.eventList.length === 0;
+  }
+  return false;
 }
 
 export async function loadGovernancePayload(
@@ -430,7 +463,43 @@ export async function loadGovernancePayload(
     }
     case 'workspace_calendar_hub': {
       abort();
-      return { view: 'workspace_calendar_hub', phase: 1, specRef: 'AIOS-SPEC-007' };
+      const envelope: WorkspaceRoutingEnvelope = {
+        intent: 'workspace.calendar.list',
+        actor_type: 'founder',
+        tenant_id: 'local',
+        user_binding: 'browser',
+        execution_mode: 'execute',
+        policy_context: { scope_class: 'workspace.google.read' },
+      };
+      const result = await runWorkspaceControlPlane(envelope, { surfaceMode: 'founder', signal });
+      abort();
+      if (result.ok === false) {
+        const loadState =
+          result.code === 'not_configured' ? 'not_configured' : ('error' as const);
+        return {
+          view: 'workspace_calendar_hub',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          calendarRead: {
+            loadState,
+            errorMessage: result.message,
+            controlPlaneCode: result.code,
+            adapterCode: result.adapterCode,
+            auditId: result.auditId,
+          },
+        };
+      }
+      const empty = workspaceCalendarDataIsEmpty(result.data);
+      return {
+        view: 'workspace_calendar_hub',
+        phase: 1,
+        specRef: 'AIOS-SPEC-007',
+        calendarRead: {
+          loadState: empty ? 'empty' : 'ok',
+          data: result.data,
+          auditId: result.auditId,
+        },
+      };
     }
     default: {
       throw new Error(`Unhandled canvas view: ${String(view)}`);

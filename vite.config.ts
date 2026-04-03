@@ -24,7 +24,8 @@ export default defineConfig(({mode}) => {
     server: {
       // Avoid 3000–3006 if those ports are reserved in your environment; override with `vite --port=...`.
       port: 5173,
-      strictPort: false,
+      /** If true, dev fails when 5173 is taken — avoids silently serving on 5174 while you still open :5173 (unstyled / wrong app). */
+      strictPort: true,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify — file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
