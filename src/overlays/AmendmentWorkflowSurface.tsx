@@ -61,12 +61,6 @@ export function AmendmentWorkflowSurface({
   const loading = dataPhase === 'loading';
   const err = dataError;
   const readOnly = workflowMode === 'review';
-  /** In review mode, disable primary when the only action left is POST /advance. */
-  const reviewBlocksAdvance =
-    readOnly &&
-    ((screen === 'reviews' && !hasPlan) ||
-      (screen === 'plan' && approvalItems.length === 0 && hasPlan) ||
-      (screen === 'console' && !statusComplete));
 
   const approvalItems = useMemo(
     () => parseApprovalItemsFromPlan(run?.consolidated_plan_markdown ?? ''),
@@ -78,6 +72,13 @@ export function AmendmentWorkflowSurface({
 
   const hasReviews = (run?.peer_reviews?.length ?? 0) > 0;
   const hasPlan = !!(run?.consolidated_plan_markdown?.trim());
+
+  /** In review mode, disable primary when the only action left is POST /advance. */
+  const reviewBlocksAdvance =
+    readOnly &&
+    ((screen === 'reviews' && !hasPlan) ||
+      (screen === 'plan' && approvalItems.length === 0 && hasPlan) ||
+      (screen === 'console' && !statusComplete));
 
   useEffect(() => {
     setApprovalIndex(0);
