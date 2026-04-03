@@ -1,5 +1,6 @@
 /**
  * Shell disclosure: actor, interaction mode, workspace gate, active canvas/intent.
+ * Full-width top bar (not a floating card) for consistent app chrome.
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
@@ -40,34 +41,50 @@ export function ShellIdentityBar({
   intentSummary,
 }: Props) {
   return (
-    <div className="absolute top-6 right-6 z-[var(--z-shell-chrome)] max-w-[min(100%,20rem)]">
+    <header
+      className="fixed top-0 left-0 right-0 z-[var(--z-shell-header)] h-[var(--shell-header-height)] flex items-center border-b border-white/20 bg-white/10 backdrop-blur-sm px-3 md:px-6"
+      role="banner"
+    >
       <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-start gap-3 p-3 pr-4 rounded-2xl bg-white/80 backdrop-blur-xl border border-zinc-200 shadow-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex w-full min-w-0 items-center gap-2 md:gap-4 text-[11px] md:text-xs text-zinc-700"
       >
-        <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white font-bold shadow-lg shadow-emerald-500/20 shrink-0">
-          <User className="w-5 h-5" />
+        <div className="flex min-w-0 shrink-0 items-center gap-2">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/90 text-white shadow-sm">
+            <User className="h-3.5 w-3.5" aria-hidden />
+          </div>
+          <span className="hidden font-bold uppercase tracking-wider text-zinc-400 sm:inline">Actor</span>
+          <span className="truncate font-semibold text-zinc-900">{actorLabel}</span>
         </div>
-        <div className="min-w-0 flex flex-col gap-0.5 text-left">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Actor</span>
-            <span className="text-sm font-bold text-zinc-900 truncate">{actorLabel}</span>
-          </div>
-          <div className="flex flex-wrap gap-x-2 text-[10px] text-zinc-500">
-            <span className="font-bold uppercase tracking-wider text-zinc-400">Shell</span>
-            <span className="text-emerald-700 font-semibold">{shellInteractionMode}</span>
-            <span className="text-zinc-300">·</span>
-            <span>{actorModeLabel}</span>
-          </div>
-          <p className="text-[10px] text-zinc-500 leading-snug">{workspaceLabel(workspaceState)}</p>
-          {intentSummary ? (
-            <p className="text-[10px] font-mono text-zinc-600 truncate" title={intentSummary}>
+
+        <span className="hidden h-3 w-px shrink-0 bg-zinc-300/60 sm:block" aria-hidden />
+
+        <div className="hidden min-w-0 shrink sm:flex sm:items-center sm:gap-1.5">
+          <span className="font-bold uppercase tracking-wider text-zinc-400">Shell</span>
+          <span className="font-medium text-emerald-800">{shellInteractionMode}</span>
+          <span className="text-zinc-300">·</span>
+          <span className="truncate text-zinc-600">{actorModeLabel}</span>
+        </div>
+
+        <span className="hidden h-3 w-px shrink-0 bg-zinc-300/60 md:block" aria-hidden />
+
+        <span className="hidden min-w-0 truncate text-zinc-600 md:inline" title={workspaceLabel(workspaceState)}>
+          {workspaceLabel(workspaceState)}
+        </span>
+
+        {intentSummary ? (
+          <>
+            <span className="hidden h-3 w-px shrink-0 bg-zinc-300/60 lg:block" aria-hidden />
+            <span
+              className="ml-auto hidden min-w-0 max-w-[40%] truncate font-mono text-[10px] text-zinc-500 lg:inline"
+              title={intentSummary}
+            >
               {intentSummary}
-            </p>
-          ) : null}
-        </div>
+            </span>
+          </>
+        ) : null}
       </motion.div>
-    </div>
+    </header>
   );
 }

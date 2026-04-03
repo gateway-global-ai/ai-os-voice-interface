@@ -6,9 +6,14 @@
 }
 
 :root {
-  --shell-footer-height: 5.5rem;
+  /* Thin top chrome; main uses pt-[var(--shell-header-height)] */
+  --shell-header-height: 2.75rem;
+  /* Compact footer — CommandRail row + primary control; keep in sync with CommandRail padding */
+  /* Voice PTT uses 50% of this for height; keep enough for label + mic */
+  --shell-footer-height: 6rem;
   --z-shell-base: 0;
   --z-shell-main: 10;
+  --z-shell-header: 38;
   --z-shell-chrome: 40;
   --z-shell-footer: 50;
   --z-shell-governance-canvas: 60;

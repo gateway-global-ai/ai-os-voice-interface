@@ -73,7 +73,7 @@ export async function runWorkspaceControlPlane(
     detail: { auditId },
   });
 
-  const adapter = await callWorkspaceMcpAdapter({
+  const adapterResult = await callWorkspaceMcpAdapter({
     tool: envelope.intent,
     args: {
       resource_ref: envelope.resource_ref,
@@ -83,20 +83,21 @@ export async function runWorkspaceControlPlane(
     signal: options?.signal,
   });
 
-  if (!adapter.ok) {
+  if (adapterResult.ok === false) {
+    const { code, message } = adapterResult;
     logWorkspaceAudit({
       intent: envelope.intent,
       scope_class: scope,
       policy_decision: 'allow',
-      failure_mode: adapter.code,
-      detail: { message: adapter.message, auditId },
+      failure_mode: code,
+      detail: { message, auditId },
     });
     return {
       ok: false,
-      code: adapter.code === 'not_configured' ? 'not_configured' : 'adapter_error',
-      message: adapter.message,
+      code: code === 'not_configured' ? 'not_configured' : 'adapter_error',
+      message,
       auditId,
-      adapterCode: adapter.code,
+      adapterCode: code,
     };
   }
 
@@ -109,5 +110,5 @@ export async function runWorkspaceControlPlane(
     detail: { auditId, outcome: 'adapter_success' },
   });
 
-  return { ok: true, data: adapter.data, auditId };
+  return { ok: true, data: adapterResult.data, auditId };
 }

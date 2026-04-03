@@ -18,6 +18,7 @@ export type WorkspaceExecutionMode = 'observe' | 'prepare' | 'execute' | 'automa
 
 export type WorkspaceActorType = string;
 
+/** For `workspace.mail.read`, use e.g. `{ type: 'message', id }` so the adapter forwards `id` in tool args. */
 export type WorkspaceResourceRef = {
   type: string;
   id?: string;

@@ -1278,7 +1278,7 @@ function AppImpl({
       />
       
       {/* Main Content Area */}
-      <main className="relative z-[var(--z-shell-main)] h-full flex flex-col items-center justify-center pb-[var(--shell-footer-height)]">
+      <main className="relative z-[var(--z-shell-main)] h-full flex flex-col items-center justify-center pt-[var(--shell-header-height)] pb-[var(--shell-footer-height)]">
         <AnimatePresence mode="wait">
           {mode === 'voice' && (
             <motion.div 
@@ -1475,7 +1475,7 @@ function AppImpl({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 flex items-start sm:items-center justify-center bg-zinc-900/[0.05] backdrop-blur-[2px] overflow-y-auto pt-8 pb-[var(--shell-footer-height)] z-[var(--z-shell-governance-canvas)] min-h-0"
+              className="absolute inset-0 flex items-start sm:items-center justify-center bg-zinc-900/[0.05] backdrop-blur-[2px] overflow-y-auto pt-[calc(var(--shell-header-height)+0.75rem)] pb-[var(--shell-footer-height)] z-[var(--z-shell-governance-canvas)] min-h-0"
               onClick={dismissBackdrop}
             >
               <div onClick={(e) => e.stopPropagation()} className="w-full flex justify-center px-2">
@@ -1542,8 +1542,11 @@ function AppImpl({
                     dataPhase={dataPhase}
                     dataError={dataError}
                     mailSearch={payload.mailSearch}
+                    mailRead={payload.mailRead}
                     onClose={closeCanvas}
                     onBackToHub={() => void loadData('workspace_hub')}
+                    onReadMail={(messageId) => void loadData('workspace_mail_hub', { mailMessageId: messageId })}
+                    onClearMailRead={() => void loadData('workspace_mail_hub')}
                   />
                 )}
                 {govCanvas.view === 'review_docs' && (

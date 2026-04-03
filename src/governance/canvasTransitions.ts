@@ -119,6 +119,7 @@ export function buildGovernanceCanvasState(
     workflowRunId?: string;
     actionPlanSource?: string;
     amendmentWorkflowMode?: 'edit' | 'review';
+    mailMessageId?: string;
   }
 ): NonNullable<GovernanceCanvasState> {
   if (view === 'document_view') {
@@ -144,11 +145,14 @@ export function buildGovernanceCanvasState(
     const s = params?.actionPlanSource?.trim() || 'AMD-2026-a10b9a';
     return { view: 'action_plan_review', actionPlanSource: s };
   }
+  if (view === 'workspace_mail_hub') {
+    const mid = params?.mailMessageId?.trim();
+    return mid ? { view, mailMessageId: mid } : { view };
+  }
   if (
     view === 'workspace_hub' ||
     view === 'workspace_onboarding' ||
-    view === 'workspace_calendar_hub' ||
-    view === 'workspace_mail_hub'
+    view === 'workspace_calendar_hub'
   ) {
     return { view };
   }

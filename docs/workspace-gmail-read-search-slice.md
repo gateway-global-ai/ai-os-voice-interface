@@ -2,7 +2,7 @@
 
 This document defines the **next governed Workplace slice** after calendar read: **Gmail search + message read** using the same control-plane → adapter → audit pattern as [`workspace.calendar.list`](./workspace-calendar-read-qa.md).
 
-**Status:** `workspace.mail.search` is wired: canvas `workspace_mail_hub`, loader in [`loadGovernancePayload.ts`](../src/governance/loadGovernancePayload.ts), UI in [`WorkspaceHubSurface.tsx`](../src/overlays/WorkspaceHubSurface.tsx) (`mode: 'mail'`). `workspace.mail.read` remains for a follow-up PR (message body after search is stable).
+**Status:** `workspace.mail.search` and **`workspace.mail.read`** are wired on `workspace_mail_hub`: loader in [`loadGovernancePayload.ts`](../src/governance/loadGovernancePayload.ts) (search on every load; read when `mailMessageId` is passed), UI in [`WorkspaceHubSurface.tsx`](../src/overlays/WorkspaceHubSurface.tsx) (`mode: 'mail'`, one primary panel: read when active, else search + “Read one message” id field). `resource_ref.id` flows envelope → control plane → adapter `args`.
 
 ## Governance alignment
 
@@ -122,18 +122,15 @@ Exact wiring (which navigation sets which `loadData` view) is product-controlled
 
 ---
 
-## Planned implementation surface
+## Implementation surface (current)
 
-| Area | Action |
+| Area | Status |
 |------|--------|
-| **`canvasTypes.ts`** | Add `workspace_mail_hub` to `CanvasView` and `ALL_CANVAS_VIEWS`. |
-| **`workspaceIntentRouter.ts`** | Map `workspace.mail.search` and `workspace.mail.read` → `{ view: 'workspace_mail_hub' }` (same pattern as calendar intents). |
-| **`loadGovernancePayload.ts`** | Add `GovernanceWorkspaceMailResult` (mirror `GovernanceWorkspaceCalendarRead` fields: `loadState`, `data`, `errorMessage`, `adapterCode`, `auditId`). Add `GovernanceWorkspaceMailHubPayload` with `mailSearch?` and `mailRead?` and **one primary mode** on the UI (see above). Call `runWorkspaceControlPlane` for search on load (`workspace.mail.search` with `args.query`) and for read on selection (`workspace.mail.read` with entity ref → adapter args). Extend control-plane → adapter forwarding once so `query` is never stuffed into `resource_ref`. |
-| **`GovernanceCanvasContext.tsx` / transitions** | Allow navigation to `workspace_mail_hub` from intents and hub tiles. |
-| **`WorkspaceHubSurface.tsx`** | Add `mode: 'mail'` (or a dedicated panel component) to render search results and message body states: not_configured, loading, error, empty, ok. |
-| **Empty-data heuristic** | Add `workspaceMailDataIsEmpty(data)` for messages/thread lists (shape depends on MCP response). |
-
-Minimum viable slice: **search on load** (`workspace.mail.search`) with JSON preview or list UI; **read** as a follow-on when user selects a row (second control-plane call with `workspace.mail.read`).
+| **`canvasTypes.ts` / router / policy** | `workspace_mail_hub` registered; mail intents → same canvas. |
+| **`loadGovernancePayload.ts`** | Search on every mail hub load; **read** when `params.mailMessageId` set (`resource_ref: { type: 'message', id }`). |
+| **`GovernanceCanvasContext.tsx` / `canvasTransitions.ts` / `buildGovernanceCanvasState`** | `loadData(..., { mailMessageId })` passes through to payload loader. |
+| **`WorkspaceHubSurface.tsx`** | `mode: 'mail'`: search JSON + **Read one message** id field; read panel primary when `mailRead` present; search JSON behind `<details>` while reading. |
+| **Heuristics** | `workspaceMailDataIsEmpty` (search lists); `workspaceMailReadDataIsEmpty` (single message body). |
 
 ---
 

@@ -190,11 +190,16 @@ export type GovernanceWorkspaceMailSearch = {
   auditId?: string;
 };
 
+/** Result of `workspace.mail.read` (single message) via control plane. */
+export type GovernanceWorkspaceMailRead = GovernanceWorkspaceMailSearch;
+
 export type GovernanceWorkspaceMailHubPayload = {
   view: 'workspace_mail_hub';
   phase: 1;
   specRef: 'AIOS-SPEC-007';
   mailSearch: GovernanceWorkspaceMailSearch;
+  /** Present when load included `mailMessageId` (read path). */
+  mailRead?: GovernanceWorkspaceMailRead;
 };
 
 export type GovernanceViewPayload =
@@ -324,6 +329,22 @@ function workspaceMailDataIsEmpty(data: unknown): boolean {
   return false;
 }
 
+/** Heuristic: single-message read returned no body / payload (MCP shapes vary). */
+function workspaceMailReadDataIsEmpty(data: unknown): boolean {
+  if (data == null) return true;
+  if (typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    // Prefer identity over body text so a real message with empty snippet is not "empty".
+    if (o.id != null || o.messageId != null) return false;
+    const body = o.body ?? o.textBody ?? o.snippet ?? o.payload;
+    if (typeof body === 'string') return body.trim().length === 0;
+    if (body != null && typeof body === 'object' && Object.keys(body as object).length === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function loadGovernancePayload(
   view: CanvasView,
   params:
@@ -332,6 +353,7 @@ export async function loadGovernancePayload(
         workflowRunId?: string;
         actionPlanSource?: string;
         amendmentWorkflowMode?: 'edit' | 'review';
+        mailMessageId?: string;
       }
     | undefined,
   signal?: AbortSignal
@@ -618,14 +640,63 @@ export async function loadGovernancePayload(
         };
       }
       const mailEmpty = workspaceMailDataIsEmpty(mailResult.data);
+      const mailSearch: GovernanceWorkspaceMailSearch = {
+        loadState: mailEmpty ? 'empty' : 'ok',
+        data: mailResult.data,
+        auditId: mailResult.auditId,
+      };
+
+      const mid = params?.mailMessageId?.trim();
+      if (!mid) {
+        return {
+          view: 'workspace_mail_hub',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          mailSearch,
+        };
+      }
+
+      const readEnvelope: WorkspaceRoutingEnvelope = {
+        intent: 'workspace.mail.read',
+        actor_type: 'founder',
+        tenant_id: 'local',
+        user_binding: 'browser',
+        execution_mode: 'execute',
+        policy_context: { scope_class: 'workspace.google.read' },
+        resource_ref: { type: 'message', id: mid },
+      };
+      const readResult = await runWorkspaceControlPlane(readEnvelope, {
+        surfaceMode: 'founder',
+        signal,
+      });
+      abort();
+      if (readResult.ok === false) {
+        const readLoadState =
+          readResult.code === 'not_configured' ? 'not_configured' : ('error' as const);
+        return {
+          view: 'workspace_mail_hub',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          mailSearch,
+          mailRead: {
+            loadState: readLoadState,
+            errorMessage: readResult.message,
+            controlPlaneCode: readResult.code,
+            adapterCode: readResult.adapterCode,
+            auditId: readResult.auditId,
+          },
+        };
+      }
+      const readEmpty = workspaceMailReadDataIsEmpty(readResult.data);
       return {
         view: 'workspace_mail_hub',
         phase: 1,
         specRef: 'AIOS-SPEC-007',
-        mailSearch: {
-          loadState: mailEmpty ? 'empty' : 'ok',
-          data: mailResult.data,
-          auditId: mailResult.auditId,
+        mailSearch,
+        mailRead: {
+          loadState: readEmpty ? 'empty' : 'ok',
+          data: readResult.data,
+          auditId: readResult.auditId,
         },
       };
     }

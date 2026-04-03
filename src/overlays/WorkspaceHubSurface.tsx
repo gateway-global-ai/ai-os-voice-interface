@@ -4,11 +4,13 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
+import { useState } from 'react';
 import { motion } from 'motion/react';
 import { AlertTriangle, Building2, Calendar, ChevronLeft, Loader2, Mail, Shield } from 'lucide-react';
 import type { GovernanceDataPhase } from '../governance/GovernanceCanvasContext';
 import type {
   GovernanceWorkspaceCalendarRead,
+  GovernanceWorkspaceMailRead,
   GovernanceWorkspaceMailSearch,
 } from '../governance/loadGovernancePayload';
 
@@ -22,10 +24,16 @@ type Props = {
   calendarRead?: GovernanceWorkspaceCalendarRead;
   /** Mail search outcome (`workspace.mail.search`). */
   mailSearch?: GovernanceWorkspaceMailSearch;
+  /** Mail single-message read (`workspace.mail.read`) when `mailMessageId` was supplied to load. */
+  mailRead?: GovernanceWorkspaceMailRead;
   onClose: () => void;
   onOpenCalendar?: () => void;
   onOpenMail?: () => void;
   onBackToHub?: () => void;
+  /** Load `workspace.mail.read` for this message id (reloads mail hub payload). */
+  onReadMail?: (messageId: string) => void;
+  /** Clear message read selection (search-only hub). */
+  onClearMailRead?: () => void;
 };
 
 export function WorkspaceHubSurface({
@@ -35,10 +43,13 @@ export function WorkspaceHubSurface({
   dataError,
   calendarRead,
   mailSearch,
+  mailRead,
   onClose,
   onOpenCalendar,
   onOpenMail,
   onBackToHub,
+  onReadMail,
+  onClearMailRead,
 }: Props) {
   if (!connected) {
     return null;
@@ -116,7 +127,14 @@ export function WorkspaceHubSurface({
               <CalendarReadPanel read={calendarRead} />
             )}
 
-            {mode === 'mail' && mailSearch && <MailSearchPanel read={mailSearch} />}
+            {mode === 'mail' && mailSearch && (
+              <MailMailModePanels
+                mailSearch={mailSearch}
+                mailRead={mailRead}
+                onReadMail={onReadMail}
+                onClearMailRead={onClearMailRead}
+              />
+            )}
 
             {mode === 'hub' && onOpenCalendar && (
               <button
@@ -292,6 +310,141 @@ function MailSearchPanel({ read }: { read: GovernanceWorkspaceMailSearch }) {
         JSON-RPC.
       </p>
       <pre className="text-xs bg-white/90 border border-zinc-100 rounded-xl p-3 overflow-x-auto max-h-48">
+        {JSON.stringify(read.data, null, 2)}
+      </pre>
+      {read.auditId ? <p className="text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
+    </div>
+  );
+}
+
+function MailMailModePanels({
+  mailSearch,
+  mailRead,
+  onReadMail,
+  onClearMailRead,
+}: {
+  mailSearch: GovernanceWorkspaceMailSearch;
+  mailRead?: GovernanceWorkspaceMailRead;
+  onReadMail?: (messageId: string) => void;
+  onClearMailRead?: () => void;
+}) {
+  const [draftId, setDraftId] = useState('');
+
+  return (
+    <div className="space-y-4">
+      {mailRead ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {onClearMailRead ? (
+              <button
+                type="button"
+                onClick={onClearMailRead}
+                className="inline-flex items-center gap-1 text-sm font-medium text-sky-700 hover:text-sky-900"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back to search results
+              </button>
+            ) : null}
+          </div>
+          <MailReadPanel read={mailRead} />
+        </div>
+      ) : null}
+
+      <div className={mailRead ? 'rounded-2xl border border-zinc-200 bg-zinc-50/50 p-3' : ''}>
+        {!mailRead ? (
+          <MailSearchPanel read={mailSearch} />
+        ) : (
+          <details className="text-sm text-zinc-600">
+            <summary className="cursor-pointer font-medium text-zinc-800">Search results (JSON)</summary>
+            <div className="mt-2 max-h-40 overflow-auto">
+              <MailSearchPanel read={mailSearch} />
+            </div>
+          </details>
+        )}
+      </div>
+
+      {!mailRead && onReadMail ? (
+        <div className="rounded-2xl border border-sky-200/80 bg-sky-50/40 p-4 space-y-2">
+          <p className="text-sm font-medium text-zinc-900">Read one message</p>
+          <p className="text-xs text-zinc-600">
+            Runs <code className="rounded bg-white/80 px-1">workspace.mail.read</code> with{' '}
+            <code className="rounded bg-white/80 px-1">resource_ref</code> (message id). Paste an id from your MCP
+            search payload.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              type="text"
+              value={draftId}
+              onChange={(e) => setDraftId(e.target.value)}
+              placeholder="Message id"
+              className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+            />
+            <button
+              type="button"
+              disabled={!draftId.trim()}
+              onClick={() => onReadMail(draftId.trim())}
+              className="shrink-0 rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-40"
+            >
+              Load message
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MailReadPanel({ read }: { read: GovernanceWorkspaceMailRead }) {
+  if (read.loadState === 'not_configured') {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <p className="font-bold flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          MCP not configured
+        </p>
+        <p className="mt-2 text-amber-900/90">Cannot read message — Workspace MCP URL is missing.</p>
+        {read.errorMessage ? (
+          <p className="mt-2 text-xs font-mono text-amber-950/80">{read.errorMessage}</p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (read.loadState === 'error') {
+    return (
+      <div
+        role="alert"
+        className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950"
+      >
+        <p className="font-bold">Message read failed</p>
+        <p className="mt-1">{read.errorMessage ?? 'Unknown error'}</p>
+        <p className="mt-2 text-xs text-red-800">
+          {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
+          {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
+        </p>
+        {read.auditId ? <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p> : null}
+      </div>
+    );
+  }
+
+  if (read.loadState === 'empty') {
+    return (
+      <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 text-sm text-zinc-700">
+        <p className="font-semibold text-zinc-900 mb-1">Empty message payload</p>
+        <p>Adapter returned success but no readable body was detected (heuristic).</p>
+        {read.auditId ? <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4 text-sm text-zinc-800 space-y-2">
+      <p className="font-semibold text-violet-900">Message (read plane)</p>
+      <p className="text-xs text-zinc-600">
+        Structured result from <code className="rounded bg-white/80 px-1">workspace.mail.read</code> via MCP
+        JSON-RPC.
+      </p>
+      <pre className="max-h-64 overflow-x-auto overflow-y-auto rounded-xl border border-zinc-100 bg-white/90 p-3 text-xs">
         {JSON.stringify(read.data, null, 2)}
       </pre>
       {read.auditId ? <p className="text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
