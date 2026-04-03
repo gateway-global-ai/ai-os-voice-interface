@@ -29,6 +29,10 @@ The browser calls **`runWorkspaceControlPlane` → `callWorkspaceMcpAdapter`** o
 
 Before calling Workplace integration **live** or **production-ready**, satisfy **[docs/pre-workplace-checklist.md](docs/pre-workplace-checklist.md)** (secret boundary, structured intent routing, no MCP bypasses).
 
+## Phase 1 calendar read — QA
+
+Manual test matrix for the first governed read path: **[docs/workspace-phase1-calendar-qa.md](docs/workspace-phase1-calendar-qa.md)**.
+
 ## Related documents
 
 - Amendment: `governing_docs/amendments/AMD-2026-006.md`
