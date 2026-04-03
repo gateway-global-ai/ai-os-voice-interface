@@ -23,7 +23,7 @@ export function isValidWorkspaceIntentShape(intent: string): boolean {
 
 /**
  * Map intent → governed canvas surface (Phase 1).
- * Calendar-specific intents get a dedicated hub; others open the main workspace hub.
+ * Calendar / mail read-plane intents get dedicated hubs; others open the main workspace hub.
  */
 export function workspaceIntentToCanvasView(parsed: ParsedWorkspaceIntent): GovernanceCanvasState {
   const { intent } = parsed;
@@ -32,6 +32,9 @@ export function workspaceIntentToCanvasView(parsed: ParsedWorkspaceIntent): Gove
   }
   if (intent === 'workspace.calendar.list' || intent === 'workspace.calendar.get') {
     return { view: 'workspace_calendar_hub' };
+  }
+  if (intent === 'workspace.mail.search' || intent === 'workspace.mail.read') {
+    return { view: 'workspace_mail_hub' };
   }
   return { view: 'workspace_hub' };
 }

@@ -78,6 +78,7 @@ export async function runWorkspaceControlPlane(
     args: {
       resource_ref: envelope.resource_ref,
       session_id: envelope.session_id,
+      ...(envelope.query !== undefined ? { query: envelope.query } : {}),
     },
     signal: options?.signal,
   });

@@ -6,12 +6,12 @@ Use this for the first governed Workspace MCP slice (`workspace.calendar.list` �
 
 ## Usage
 
-Execute and record this checklist for any PR that:
+This QA checklist **must** be executed and recorded for any PR that:
 
 - **implements or modifies** Workspace MCP read-plane behavior for **calendar**, or
 - **changes** the **adapter**, **integration control plane**, or **workspace calendar** surfaces (`mcpAdapter.ts`, `integrationControlPlane.ts`, `loadGovernancePayload.ts` → `workspace_calendar_hub`, `WorkspaceHubSurface.tsx` calendar mode).
 
-**Recommended:** Paste results into the PR description using the template in **§7** so reviewers can verify TC-01–TC-10 without rerunning everything.
+Results **should** be included in the PR description using the template in **§7** (table + overall pass/fail + blocking issues).
 
 ## Flow under test
 

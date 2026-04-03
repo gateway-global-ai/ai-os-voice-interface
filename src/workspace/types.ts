@@ -42,6 +42,11 @@ export type WorkspaceRoutingEnvelope = {
   policy_context: WorkspacePolicyContext;
   /** Correlation for audit. */
   session_id?: string;
+  /**
+   * For `workspace.mail.search` only: forwarded to MCP tool `arguments.query` (not `resource_ref`).
+   * Omit for other intents. Empty string is valid if the MCP tool defines a default listing.
+   */
+  query?: string;
 };
 
 export type WorkspaceControlPlaneResult<T = unknown> =
@@ -52,5 +57,5 @@ export type WorkspaceControlPlaneResult<T = unknown> =
       message: string;
       auditId: string;
       /** Set when code is `adapter_error` — original MCP adapter failure class. */
-      adapterCode?: 'not_configured' | 'timeout' | 'http_error' | 'auth_error';
+      adapterCode?: 'not_configured' | 'timeout' | 'aborted' | 'http_error' | 'auth_error';
     };

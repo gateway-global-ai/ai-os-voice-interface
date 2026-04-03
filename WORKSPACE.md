@@ -10,7 +10,7 @@ The browser calls **`runWorkspaceControlPlane` → `callWorkspaceMcpAdapter`** o
 
 - **Read plane** intents only (`src/workspace/intentRegistry.ts`).
 - **Layer 2 → Layer 1:** each intent maps to exactly one `workspace.google.*` scope class (`src/workspace/scopeClasses.ts`).
-- UI shells: `workspace_hub`, `workspace_calendar_hub` (canvases in `src/overlays/WorkspaceHubSurface.tsx`).
+- UI shells: `workspace_hub`, `workspace_calendar_hub`, `workspace_mail_hub` (canvases in `src/overlays/WorkspaceHubSurface.tsx`). Mail search (`workspace.mail.search` on load) — spec & QA: **[docs/workspace-gmail-read-search-slice.md](docs/workspace-gmail-read-search-slice.md)**, **[docs/workspace-gmail-read-qa.md](docs/workspace-gmail-read-qa.md)**.
 
 ## Configuration
 
@@ -33,8 +33,13 @@ Before calling Workplace integration **live** or **production-ready**, satisfy *
 
 Manual QA for the first governed read path: **[docs/workspace-calendar-read-qa.md](docs/workspace-calendar-read-qa.md)**.
 
+## Phase 1 Gmail read / search — slice spec & QA
+
+Intent-level spec and test checklist (same architecture as calendar): **[docs/workspace-gmail-read-search-slice.md](docs/workspace-gmail-read-search-slice.md)**, **[docs/workspace-gmail-read-qa.md](docs/workspace-gmail-read-qa.md)**.
+
 ## Related documents
 
+- **Intent lifecycle / discovery / onboarding:** [`AIOS-SPEC-008`](governing_docs/specifications/IntentDiscoveryOnboardingFramework.md) — frames how Workspace-dependent intents evolve (dependency mapping, onboarding states, promotion path); extends [`AIOS-SPEC-007`](governing_docs/specifications/GoogleWorkspaceIntegrationGovernance.md) per the spec appendix.
 - Amendment: `governing_docs/amendments/AMD-2026-006.md`
 - AIP workspace intents: `AIOS-SPEC-003` §11
 - UI surfaces: `AIOS-SPEC-006` §13

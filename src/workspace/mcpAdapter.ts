@@ -6,7 +6,11 @@
 
 export type McpAdapterCallResult<T = unknown> =
   | { ok: true; data: T }
-  | { ok: false; code: 'not_configured' | 'timeout' | 'http_error' | 'auth_error'; message: string };
+  | {
+      ok: false;
+      code: 'not_configured' | 'timeout' | 'aborted' | 'http_error' | 'auth_error';
+      message: string;
+    };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -32,21 +36,53 @@ function getTimeoutMs(): number {
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_TIMEOUT_MS;
 }
 
-function combineAbortSignals(external: AbortSignal | undefined, timeoutMs: number): AbortSignal {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+type McpFetchAbortKind = 'timeout' | 'caller' | null;
+
+/**
+ * Merges optional caller `signal` with a timeout into one `fetch` signal, and records
+ * which branch fired first so `AbortError` can be classified (timeout vs cancellation).
+ */
+function createMcpFetchAbort(
+  external: AbortSignal | undefined,
+  timeoutMs: number
+): {
+  signal: AbortSignal;
+  getAbortKind: () => McpFetchAbortKind;
+  dispose: () => void;
+} {
+  const combined = new AbortController();
+  let kind: McpFetchAbortKind = null;
+  const markFirst = (k: Exclude<McpFetchAbortKind, null>) => {
+    if (kind === null) kind = k;
+  };
+
+  const timer = setTimeout(() => {
+    markFirst('timeout');
+    combined.abort();
+  }, timeoutMs);
+
+  const onExternalAbort = () => {
+    clearTimeout(timer);
+    markFirst('caller');
+    combined.abort();
+  };
+
   if (external) {
     if (external.aborted) {
-      clearTimeout(timer);
-      controller.abort();
-      return controller.signal;
+      onExternalAbort();
+    } else {
+      external.addEventListener('abort', onExternalAbort);
     }
-    external.addEventListener('abort', () => {
-      clearTimeout(timer);
-      controller.abort();
-    });
   }
-  return controller.signal;
+
+  const dispose = () => {
+    clearTimeout(timer);
+    if (external && !external.aborted) {
+      external.removeEventListener('abort', onExternalAbort);
+    }
+  };
+
+  return { signal: combined.signal, getAbortKind: () => kind, dispose };
 }
 
 function isAbortError(e: unknown): boolean {
@@ -109,7 +145,14 @@ export async function callWorkspaceMcpAdapter(params: {
 
   const path = getJsonRpcPath();
   const timeoutMs = getTimeoutMs();
-  const signal = combineAbortSignals(params.signal, timeoutMs);
+  if (params.signal?.aborted) {
+    return {
+      ok: false,
+      code: 'aborted',
+      message: 'Workspace MCP request cancelled before send.',
+    };
+  }
+  const { signal, getAbortKind, dispose } = createMcpFetchAbort(params.signal, timeoutMs);
   const id = Date.now();
   const body = {
     jsonrpc: '2.0' as const,
@@ -136,10 +179,25 @@ export async function callWorkspaceMcpAdapter(params: {
     });
   } catch (e) {
     if (isAbortError(e)) {
+      const abortKind = getAbortKind();
+      if (abortKind === 'caller') {
+        return {
+          ok: false,
+          code: 'aborted',
+          message: 'Workspace MCP request was cancelled.',
+        };
+      }
+      if (abortKind === 'timeout') {
+        return {
+          ok: false,
+          code: 'timeout',
+          message: `Workspace MCP request timed out (${timeoutMs}ms).`,
+        };
+      }
       return {
         ok: false,
-        code: 'timeout',
-        message: `Workspace MCP request timed out or aborted (${timeoutMs}ms limit).`,
+        code: 'aborted',
+        message: 'Workspace MCP request was aborted.',
       };
     }
     return {
@@ -147,6 +205,8 @@ export async function callWorkspaceMcpAdapter(params: {
       code: 'http_error',
       message: e instanceof Error ? e.message : 'Network error calling Workspace MCP',
     };
+  } finally {
+    dispose();
   }
 
   if (res.status === 401 || res.status === 403) {

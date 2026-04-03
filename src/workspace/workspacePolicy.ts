@@ -10,7 +10,12 @@ import type { WorkspaceScopeClass } from './types';
 export type WorkspaceSurfaceMode = 'public' | 'founder' | 'operator' | 'customer';
 
 /** Dev default: allow read-plane surfaces only. */
-const ALLOWED_PHASE1_VIEWS: ReadonlySet<CanvasView> = new Set(['workspace_hub', 'workspace_calendar_hub']);
+const ALLOWED_PHASE1_VIEWS: ReadonlySet<CanvasView> = new Set([
+  'workspace_hub',
+  'workspace_onboarding',
+  'workspace_calendar_hub',
+  'workspace_mail_hub',
+]);
 
 export function evaluateWorkspaceCanvasPolicy(view: CanvasView): { allowed: boolean; reason?: string } {
   if (!ALLOWED_PHASE1_VIEWS.has(view)) {

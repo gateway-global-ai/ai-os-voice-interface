@@ -94,3 +94,5 @@ Schedule these after the first read-plane proof.
 
 - [README.md](../README.md) — secrets note and pointer here
 - [WORKSPACE.md](../WORKSPACE.md) — runtime integration, adapter, `VITE_WORKSPACE_MCP_URL`
+- [AIOS-SPEC-008](../governing_docs/specifications/IntentDiscoveryOnboardingFramework.md) — unknown intent, discovery, and onboarding policy when PRs touch intent classification or new surfaces
+- [workspace-gmail-read-qa.md](./workspace-gmail-read-qa.md) — when PRs implement Gmail/Mail MCP read-plane (`workspace.mail.*`)
