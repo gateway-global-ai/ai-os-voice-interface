@@ -47,8 +47,10 @@ import { DocumentViewerOverlay } from './overlays/DocumentViewer';
 import { ConflictScanOverlay } from './overlays/ConflictScan';
 import { ComplianceCheckOverlay } from './overlays/ComplianceCheck';
 import { LifecyclePanelOverlay } from './overlays/LifecyclePanel';
+import { AmendmentHubSurface } from './overlays/AmendmentHubSurface';
 import { AmendmentWorkflowSurface } from './overlays/AmendmentWorkflowSurface';
 import { ActionPlanReviewSurface } from './overlays/ActionPlanReviewSurface';
+import { WorkspaceHubSurface } from './overlays/WorkspaceHubSurface';
 import { ApiHealthOverlay } from './overlays/ApiHealthOverlay';
 import { stripIntentLineForDisplay } from './governance/intentParse';
 import { GovernanceCanvasProvider, useGovernanceCanvas } from './governance/GovernanceCanvasContext';
@@ -935,9 +937,13 @@ function AppImpl({
   const [chatInput, setChatInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
   
-  // Speech Recognition Ref
+  // Speech Recognition Ref — PTT only: never transcribe unless a push session is active
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
+  /** True only while the user is holding PTT (survives re-renders; drives onresult + onend). */
+  const pttSessionActiveRef = useRef(false);
+  /** Latest transcript for finalize (React state can lag behind onresult). */
+  const transcriptRef = useRef('');
 
   // Audio Context for TTS
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -970,31 +976,51 @@ function AppImpl({
   }, [messages, mode]);
 
   useEffect(() => {
-    // Initialize Speech Recognition
+    // Initialize Speech Recognition (start/stop only from PTT handlers)
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       recognitionRef.current = new SpeechRecognition();
+      // Keep one session per PTT press (pause-tolerant); stop() ends it. continuous=false would drop earlier words on onend restart.
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
 
       recognitionRef.current.onresult = (event: any) => {
+        if (!isListeningRef.current || !pttSessionActiveRef.current) {
+          return;
+        }
         let currentTranscription = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
           currentTranscription += event.results[i][0].transcript;
         }
+        transcriptRef.current = currentTranscription;
         setTranscription(currentTranscription);
       };
 
       recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        if (event.error !== 'no-speech') {
-          setStatus("error");
+        // no-speech / aborted: normal; audio-capture: often transient race with the mic pipeline
+        const benign =
+          event.error === 'no-speech' ||
+          event.error === 'aborted' ||
+          event.error === 'audio-capture';
+        if (!benign) {
+          console.error('Speech recognition error:', event.error);
+        }
+        if (!benign && pttSessionActiveRef.current) {
+          setStatus('error');
+        } else if (benign && pttSessionActiveRef.current) {
+          setStatus('listening');
         }
       };
 
       recognitionRef.current.onend = () => {
-        if (isListeningRef.current) {
+        // With continuous=true, onend usually means stop() was called — do not restart unless PTT still held.
+        if (!isListeningRef.current || !pttSessionActiveRef.current || !recognitionRef.current) {
+          return;
+        }
+        try {
           recognitionRef.current.start();
+        } catch (e) {
+          console.debug('Speech recognition restart skipped:', e);
         }
       };
     } else {
@@ -1003,8 +1029,14 @@ function AppImpl({
     }
 
     return () => {
+      pttSessionActiveRef.current = false;
+      isListeningRef.current = false;
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          /* already stopped */
+        }
       }
     };
   }, []);
@@ -1084,40 +1116,76 @@ function AppImpl({
     setDiscProfile(prev => ({ ...prev, [key]: value }));
   };
 
-  const handlePTTDown = async () => {
+  const handlePTTDown = async (e: React.PointerEvent<HTMLButtonElement>) => {
     if (!recognitionRef.current) {
       setStatus("error");
       return;
     }
+    // Primary button only (mouse); touch/pen use button id 0
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
 
     try {
-      // Request microphone permission explicitly to ensure it's "connected"
       await navigator.mediaDevices.getUserMedia({ audio: true });
-      
+
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch (capErr) {
+        console.warn('Pointer capture unavailable (PTT still works):', capErr);
+      }
+
+      transcriptRef.current = '';
+      setTranscription('Listening...');
       setIsPTTActive(true);
-      setStatus("listening");
-      setTranscription("Listening...");
+      pttSessionActiveRef.current = true;
+      setStatus('listening');
       isListeningRef.current = true;
-      recognitionRef.current.start();
+
+      const rec = recognitionRef.current;
+      try {
+        rec.start();
+      } catch (startErr: unknown) {
+        const se = startErr as { name?: string };
+        // Engine already has an active session (e.g. race with onend). Keep PTT state — audio may already work.
+        if (se?.name === 'InvalidStateError') {
+          console.debug('Speech recognition already active — continuing PTT');
+          return;
+        }
+        console.error('Speech recognition start failed:', startErr);
+        pttSessionActiveRef.current = false;
+        isListeningRef.current = false;
+        setIsPTTActive(false);
+        try {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {
+          /* */
+        }
+        setStatus('error');
+      }
     } catch (err) {
       console.error('Microphone access denied:', err);
-      setStatus("error");
+      setStatus('error');
     }
   };
 
-  const handlePTTUp = async () => {
-    if (!isPTTActive) return;
-
+  const endPTTSession = async () => {
+    if (!pttSessionActiveRef.current) return;
+    pttSessionActiveRef.current = false;
     setIsPTTActive(false);
     isListeningRef.current = false;
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        /* */
+      }
     }
 
-    const finalTranscription = transcription.trim();
-    if (!finalTranscription || finalTranscription === "Listening...") {
-      setStatus("connected");
-      setTranscription("");
+    const finalTranscription = transcriptRef.current.trim();
+    transcriptRef.current = '';
+
+    if (!finalTranscription || finalTranscription === 'Listening...') {
+      setStatus('connected');
+      setTranscription('');
       return;
     }
 
@@ -1150,12 +1218,13 @@ function AppImpl({
 
           GOVERNANCE CANVAS (structured intent): After your spoken reply, add exactly one final line with no markdown fence:
           INTENT_JSON:{"intent":"<id>","document_id":""}
-          intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status
-          Use intent "none" when no governance surface should open.
-          governance.documents.list opens the governance intent hub (founder work modes — Review Docs, Discuss Documents, Planning Assistant, Research Assistant, Amendment Program, Action plan), not the full document library by itself.
+          intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
+          Use intent "none" when no governance or workspace surface should open.
+          governance.documents.list opens the governance intent hub (founder work modes — Review Docs, Discuss Documents, Planning Assistant, Research Assistant, Amendment Program, Action plan, Google Workspace), not the full document library by itself.
           governance.amendment.workflow opens the amendment program workflow (demo: AMD-2026-004 template; no repo merge).
           governance.action_plan.review opens action plan review; use document_id for sources folder name (e.g. AMD-2026-a10b9a).
-          Use governance.documents.open with document_id when the user names an id (e.g. AIOS-CORE-001). Omit document_id or use "" if unknown.`,
+          Use governance.documents.open with document_id when the user names an id (e.g. AIOS-CORE-001). Omit document_id or use "" if unknown.
+          Workspace (AIOS-SPEC-007 Phase 1): workspace.* intents are governed — they route through the Integration Control Plane, not raw MCP. workspace.hub opens the Workspace hub; calendar list/get open the Calendar read-plane hub; other Phase 1 intents open the Workspace hub.`,
         }
       });
 
@@ -1195,6 +1264,15 @@ function AppImpl({
     }
   };
 
+  const handlePTTUp = async (e: React.PointerEvent<HTMLButtonElement>) => {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* not capturing */
+    }
+    await endPTTSession();
+  };
+
   const handleChatSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
@@ -1232,12 +1310,13 @@ function AppImpl({
 
           GOVERNANCE CANVAS (structured intent): After your spoken reply, add exactly one final line with no markdown fence:
           INTENT_JSON:{"intent":"<id>","document_id":""}
-          intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status
-          Use intent "none" when no governance surface should open.
-          governance.documents.list opens the governance intent hub (founder work modes — Review Docs, Discuss Documents, Planning Assistant, Research Assistant, Amendment Program, Action plan), not the full document library by itself.
+          intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
+          Use intent "none" when no governance or workspace surface should open.
+          governance.documents.list opens the governance intent hub (founder work modes — Review Docs, Discuss Documents, Planning Assistant, Research Assistant, Amendment Program, Action plan, Google Workspace), not the full document library by itself.
           governance.amendment.workflow opens the amendment program workflow (demo: AMD-2026-004 template; no repo merge).
           governance.action_plan.review opens action plan review; use document_id for sources folder name (e.g. AMD-2026-a10b9a).
-          Use governance.documents.open with document_id when the user names an id (e.g. AIOS-CORE-001). Omit document_id or use "" if unknown.`,
+          Use governance.documents.open with document_id when the user names an id (e.g. AIOS-CORE-001). Omit document_id or use "" if unknown.
+          Workspace (AIOS-SPEC-007 Phase 1): workspace.* intents are governed — they route through the Integration Control Plane, not raw MCP. workspace.hub opens the Workspace hub; calendar list/get open the Calendar read-plane hub; other Phase 1 intents open the Workspace hub.`,
         }
       });
 
@@ -1569,6 +1648,22 @@ function AppImpl({
                     }
                   />
                 )}
+                {govCanvas.view === 'workspace_hub' && (
+                  <WorkspaceHubSurface
+                    mode="hub"
+                    dataPhase={dataPhase}
+                    onClose={closeCanvas}
+                    onOpenCalendar={() => void loadData('workspace_calendar_hub')}
+                  />
+                )}
+                {govCanvas.view === 'workspace_calendar_hub' && (
+                  <WorkspaceHubSurface
+                    mode="calendar"
+                    dataPhase={dataPhase}
+                    onClose={closeCanvas}
+                    onBackToHub={() => void loadData('workspace_hub')}
+                  />
+                )}
                 {govCanvas.view === 'review_docs' && (
                   <ReviewDocsSurface
                     pinned={payload?.view === 'review_docs' ? payload.pinned : []}
@@ -1639,9 +1734,27 @@ function AppImpl({
                     }
                   />
                 )}
+                {govCanvas.view === 'amendment_hub' && (
+                  <AmendmentHubSurface
+                    hub={payload?.view === 'amendment_hub' ? payload : null}
+                    dataPhase={dataPhase}
+                    dataError={dataError}
+                    onRetry={() => void retryLoadData()}
+                    onBack={goBack}
+                    onOpenWorkflow={(runId, mode) =>
+                      void loadData('amendment_workflow', {
+                        workflowRunId: runId,
+                        amendmentWorkflowMode: mode,
+                      })
+                    }
+                  />
+                )}
                 {govCanvas.view === 'amendment_workflow' && (
                   <AmendmentWorkflowSurface
                     run={payload?.view === 'amendment_workflow' ? payload.run : null}
+                    workflowMode={
+                      payload?.view === 'amendment_workflow' ? payload.mode : 'edit'
+                    }
                     dataPhase={dataPhase}
                     dataError={dataError}
                     onBack={goBack}
@@ -1754,13 +1867,13 @@ function AppImpl({
           )}
         </div>
 
-        {/* PTT Button */}
+        {/* PTT Button — pointer capture ensures release/end even if pointer leaves the button */}
         <div className="absolute left-1/2 -translate-x-1/2 -top-8">
           <button 
-            onMouseDown={handlePTTDown}
-            onMouseUp={handlePTTUp}
-            onTouchStart={handlePTTDown}
-            onTouchEnd={handlePTTUp}
+            type="button"
+            onPointerDown={(e) => void handlePTTDown(e)}
+            onPointerUp={(e) => void handlePTTUp(e)}
+            onPointerCancel={(e) => void handlePTTUp(e)}
             className={`
               w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all duration-300
               ${isPTTActive 

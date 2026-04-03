@@ -10,13 +10,16 @@ export type CanvasView =
   | 'discuss_documents'
   | 'planning_assistant'
   | 'research_assistant'
+  | 'amendment_hub'
   | 'amendment_workflow'
   | 'document_list'
   | 'document_view'
   | 'conflict_results'
   | 'compliance_check'
   | 'lifecycle_status'
-  | 'action_plan_review';
+  | 'action_plan_review'
+  | 'workspace_hub'
+  | 'workspace_calendar_hub';
 
 /** Structured intents from the agent (INTENT_JSON). */
 export type GovernanceIntentId =
@@ -24,6 +27,10 @@ export type GovernanceIntentId =
   | 'governance.documents.list'
   | 'governance.documents.open'
   | 'governance.amendment.workflow'
+  | 'governance.amendment.hub'
+  | 'governance.amendment.resume'
+  | 'governance.amendment.review'
+  | 'governance.amendment.create'
   | 'governance.conflicts.scan'
   | 'governance.compliance.check'
   | 'governance.lifecycle.status'
@@ -32,6 +39,9 @@ export type GovernanceIntentId =
 export type ParsedGovernanceIntent = {
   intent: GovernanceIntentId;
   document_id?: string;
+  workflow_run_id?: string;
+  template_id?: string;
+  amendment_mode?: 'edit' | 'review';
 };
 
 export type GovernanceCanvasState = {
@@ -40,6 +50,8 @@ export type GovernanceCanvasState = {
   workflowRunId?: string;
   /** Folder under governing_docs/sources/ (e.g. AMD-2026-a10b9a). */
   actionPlanSource?: string;
+  /** Amendment workflow surface: edit vs read-only review of a run. */
+  amendmentWorkflowMode?: 'edit' | 'review';
 } | null;
 
 /** Maps agent intent → canvas view (PolicyDecision gates before apply). */
@@ -59,7 +71,36 @@ export function intentToCanvasView(parsed: ParsedGovernanceIntent): GovernanceCa
     case 'governance.lifecycle.status':
       return { view: 'lifecycle_status' };
     case 'governance.amendment.workflow':
-      return { view: 'amendment_workflow' };
+      return { view: 'amendment_hub' };
+    case 'governance.amendment.hub':
+    case 'governance.amendment.create':
+      return { view: 'amendment_hub' };
+    case 'governance.amendment.resume': {
+      const rid =
+        parsed.workflow_run_id?.trim() ||
+        parsed.document_id?.trim();
+      if (rid) {
+        return {
+          view: 'amendment_workflow',
+          workflowRunId: rid,
+          amendmentWorkflowMode: 'edit',
+        };
+      }
+      return { view: 'amendment_hub' };
+    }
+    case 'governance.amendment.review': {
+      const rid =
+        parsed.workflow_run_id?.trim() ||
+        parsed.document_id?.trim();
+      if (rid) {
+        return {
+          view: 'amendment_workflow',
+          workflowRunId: rid,
+          amendmentWorkflowMode: 'review',
+        };
+      }
+      return { view: 'amendment_hub' };
+    }
     case 'governance.action_plan.review':
       return {
         view: 'action_plan_review',
@@ -76,6 +117,7 @@ export const ALL_CANVAS_VIEWS: CanvasView[] = [
   'discuss_documents',
   'planning_assistant',
   'research_assistant',
+  'amendment_hub',
   'amendment_workflow',
   'document_list',
   'document_view',
@@ -83,4 +125,6 @@ export const ALL_CANVAS_VIEWS: CanvasView[] = [
   'compliance_check',
   'lifecycle_status',
   'action_plan_review',
+  'workspace_hub',
+  'workspace_calendar_hub',
 ];

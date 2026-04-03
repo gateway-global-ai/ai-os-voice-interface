@@ -4,12 +4,18 @@
  */
 
 import type { GovernanceIntentId, ParsedGovernanceIntent } from './canvasTypes';
+import { isPhase1WorkspaceIntent } from '../workspace/intentRegistry';
+import type { ParsedWorkspaceIntent } from '../workspace/workspaceIntentRouter';
 
 const VALID: GovernanceIntentId[] = [
   'none',
   'governance.documents.list',
   'governance.documents.open',
   'governance.amendment.workflow',
+  'governance.amendment.hub',
+  'governance.amendment.resume',
+  'governance.amendment.review',
+  'governance.amendment.create',
   'governance.conflicts.scan',
   'governance.compliance.check',
   'governance.lifecycle.status',
@@ -56,12 +62,41 @@ function legacyPhraseParse(agentText: string): ParsedGovernanceIntent | null {
     agentText.includes('amendment workflow') ||
     agentText.includes('open the amendment')
   ) {
-    return { intent: 'governance.amendment.workflow' };
+    return { intent: 'governance.amendment.hub' };
   }
   return null;
 }
 
 export type IntentParseSource = 'json' | 'legacy' | 'none';
+
+export type AgentIntentParseResult =
+  | { kind: 'governance'; parsed: ParsedGovernanceIntent; source: IntentParseSource }
+  | { kind: 'workspace'; parsed: ParsedWorkspaceIntent; source: 'json' }
+  | { kind: 'none'; source: IntentParseSource };
+
+/**
+ * Unified parse: Workspace intents (Phase 1) take precedence when INTENT_JSON uses `workspace.*`.
+ */
+export function parseAgentIntentDetailed(agentText: string): AgentIntentParseResult {
+  const raw = extractIntentJsonObject(agentText);
+  if (raw && typeof raw.intent === 'string' && raw.intent.startsWith('workspace.')) {
+    if (isPhase1WorkspaceIntent(raw.intent)) {
+      return {
+        kind: 'workspace',
+        source: 'json',
+        parsed: {
+          intent: raw.intent,
+          query: typeof raw.query === 'string' ? raw.query : undefined,
+          resource_id: typeof raw.resource_id === 'string' ? raw.resource_id : undefined,
+        },
+      };
+    }
+    return { kind: 'none', source: 'json' };
+  }
+  const { parsed, source } = parseIntentFromAgentTextDetailed(agentText);
+  if (!parsed || parsed.intent === 'none') return { kind: 'none', source };
+  return { kind: 'governance', parsed, source };
+}
 
 /** Parse INTENT_JSON (preferred) or legacy phrases; includes source for audit. */
 export function parseIntentFromAgentTextDetailed(agentText: string): {
@@ -70,10 +105,20 @@ export function parseIntentFromAgentTextDetailed(agentText: string): {
 } {
   const raw = extractIntentJsonObject(agentText);
   if (raw && typeof raw.intent === 'string' && isIntentId(raw.intent)) {
+    const amendment_mode =
+      raw.amendment_mode === 'review'
+        ? 'review'
+        : raw.amendment_mode === 'edit'
+          ? 'edit'
+          : undefined;
     return {
       parsed: {
         intent: raw.intent,
         document_id: typeof raw.document_id === 'string' ? raw.document_id : undefined,
+        workflow_run_id:
+          typeof raw.workflow_run_id === 'string' ? raw.workflow_run_id : undefined,
+        template_id: typeof raw.template_id === 'string' ? raw.template_id : undefined,
+        amendment_mode,
       },
       source: 'json',
     };

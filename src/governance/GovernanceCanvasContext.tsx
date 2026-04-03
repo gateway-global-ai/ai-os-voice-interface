@@ -33,7 +33,8 @@ import {
   validateGovernanceTransition,
   type CanvasTransitionMode,
 } from './canvasTransitions';
-import { parseIntentFromAgentTextDetailed } from './intentParse';
+import { parseAgentIntentDetailed } from './intentParse';
+import { workspaceIntentToCanvasView } from '../workspace/workspaceIntentRouter';
 import { getGovernanceAuditSnapshot, logGovernanceAudit, newEventId } from './governanceAudit';
 import {
   isPayloadEmpty,
@@ -51,6 +52,8 @@ export type GovernanceCanvasOpenParams = {
   workflowRunId?: string;
   /** Source folder for action plan review (e.g. AMD-2026-a10b9a). */
   actionPlanSource?: string;
+  /** Amendment workflow: full edit vs read-only review (completed runs). */
+  amendmentWorkflowMode?: 'edit' | 'review';
   /** When `document_list` was opened from a work mode, back returns here instead of the hub. */
   returnAfterList?: CanvasView;
   /** Slimmer list chrome for Review Docs (hide conflicts / compliance / lifecycle shortcuts). */
@@ -251,6 +254,7 @@ export function GovernanceCanvasProvider({
             workflowRunId: next.workflowRunId,
             actionPlanSource:
               next.view === 'action_plan_review' ? next.actionPlanSource : undefined,
+            amendmentWorkflowMode: next.amendmentWorkflowMode,
           },
           ac.signal
         );
@@ -258,8 +262,17 @@ export function GovernanceCanvasProvider({
         setPayload(p);
         if (p.view === 'amendment_workflow' && p.run?.run_id) {
           const rid = p.run.run_id;
-          setCanvas({ view: 'amendment_workflow', workflowRunId: rid });
-          lastLoadRef.current = { view, params: { ...params, workflowRunId: rid }, options };
+          const mode = p.mode ?? next.amendmentWorkflowMode ?? 'edit';
+          setCanvas({
+            view: 'amendment_workflow',
+            workflowRunId: rid,
+            amendmentWorkflowMode: mode,
+          });
+          lastLoadRef.current = {
+            view,
+            params: { ...params, workflowRunId: rid, amendmentWorkflowMode: mode },
+            options,
+          };
         }
         setDataPhase(isPayloadEmpty(p) ? 'empty' : 'success');
         logGovernanceAudit('view_opened', {
@@ -366,14 +379,15 @@ export function GovernanceCanvasProvider({
   const applyAmendmentWorkflowRun = useCallback((run: AmendmentWorkflowRunState) => {
     const rid = run.run_id?.trim();
     if (!rid) return;
-    setCanvas({ view: 'amendment_workflow', workflowRunId: rid });
-    setPayload({ view: 'amendment_workflow', run });
+    const mode = lastLoadRef.current?.params?.amendmentWorkflowMode ?? 'edit';
+    setCanvas({ view: 'amendment_workflow', workflowRunId: rid, amendmentWorkflowMode: mode });
+    setPayload({ view: 'amendment_workflow', run, mode });
     setDataPhase('success');
     setDataError(null);
     const opts = lastLoadRef.current?.options;
     lastLoadRef.current = {
       view: 'amendment_workflow',
-      params: { workflowRunId: rid },
+      params: { workflowRunId: rid, amendmentWorkflowMode: mode },
       options: opts,
     };
     logGovernanceAudit('view_opened', {
@@ -429,6 +443,22 @@ export function GovernanceCanvasProvider({
 
   const stepBackFromSubSurface = useCallback(() => {
     if (!canvas) return;
+    if (canvas.view === 'workspace_calendar_hub') {
+      void loadData('workspace_hub', undefined, { transitionMode: 'ui' });
+      return;
+    }
+    if (canvas.view === 'workspace_hub') {
+      closeCanvas();
+      return;
+    }
+    if (canvas.view === 'amendment_workflow') {
+      void loadData('amendment_hub', undefined, { transitionMode: 'ui' });
+      return;
+    }
+    if (canvas.view === 'amendment_hub') {
+      void loadData(GOVERNANCE_HOME_VIEW, undefined, { transitionMode: 'ui' });
+      return;
+    }
     if (
       canvas.view === 'conflict_results' ||
       canvas.view === 'compliance_check' ||
@@ -472,7 +502,7 @@ export function GovernanceCanvasProvider({
       }
     }
     void loadData(GOVERNANCE_HOME_VIEW, undefined, { transitionMode: 'ui' });
-  }, [canvas, loadData]);
+  }, [canvas, loadData, closeCanvas]);
 
   const goBack = useCallback(() => {
     if (!canvas || isGovernanceHomeView(canvas.view)) return;
@@ -485,6 +515,16 @@ export function GovernanceCanvasProvider({
 
   const dismissBackdrop = useCallback(() => {
     if (!canvas) return;
+    if (canvas.view === 'workspace_calendar_hub') {
+      logGovernanceAudit('backdrop_dismiss', { from: canvas.view });
+      void loadData('workspace_hub', undefined, { transitionMode: 'ui' });
+      return;
+    }
+    if (canvas.view === 'workspace_hub') {
+      logGovernanceAudit('backdrop_dismiss', { from: canvas.view });
+      closeCanvas();
+      return;
+    }
     if (isGovernanceHomeView(canvas.view)) {
       logGovernanceAudit('backdrop_dismiss', { from: GOVERNANCE_HOME_VIEW });
       closeCanvas();
@@ -492,11 +532,23 @@ export function GovernanceCanvasProvider({
     }
     logGovernanceAudit('backdrop_dismiss', { from: canvas.view });
     stepBackFromSubSurface();
-  }, [canvas, closeCanvas, stepBackFromSubSurface]);
+  }, [canvas, closeCanvas, stepBackFromSubSurface, loadData]);
 
   const applyAgentIntent = useCallback(
     (rawAgentText: string) => {
-      const { parsed, source } = parseIntentFromAgentTextDetailed(rawAgentText);
+      const agent = parseAgentIntentDetailed(rawAgentText);
+      if (agent.kind === 'workspace') {
+        logGovernanceAudit('intent_parsed', {
+          source: 'json',
+          intent: agent.parsed.intent,
+          subsystem: 'google_workspace',
+        });
+        const next = workspaceIntentToCanvasView(agent.parsed);
+        void loadData(next.view, {}, { transitionMode: 'intent' });
+        return;
+      }
+      if (agent.kind === 'none') return;
+      const { parsed, source } = { parsed: agent.parsed, source: agent.source };
       logGovernanceAudit('intent_parsed', {
         source,
         intent: parsed?.intent ?? null,
@@ -507,7 +559,16 @@ export function GovernanceCanvasProvider({
       if (!parsed || parsed.intent === 'none') return;
       const next = intentToCanvasView(parsed);
       if (!next) return;
-      void loadData(next.view, { documentId: next.documentId, workflowRunId: next.workflowRunId }, { transitionMode: 'intent' });
+      void loadData(
+        next.view,
+        {
+          documentId: next.documentId,
+          workflowRunId: next.workflowRunId,
+          actionPlanSource: next.actionPlanSource,
+          amendmentWorkflowMode: next.amendmentWorkflowMode,
+        },
+        { transitionMode: 'intent' }
+      );
     },
     [loadData]
   );

@@ -10,7 +10,8 @@ export type GovernanceAuditEventType =
   | 'view_opened'
   | 'policy_denied'
   | 'view_closed'
-  | 'backdrop_dismiss';
+  | 'backdrop_dismiss'
+  | 'workspace_control_plane';
 
 export type GovernanceAuditEvent = {
   ts: number;

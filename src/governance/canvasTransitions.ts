@@ -26,8 +26,9 @@ export const UI_ALLOWED_TRANSITIONS: Record<CanvasView, readonly CanvasView[]> =
     'discuss_documents',
     'planning_assistant',
     'research_assistant',
-    'amendment_workflow',
+    'amendment_hub',
     'action_plan_review',
+    'workspace_hub',
   ],
   review_docs: [
     'governance_hub',
@@ -39,8 +40,9 @@ export const UI_ALLOWED_TRANSITIONS: Record<CanvasView, readonly CanvasView[]> =
   discuss_documents: ['governance_hub'],
   planning_assistant: ['governance_hub', 'lifecycle_status', 'document_list', 'document_view'],
   research_assistant: ['governance_hub', 'document_list', 'document_view'],
-  amendment_workflow: ['governance_hub', 'action_plan_review'],
-  action_plan_review: ['governance_hub', 'amendment_workflow'],
+  amendment_hub: ['governance_hub', 'amendment_workflow', 'action_plan_review'],
+  amendment_workflow: ['governance_hub', 'amendment_hub', 'action_plan_review'],
+  action_plan_review: ['governance_hub', 'amendment_workflow', 'amendment_hub'],
   document_list: [
     'governance_hub',
     'review_docs',
@@ -56,11 +58,14 @@ export const UI_ALLOWED_TRANSITIONS: Record<CanvasView, readonly CanvasView[]> =
     'document_list',
     'planning_assistant',
     'research_assistant',
+    'amendment_hub',
     'amendment_workflow',
   ],
   conflict_results: ['governance_hub', 'review_docs', 'document_list'],
   compliance_check: ['governance_hub', 'review_docs', 'document_list'],
   lifecycle_status: ['governance_hub', 'planning_assistant', 'document_list'],
+  workspace_hub: ['governance_hub', 'workspace_calendar_hub'],
+  workspace_calendar_hub: ['governance_hub', 'workspace_hub'],
 } as const satisfies Record<CanvasView, readonly CanvasView[]>;
 
 export type CanvasTransitionMode = 'ui' | 'intent';
@@ -96,7 +101,12 @@ export function transitionSubSurfaceBackToHub(): NonNullable<GovernanceCanvasSta
 
 export function buildGovernanceCanvasState(
   view: CanvasView,
-  params?: { documentId?: string; workflowRunId?: string; actionPlanSource?: string }
+  params?: {
+    documentId?: string;
+    workflowRunId?: string;
+    actionPlanSource?: string;
+    amendmentWorkflowMode?: 'edit' | 'review';
+  }
 ): NonNullable<GovernanceCanvasState> {
   if (view === 'document_view') {
     const id = params?.documentId?.trim();
@@ -107,13 +117,22 @@ export function buildGovernanceCanvasState(
   if (view === 'lifecycle_status' && doc) {
     return { view: 'lifecycle_status', documentId: doc };
   }
+  if (view === 'amendment_hub') {
+    return { view: 'amendment_hub' };
+  }
   if (view === 'amendment_workflow') {
     const w = params?.workflowRunId?.trim();
-    return w ? { view: 'amendment_workflow', workflowRunId: w } : { view: 'amendment_workflow' };
+    const mode = params?.amendmentWorkflowMode === 'review' ? 'review' : 'edit';
+    return w
+      ? { view: 'amendment_workflow', workflowRunId: w, amendmentWorkflowMode: mode }
+      : { view: 'amendment_workflow' };
   }
   if (view === 'action_plan_review') {
     const s = params?.actionPlanSource?.trim() || 'AMD-2026-a10b9a';
     return { view: 'action_plan_review', actionPlanSource: s };
+  }
+  if (view === 'workspace_hub' || view === 'workspace_calendar_hub') {
+    return { view };
   }
   return { view, documentId: undefined };
 }

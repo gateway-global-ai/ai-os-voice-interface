@@ -56,14 +56,19 @@ export function GovernanceHubSurface({ actorLabel, dataPhase, onClose, onSelectM
       blurb: 'Research library, reviews, recommendations, and tasks.',
     },
     {
-      view: 'amendment_workflow',
+      view: 'amendment_hub',
       title: 'Amendment Program',
-      blurb: 'Proposal → peer review → plan → console — no automatic merge into the repo.',
+      blurb: 'Workspace for runs and templates — create or resume; no automatic merge into the repo.',
     },
     {
       view: 'action_plan_review',
       title: 'Action plan',
       blurb: 'Merge impact reports → approve steps → execute whitelisted automation.',
+    },
+    {
+      view: 'workspace_hub',
+      title: 'Google Workspace',
+      blurb: 'Governed read plane (Phase 1) — intents route through the control plane, not raw MCP.',
     },
   ];
 
