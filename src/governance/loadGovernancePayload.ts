@@ -32,6 +32,8 @@ import {
 } from './governanceIntroductionOrder';
 import type { WorkspaceRoutingEnvelope } from '../workspace/types';
 import { runWorkspaceControlPlane } from '../workspace/integrationControlPlane';
+import type { WorkspaceState } from '../shell/workspaceState';
+import { resolveWorkspaceState, shouldShowWorkspaceHub } from '../shell/workspaceState';
 
 export type GovernanceHubPayload = {
   view: 'governance_hub';
@@ -149,6 +151,15 @@ export type GovernanceWorkspaceHubPayload = {
   view: 'workspace_hub';
   phase: 1;
   specRef: 'AIOS-SPEC-007';
+  workspaceState: 'connected';
+};
+
+/** Gate surface — shown until user connects Workspace (MCP) per shell policy. */
+export type GovernanceWorkspaceOnboardingPayload = {
+  view: 'workspace_onboarding';
+  phase: 1;
+  specRef: 'AIOS-SPEC-007';
+  workspaceState: WorkspaceState;
 };
 
 /** Result of `workspace.calendar.list` via control plane (Phase 1 read plane). */
@@ -158,7 +169,7 @@ export type GovernanceWorkspaceCalendarRead = {
   errorMessage?: string;
   /** Control plane failure code when `loadState` is `error`. */
   controlPlaneCode?: string;
-  adapterCode?: 'not_configured' | 'timeout' | 'http_error' | 'auth_error';
+  adapterCode?: 'not_configured' | 'timeout' | 'aborted' | 'http_error' | 'auth_error';
   auditId?: string;
 };
 
@@ -167,6 +178,23 @@ export type GovernanceWorkspaceCalendarHubPayload = {
   phase: 1;
   specRef: 'AIOS-SPEC-007';
   calendarRead: GovernanceWorkspaceCalendarRead;
+};
+
+/** Result of `workspace.mail.search` via control plane (Phase 1 read plane). */
+export type GovernanceWorkspaceMailSearch = {
+  loadState: 'ok' | 'empty' | 'error' | 'not_configured';
+  data?: unknown;
+  errorMessage?: string;
+  controlPlaneCode?: string;
+  adapterCode?: 'not_configured' | 'timeout' | 'aborted' | 'http_error' | 'auth_error';
+  auditId?: string;
+};
+
+export type GovernanceWorkspaceMailHubPayload = {
+  view: 'workspace_mail_hub';
+  phase: 1;
+  specRef: 'AIOS-SPEC-007';
+  mailSearch: GovernanceWorkspaceMailSearch;
 };
 
 export type GovernanceViewPayload =
@@ -184,7 +212,9 @@ export type GovernanceViewPayload =
   | GovernanceCompliancePayload
   | GovernanceLifecyclePayload
   | GovernanceWorkspaceHubPayload
-  | GovernanceWorkspaceCalendarHubPayload;
+  | GovernanceWorkspaceOnboardingPayload
+  | GovernanceWorkspaceCalendarHubPayload
+  | GovernanceWorkspaceMailHubPayload;
 
 function summaryToHubRow(r: AmendmentWorkflowRunSummary): AmendmentHubRunRow {
   const meta = r.meta ?? {};
@@ -247,10 +277,18 @@ export function isPayloadEmpty(p: GovernanceViewPayload): boolean {
       return !p.bundle?.plan;
     case 'workspace_hub':
       return false;
+    case 'workspace_onboarding':
+      return false;
     case 'workspace_calendar_hub': {
       const cr = p.calendarRead;
       if (!cr) return false;
       if (cr.loadState === 'empty') return true;
+      return false;
+    }
+    case 'workspace_mail_hub': {
+      const ms = p.mailSearch;
+      if (!ms) return false;
+      if (ms.loadState === 'empty') return true;
       return false;
     }
     default:
@@ -268,6 +306,20 @@ function workspaceCalendarDataIsEmpty(data: unknown): boolean {
     if (Array.isArray(o.items)) return o.items.length === 0;
     if (Array.isArray(o.events)) return o.events.length === 0;
     if (Array.isArray(o.eventList)) return o.eventList.length === 0;
+  }
+  return false;
+}
+
+/** Heuristic: MCP returned no mail rows (shape varies by server — keep permissive). */
+function workspaceMailDataIsEmpty(data: unknown): boolean {
+  if (data == null) return true;
+  if (Array.isArray(data)) return data.length === 0;
+  if (typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    if (Array.isArray(o.messages)) return o.messages.length === 0;
+    if (Array.isArray(o.threads)) return o.threads.length === 0;
+    if (Array.isArray(o.items)) return o.items.length === 0;
+    if (Array.isArray(o.messageList)) return o.messageList.length === 0;
   }
   return false;
 }
@@ -459,10 +511,33 @@ export async function loadGovernancePayload(
     }
     case 'workspace_hub': {
       abort();
-      return { view: 'workspace_hub', phase: 1, specRef: 'AIOS-SPEC-007' };
+      const ws = resolveWorkspaceState();
+      if (!shouldShowWorkspaceHub(ws)) {
+        return {
+          view: 'workspace_onboarding',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          workspaceState: ws,
+        };
+      }
+      return {
+        view: 'workspace_hub',
+        phase: 1,
+        specRef: 'AIOS-SPEC-007',
+        workspaceState: 'connected',
+      };
     }
     case 'workspace_calendar_hub': {
       abort();
+      const wsGate = resolveWorkspaceState();
+      if (!shouldShowWorkspaceHub(wsGate)) {
+        return {
+          view: 'workspace_onboarding',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          workspaceState: wsGate,
+        };
+      }
       const envelope: WorkspaceRoutingEnvelope = {
         intent: 'workspace.calendar.list',
         actor_type: 'founder',
@@ -498,6 +573,59 @@ export async function loadGovernancePayload(
           loadState: empty ? 'empty' : 'ok',
           data: result.data,
           auditId: result.auditId,
+        },
+      };
+    }
+    case 'workspace_mail_hub': {
+      abort();
+      const wsMailGate = resolveWorkspaceState();
+      if (!shouldShowWorkspaceHub(wsMailGate)) {
+        return {
+          view: 'workspace_onboarding',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          workspaceState: wsMailGate,
+        };
+      }
+      const mailEnvelope: WorkspaceRoutingEnvelope = {
+        intent: 'workspace.mail.search',
+        actor_type: 'founder',
+        tenant_id: 'local',
+        user_binding: 'browser',
+        execution_mode: 'execute',
+        policy_context: { scope_class: 'workspace.google.read' },
+        query: '',
+      };
+      const mailResult = await runWorkspaceControlPlane(mailEnvelope, {
+        surfaceMode: 'founder',
+        signal,
+      });
+      abort();
+      if (mailResult.ok === false) {
+        const mailLoadState =
+          mailResult.code === 'not_configured' ? 'not_configured' : ('error' as const);
+        return {
+          view: 'workspace_mail_hub',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          mailSearch: {
+            loadState: mailLoadState,
+            errorMessage: mailResult.message,
+            controlPlaneCode: mailResult.code,
+            adapterCode: mailResult.adapterCode,
+            auditId: mailResult.auditId,
+          },
+        };
+      }
+      const mailEmpty = workspaceMailDataIsEmpty(mailResult.data);
+      return {
+        view: 'workspace_mail_hub',
+        phase: 1,
+        specRef: 'AIOS-SPEC-007',
+        mailSearch: {
+          loadState: mailEmpty ? 'empty' : 'ok',
+          data: mailResult.data,
+          auditId: mailResult.auditId,
         },
       };
     }

@@ -29,6 +29,7 @@ export const UI_ALLOWED_TRANSITIONS: Record<CanvasView, readonly CanvasView[]> =
     'amendment_hub',
     'action_plan_review',
     'workspace_hub',
+    'workspace_onboarding',
   ],
   review_docs: [
     'governance_hub',
@@ -64,8 +65,20 @@ export const UI_ALLOWED_TRANSITIONS: Record<CanvasView, readonly CanvasView[]> =
   conflict_results: ['governance_hub', 'review_docs', 'document_list'],
   compliance_check: ['governance_hub', 'review_docs', 'document_list'],
   lifecycle_status: ['governance_hub', 'planning_assistant', 'document_list'],
-  workspace_hub: ['governance_hub', 'workspace_calendar_hub'],
-  workspace_calendar_hub: ['governance_hub', 'workspace_hub'],
+  workspace_hub: [
+    'governance_hub',
+    'workspace_calendar_hub',
+    'workspace_mail_hub',
+    'workspace_onboarding',
+  ],
+  workspace_onboarding: [
+    'governance_hub',
+    'workspace_hub',
+    'workspace_calendar_hub',
+    'workspace_mail_hub',
+  ],
+  workspace_calendar_hub: ['governance_hub', 'workspace_hub', 'workspace_onboarding'],
+  workspace_mail_hub: ['governance_hub', 'workspace_hub', 'workspace_onboarding'],
 } as const satisfies Record<CanvasView, readonly CanvasView[]>;
 
 export type CanvasTransitionMode = 'ui' | 'intent';
@@ -131,7 +144,12 @@ export function buildGovernanceCanvasState(
     const s = params?.actionPlanSource?.trim() || 'AMD-2026-a10b9a';
     return { view: 'action_plan_review', actionPlanSource: s };
   }
-  if (view === 'workspace_hub' || view === 'workspace_calendar_hub') {
+  if (
+    view === 'workspace_hub' ||
+    view === 'workspace_onboarding' ||
+    view === 'workspace_calendar_hub' ||
+    view === 'workspace_mail_hub'
+  ) {
     return { view };
   }
   return { view, documentId: undefined };

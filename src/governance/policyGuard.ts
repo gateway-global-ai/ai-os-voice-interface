@@ -23,7 +23,12 @@ const DEV_ALLOW_ALL: PolicyDecision = {
  * Evaluate whether a canvas view may open. Hook: audit log, role, knowledge certification.
  */
 export function evaluateCanvasPolicy(view: CanvasView): PolicyDecision {
-  if (view === 'workspace_hub' || view === 'workspace_calendar_hub') {
+  if (
+    view === 'workspace_hub' ||
+    view === 'workspace_onboarding' ||
+    view === 'workspace_calendar_hub' ||
+    view === 'workspace_mail_hub'
+  ) {
     const w = evaluateWorkspaceCanvasPolicy(view);
     if (!w.allowed) {
       return { allowed: false, allowedViews: [...ALL_CANVAS_VIEWS], reason: w.reason };

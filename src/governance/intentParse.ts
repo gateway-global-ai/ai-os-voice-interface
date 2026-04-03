@@ -26,7 +26,7 @@ function isIntentId(s: string): s is GovernanceIntentId {
   return VALID.includes(s as GovernanceIntentId);
 }
 
-function extractIntentJsonObject(text: string): Record<string, unknown> | null {
+export function extractIntentJsonObject(text: string): Record<string, unknown> | null {
   const marker = 'INTENT_JSON:';
   const idx = text.lastIndexOf(marker);
   if (idx === -1) return null;
@@ -79,6 +79,9 @@ export type AgentIntentParseResult =
  */
 export function parseAgentIntentDetailed(agentText: string): AgentIntentParseResult {
   const raw = extractIntentJsonObject(agentText);
+  if (raw && typeof raw.intent === 'string' && raw.intent.startsWith('app.')) {
+    return { kind: 'none', source: 'json' };
+  }
   if (raw && typeof raw.intent === 'string' && raw.intent.startsWith('workspace.')) {
     if (isPhase1WorkspaceIntent(raw.intent)) {
       return {
@@ -104,6 +107,9 @@ export function parseIntentFromAgentTextDetailed(agentText: string): {
   source: IntentParseSource;
 } {
   const raw = extractIntentJsonObject(agentText);
+  if (raw && typeof raw.intent === 'string' && raw.intent.startsWith('app.')) {
+    return { parsed: null, source: 'json' };
+  }
   if (raw && typeof raw.intent === 'string' && isIntentId(raw.intent)) {
     const amendment_mode =
       raw.amendment_mode === 'review'

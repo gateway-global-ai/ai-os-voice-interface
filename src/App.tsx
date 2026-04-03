@@ -3,21 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef, FormEvent, type MutableRefObject } from 'react';
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  FormEvent,
+  type MutableRefObject,
+  type PointerEvent,
+} from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  MessageSquare, 
   Eye, 
-  Mic, 
-  Menu as MenuIcon, 
-  Home, 
-  Send,
   User,
   LogIn,
   UserPlus,
   Settings,
-  Circle,
-  Grid,
+  Building2,
   FileText,
   Table,
   Presentation,
@@ -51,9 +53,14 @@ import { AmendmentHubSurface } from './overlays/AmendmentHubSurface';
 import { AmendmentWorkflowSurface } from './overlays/AmendmentWorkflowSurface';
 import { ActionPlanReviewSurface } from './overlays/ActionPlanReviewSurface';
 import { WorkspaceHubSurface } from './overlays/WorkspaceHubSurface';
+import { WorkspaceOnboardingSurface } from './overlays/WorkspaceOnboardingSurface';
 import { ApiHealthOverlay } from './overlays/ApiHealthOverlay';
 import { stripIntentLineForDisplay } from './governance/intentParse';
 import { GovernanceCanvasProvider, useGovernanceCanvas } from './governance/GovernanceCanvasContext';
+import { CommandRail, type CommandRailState } from './components/shell/CommandRail';
+import { ShellIdentityBar } from './components/shell/ShellIdentityBar';
+import { routeShellAgentText } from './shell/shellIntentRouter';
+import { resolveWorkspaceState, setWorkspaceUserConnected } from './shell/workspaceState';
 
 type SystemStatus =
   | "connected"
@@ -68,7 +75,6 @@ type AppMode =
   | "chat"
   | "visual"
   | "menu"
-  | "apps"
   | "voice_settings"
   | "disc_settings"
   | "intent_settings"
@@ -89,133 +95,6 @@ interface DISCProfile {
   steadiness: number;
   conscientiousness: number;
 }
-
-const WorkspaceAppsOverlay = ({ onClose }: { onClose: () => void }) => {
-  const apps = [
-    { 
-      name: 'Gmail', 
-      color: '#EA4335',
-      icon: (
-        <svg viewBox="0 0 24 24" className="w-8 h-8">
-          <path fill="#EA4335" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-        </svg>
-      )
-    },
-    { 
-      name: 'Drive', 
-      color: '#34A853',
-      icon: (
-        <svg viewBox="0 0 24 24" className="w-8 h-8">
-          <path fill="#FBBC04" d="M9.25 5.25l-4.5 7.75h9l-4.5-7.75z"/>
-          <path fill="#34A853" d="M14.75 13l-4.5 7.75h9l-4.5-7.75z"/>
-          <path fill="#4285F4" d="M18.5 5.25l-4.5 7.75h9l-4.5-7.75z"/>
-        </svg>
-      )
-    },
-    { 
-      name: 'Docs', 
-      color: '#4285F4',
-      icon: (
-        <svg viewBox="0 0 24 24" className="w-8 h-8">
-          <path fill="#4285F4" d="M16 2H8C6.9 2 6 2.9 6 4v16c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 14H9v-2h6v2zm0-4H9v-2h6v2zm0-4H9V6h6v2z"/>
-        </svg>
-      )
-    },
-    { 
-      name: 'Sheets', 
-      color: '#0F9D58',
-      icon: (
-        <svg viewBox="0 0 24 24" className="w-8 h-8">
-          <path fill="#0F9D58" d="M16 2H8C6.9 2 6 2.9 6 4v16c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 14H9v-2h6v2zm0-4H9v-2h6v2zm0-4H9V6h6v2z"/>
-          <path fill="white" opacity="0.3" d="M7 7h10v10H7z"/>
-        </svg>
-      )
-    },
-    { 
-      name: 'Slides', 
-      color: '#F4B400',
-      icon: (
-        <svg viewBox="0 0 24 24" className="w-8 h-8">
-          <path fill="#F4B400" d="M16 2H8C6.9 2 6 2.9 6 4v16c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 14H9v-2h6v2zm0-4H9v-2h6v2zm0-4H9V6h6v2z"/>
-          <circle fill="white" opacity="0.3" cx="12" cy="12" r="3"/>
-        </svg>
-      )
-    },
-    { 
-      name: 'Calendar', 
-      color: '#4285F4',
-      icon: (
-        <svg viewBox="0 0 24 24" className="w-8 h-8">
-          <path fill="#4285F4" d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/>
-          <text x="12" y="17" fill="#4285F4" fontSize="8" fontWeight="bold" textAnchor="middle">31</text>
-        </svg>
-      )
-    },
-    { 
-      name: 'Meet', 
-      color: '#00AC47',
-      icon: (
-        <svg viewBox="0 0 24 24" className="w-8 h-8">
-          <path fill="#00AC47" d="M15 8v8H5V8h10m1-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-3.5l4 4v-11l-4 4V8c0-1.1-.9-2-2-2z"/>
-        </svg>
-      )
-    },
-    { 
-      name: 'Keep', 
-      color: '#FBBC04',
-      icon: (
-        <svg viewBox="0 0 24 24" className="w-8 h-8">
-          <path fill="#FBBC04" d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/>
-        </svg>
-      )
-    },
-  ];
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      className="relative z-20 w-full md:max-w-2xl lg:max-w-5xl mx-0 md:mx-4 p-6 md:p-10 rounded-none md:rounded-[2.5rem] bg-white/80 backdrop-blur-2xl border-y md:border border-zinc-200 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)]"
-    >
-      <div className="text-center mb-10">
-        <div className="inline-flex items-center justify-center p-3 bg-emerald-500/10 rounded-2xl mb-4">
-          <Grid className="w-6 h-6 text-emerald-600" />
-        </div>
-        <h2 className="text-3xl font-bold text-zinc-900 tracking-tight">Google Workspace</h2>
-        <p className="text-zinc-500 mt-2">Intent recognized: Opening productivity suite</p>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 md:gap-8">
-        {apps.map((app) => (
-          <button 
-            key={app.name}
-            onClick={onClose}
-            className="flex flex-col items-center gap-3 group transition-all"
-          >
-            <div 
-              className="w-20 h-20 rounded-3xl bg-white flex items-center justify-center shadow-[0_8px_16px_-4px_rgba(0,0,0,0.05)] border border-zinc-100 group-hover:shadow-[0_12px_24px_-8px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-300"
-            >
-              <div className="transform group-hover:scale-110 transition-transform duration-300">
-                {app.icon}
-              </div>
-            </div>
-            <span className="text-xs font-bold text-zinc-500 group-hover:text-zinc-900 transition-colors">{app.name}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-12 pt-8 border-t border-zinc-100 flex justify-center">
-        <button 
-          onClick={onClose}
-          className="text-zinc-400 hover:text-zinc-900 text-sm font-bold uppercase tracking-widest transition-colors"
-        >
-          Cancel
-        </button>
-      </div>
-    </motion.div>
-  );
-};
 
 const VoiceSettingsOverlay = ({ 
   currentVoice, 
@@ -790,20 +669,22 @@ const MenuOverlay = ({
   onOpenIntentSettings,
   onOpenApiHealth,
   onToggleVisual,
-  onToggleApps,
+  onOpenWorkspaceGate,
   onOpenGovernance,
   currentMode,
   governanceCanvasOpen,
+  workspaceSurfaceOpen,
 }: { 
   onOpenVoiceSettings: () => void; 
   onOpenDISCSettings: () => void;
   onOpenIntentSettings: () => void;
   onOpenApiHealth: () => void;
   onToggleVisual: () => void;
-  onToggleApps: () => void;
+  onOpenWorkspaceGate: () => void;
   onOpenGovernance: () => void;
   currentMode: string;
   governanceCanvasOpen: boolean;
+  workspaceSurfaceOpen: boolean;
 }) => (
   <motion.div 
     initial={{ opacity: 0, y: 20 }}
@@ -835,14 +716,14 @@ const MenuOverlay = ({
         </div>
 
         <div 
-          onClick={onToggleApps}
-          className={`p-4 rounded-2xl border transition-all cursor-pointer group ${currentMode === 'apps' ? 'bg-emerald-50 border-emerald-200' : 'bg-zinc-50 border-zinc-100 hover:bg-zinc-100'}`}
+          onClick={onOpenWorkspaceGate}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer group ${workspaceSurfaceOpen ? 'bg-emerald-50 border-emerald-200' : 'bg-zinc-50 border-zinc-100 hover:bg-zinc-100'}`}
         >
           <div className="flex items-center gap-2 mb-1">
-            <Grid className={`w-4 h-4 ${currentMode === 'apps' ? 'text-emerald-600' : 'text-zinc-400 group-hover:text-emerald-600'}`} />
-            <h3 className={`text-sm font-semibold transition-colors ${currentMode === 'apps' ? 'text-emerald-600' : 'text-zinc-900'}`}>Apps</h3>
+            <Building2 className={`w-4 h-4 ${workspaceSurfaceOpen ? 'text-emerald-600' : 'text-zinc-400 group-hover:text-emerald-600'}`} />
+            <h3 className={`text-sm font-semibold transition-colors ${workspaceSurfaceOpen ? 'text-emerald-600' : 'text-zinc-900'}`}>Workspace</h3>
           </div>
-          <p className="text-[10px] text-zinc-500 leading-tight">Open productivity suite</p>
+          <p className="text-[10px] text-zinc-500 leading-tight">Google Workspace (governed gate)</p>
         </div>
 
         <div 
@@ -935,7 +816,14 @@ function AppImpl({
     { id: '1', role: 'agent', text: 'Welcome back. How can I help you today?', timestamp: new Date() }
   ]);
   const [chatInput, setChatInput] = useState("");
+  const [workspaceConnecting, setWorkspaceConnecting] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const workspaceDisclosure = useMemo(
+    () => resolveWorkspaceState({ isConnecting: workspaceConnecting }),
+    [workspaceConnecting, govCanvas, payload]
+  );
+
   
   // Speech Recognition Ref — PTT only: never transcribe unless a push session is active
   const recognitionRef = useRef<any>(null);
@@ -1041,6 +929,22 @@ function AppImpl({
     };
   }, []);
 
+  const runShellAndGovernancePipeline = (agentText: string) => {
+    const { action, delegateGovernance } = routeShellAgentText(agentText);
+    if (action.type !== 'none') {
+      window.setTimeout(() => {
+        if (action.type === 'set_mode') {
+          setMode(action.mode);
+        } else if (action.type === 'open_workspace') {
+          void loadData('workspace_hub', undefined, { transitionMode: 'intent' });
+        }
+      }, 400);
+    }
+    if (delegateGovernance) {
+      window.setTimeout(() => applyAgentIntent(agentText), 1000);
+    }
+  };
+
   const speakText = async (text: string, overrideVoice?: string) => {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -1116,7 +1020,7 @@ function AppImpl({
     setDiscProfile(prev => ({ ...prev, [key]: value }));
   };
 
-  const handlePTTDown = async (e: React.PointerEvent<HTMLButtonElement>) => {
+  const handlePTTDown = async (e: PointerEvent<HTMLButtonElement>) => {
     if (!recognitionRef.current) {
       setStatus("error");
       return;
@@ -1212,11 +1116,13 @@ function AppImpl({
           DESIRED OUTCOME: ${desiredOutcome}
           DISC PROFILE: D:${discProfile.dominance}, I:${discProfile.influence}, S:${discProfile.steadiness}, C:${discProfile.conscientiousness}
 
-          If the user wants to change your voice, say exactly: 'OK, let me display the voice options for you.'
-          If the user wants to adjust your DISC profile, say exactly: 'OK, let me display the DISC profile settings for you.'
-          If the user wants to change or adjust intents, outcomes, or your identity (name, company, role), say exactly: 'OK, let me display the system configuration for you.'
+          SHELL (app intents): After your spoken reply, add exactly one final line: INTENT_JSON:{...} with no markdown fence.
+          For voice preferences: INTENT_JSON:{"intent":"app.open.voice_settings"}
+          For DISC profile UI: INTENT_JSON:{"intent":"app.open.disc_settings"}
+          For identity / system configuration: INTENT_JSON:{"intent":"app.open.intent_settings"}
+          To open the governed Workspace gate: INTENT_JSON:{"intent":"app.open.workspace","target":"workspace.hub"}
 
-          GOVERNANCE CANVAS (structured intent): After your spoken reply, add exactly one final line with no markdown fence:
+          GOVERNANCE CANVAS (structured intent): Same INTENT_JSON line when opening governance/workspace surfaces:
           INTENT_JSON:{"intent":"<id>","document_id":""}
           intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
           Use intent "none" when no governance or workspace surface should open.
@@ -1240,22 +1146,7 @@ function AppImpl({
 
       await speakText(displayText);
 
-      // Intent Recognition: Change Voice
-      if (agentText.includes("display the voice options")) {
-        setTimeout(() => setMode('voice_settings'), 1000);
-      }
-
-      // Intent Recognition: DISC Profile
-      if (agentText.includes("display the DISC profile settings")) {
-        setTimeout(() => setMode('disc_settings'), 1000);
-      }
-
-      // Intent Recognition: Intent Settings
-      if (agentText.includes("display the system configuration")) {
-        setTimeout(() => setMode('intent_settings'), 1000);
-      }
-
-      setTimeout(() => applyAgentIntent(agentText), 1000);
+      runShellAndGovernancePipeline(agentText);
 
     } catch (err) {
       console.error('Gemini API error:', err);
@@ -1264,7 +1155,7 @@ function AppImpl({
     }
   };
 
-  const handlePTTUp = async (e: React.PointerEvent<HTMLButtonElement>) => {
+  const handlePTTUp = async (e: PointerEvent<HTMLButtonElement>) => {
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
@@ -1304,11 +1195,13 @@ function AppImpl({
           DESIRED OUTCOME: ${desiredOutcome}
           DISC PROFILE: D:${discProfile.dominance}, I:${discProfile.influence}, S:${discProfile.steadiness}, C:${discProfile.conscientiousness}
 
-          If the user wants to change your voice, say exactly: 'OK, let me display the voice options for you.'
-          If the user wants to adjust your DISC profile, say exactly: 'OK, let me display the DISC profile settings for you.'
-          If the user wants to change or adjust intents, outcomes, or your identity (name, company, role), say exactly: 'OK, let me display the system configuration for you.'
+          SHELL (app intents): After your spoken reply, add exactly one final line: INTENT_JSON:{...} with no markdown fence.
+          For voice preferences: INTENT_JSON:{"intent":"app.open.voice_settings"}
+          For DISC profile UI: INTENT_JSON:{"intent":"app.open.disc_settings"}
+          For identity / system configuration: INTENT_JSON:{"intent":"app.open.intent_settings"}
+          To open the governed Workspace gate: INTENT_JSON:{"intent":"app.open.workspace","target":"workspace.hub"}
 
-          GOVERNANCE CANVAS (structured intent): After your spoken reply, add exactly one final line with no markdown fence:
+          GOVERNANCE CANVAS (structured intent): Same INTENT_JSON line when opening governance/workspace surfaces:
           INTENT_JSON:{"intent":"<id>","document_id":""}
           intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
           Use intent "none" when no governance or workspace surface should open.
@@ -1331,17 +1224,7 @@ function AppImpl({
       
       await speakText(displayText);
 
-      if (agentText.includes("display the voice options")) {
-        setTimeout(() => setMode('voice_settings'), 1000);
-      }
-      if (agentText.includes("display the DISC profile settings")) {
-        setTimeout(() => setMode('disc_settings'), 1000);
-      }
-      if (agentText.includes("display the system configuration")) {
-        setTimeout(() => setMode('intent_settings'), 1000);
-      }
-
-      setTimeout(() => applyAgentIntent(agentText), 1000);
+      runShellAndGovernancePipeline(agentText);
       
     } catch (err) {
       console.error('Gemini API error:', err);
@@ -1349,6 +1232,31 @@ function AppImpl({
       setTimeout(() => setStatus("connected"), 3000);
     }
   };
+
+  const workspaceSurfaceOpen =
+    govCanvas?.view === 'workspace_hub' ||
+    govCanvas?.view === 'workspace_onboarding' ||
+    govCanvas?.view === 'workspace_calendar_hub' ||
+    govCanvas?.view === 'workspace_mail_hub';
+
+  const commandRail: CommandRailState = {
+    mode: mode === 'chat' ? 'chat' : 'voice',
+    primaryAction: mode === 'chat' ? 'send' : 'ptt',
+    systemStatus:
+      status === 'listening'
+        ? 'listening'
+        : status === 'processing'
+          ? 'processing'
+          : status === 'speaking'
+            ? 'speaking'
+            : 'idle',
+    intent: govCanvas?.view ? `canvas:${govCanvas.view}` : undefined,
+  };
+
+  const statusDisplay =
+    status === 'connected' ? 'ready' : status === 'offline' ? 'offline' : status;
+  const statusTone: 'ok' | 'error' | 'muted' =
+    status === 'error' ? 'error' : status === 'offline' ? 'muted' : 'ok';
 
   return (
     <div className="fixed inset-0 bg-white text-zinc-900 font-sans overflow-hidden selection:bg-emerald-500/30">
@@ -1361,47 +1269,16 @@ function AppImpl({
         }}
       />
 
-      {/* User Profile Overlay (Top Right) */}
-      <div className="absolute top-6 right-6 z-50">
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-4 p-3 pr-5 rounded-2xl bg-white/80 backdrop-blur-xl border border-zinc-200 shadow-sm"
-        >
-          <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white font-bold shadow-lg shadow-emerald-500/20">
-            J
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Mode:</span>
-              <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 text-[10px] font-bold uppercase tracking-wider">Admin</span>
-            </div>
-            <span className="text-sm font-bold text-zinc-900">Jason</span>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Agent Identity Overlay (Bottom Right) */}
-      <div className="absolute bottom-32 right-6 z-50">
-        <motion.div 
-          initial={{ opacity: 0, x: 10 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-3 px-4 py-2.5 rounded-full bg-white/80 backdrop-blur-xl border border-zinc-200 shadow-sm"
-        >
-          <div className="relative">
-            <div className="w-2 h-2 rounded-full bg-emerald-500" />
-            <motion.div 
-              className="absolute inset-0 rounded-full bg-emerald-500"
-              animate={{ scale: [1, 2.5, 1], opacity: [0.5, 0, 0.5] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-          </div>
-          <span className="text-xs font-bold text-zinc-500 tracking-wide">AI OS Agent</span>
-        </motion.div>
-      </div>
+      <ShellIdentityBar
+        actorLabel="Founder"
+        shellInteractionMode={mode === 'chat' ? 'chat' : 'voice'}
+        actorModeLabel="Admin"
+        workspaceState={workspaceDisclosure}
+        intentSummary={govCanvas?.view ? `canvas:${govCanvas.view}` : undefined}
+      />
       
       {/* Main Content Area */}
-      <main className="relative h-full flex flex-col items-center justify-center pb-32">
+      <main className="relative z-[var(--z-shell-main)] h-full flex flex-col items-center justify-center pb-[var(--shell-footer-height)]">
         <AnimatePresence mode="wait">
           {mode === 'voice' && (
             <motion.div 
@@ -1443,7 +1320,7 @@ function AppImpl({
               exit={{ opacity: 0, x: -100 }}
               className="absolute inset-0 flex flex-col bg-white/80 backdrop-blur-md"
             >
-              <div className="flex-1 overflow-y-auto p-6 space-y-6 pt-12">
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 pt-12 pb-4">
                 {messages.map((msg) => (
                   <div 
                     key={msg.id} 
@@ -1462,24 +1339,6 @@ function AppImpl({
                   </div>
                 ))}
                 <div ref={chatEndRef} />
-              </div>
-
-              <div className="p-6 bg-white/80 border-t border-zinc-200">
-                <form onSubmit={handleChatSubmit} className="flex gap-3 max-w-4xl mx-auto">
-                  <input 
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Type a message..."
-                    className="flex-1 bg-zinc-100 border border-zinc-200 rounded-2xl px-6 py-4 focus:outline-none focus:border-emerald-500 transition-colors text-zinc-900"
-                  />
-                  <button 
-                    type="submit"
-                    className="p-4 bg-emerald-500 rounded-2xl hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20"
-                  >
-                    <Send className="w-6 h-6 text-white" />
-                  </button>
-                </form>
               </div>
             </motion.div>
           )}
@@ -1512,29 +1371,18 @@ function AppImpl({
                   onOpenIntentSettings={() => setMode('intent_settings')}
                   onOpenApiHealth={() => setMode('api_health')}
                   onToggleVisual={() => setMode(mode === 'visual' ? 'voice' : 'visual')}
-                  onToggleApps={() => setMode(mode === 'apps' ? 'voice' : 'apps')}
+                  onOpenWorkspaceGate={() => {
+                    setMode('voice');
+                    void loadData('workspace_hub', undefined, { transitionMode: 'intent' });
+                  }}
                   onOpenGovernance={() => {
                     setMode('voice');
                     void loadData('governance_hub');
                   }}
                   currentMode={mode}
                   governanceCanvasOpen={govCanvas !== null}
+                  workspaceSurfaceOpen={workspaceSurfaceOpen}
                 />
-              </div>
-            </motion.div>
-          )}
-
-          {mode === 'apps' && (
-            <motion.div 
-              key="apps"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 flex items-center justify-center bg-zinc-900/[0.05] backdrop-blur-[2px]"
-              onClick={() => setMode('voice')}
-            >
-              <div onClick={e => e.stopPropagation()}>
-                <WorkspaceAppsOverlay onClose={() => setMode('voice')} />
               </div>
             </motion.div>
           )}
@@ -1627,7 +1475,7 @@ function AppImpl({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 flex items-start sm:items-center justify-center bg-zinc-900/[0.05] backdrop-blur-[2px] overflow-y-auto pt-8 pb-32 z-[60] min-h-0"
+              className="absolute inset-0 flex items-start sm:items-center justify-center bg-zinc-900/[0.05] backdrop-blur-[2px] overflow-y-auto pt-8 pb-[var(--shell-footer-height)] z-[var(--z-shell-governance-canvas)] min-h-0"
               onClick={dismissBackdrop}
             >
               <div onClick={(e) => e.stopPropagation()} className="w-full flex justify-center px-2">
@@ -1648,22 +1496,52 @@ function AppImpl({
                     }
                   />
                 )}
-                {govCanvas.view === 'workspace_hub' && (
+                {govCanvas.view === 'workspace_onboarding' &&
+                  payload?.view === 'workspace_onboarding' && (
+                    <WorkspaceOnboardingSurface
+                      workspaceState={payload.workspaceState}
+                      connecting={workspaceConnecting}
+                      onConnect={async () => {
+                        setWorkspaceConnecting(true);
+                        try {
+                          setWorkspaceUserConnected(true);
+                          await loadData('workspace_hub', undefined, { transitionMode: 'ui' });
+                        } finally {
+                          setWorkspaceConnecting(false);
+                        }
+                      }}
+                      onContinueWithout={closeCanvas}
+                      onClose={closeCanvas}
+                    />
+                  )}
+                {govCanvas.view === 'workspace_hub' && payload?.view === 'workspace_hub' && (
                   <WorkspaceHubSurface
+                    connected={payload.workspaceState === 'connected'}
                     mode="hub"
                     dataPhase={dataPhase}
                     onClose={closeCanvas}
                     onOpenCalendar={() => void loadData('workspace_calendar_hub')}
+                    onOpenMail={() => void loadData('workspace_mail_hub')}
                   />
                 )}
-                {govCanvas.view === 'workspace_calendar_hub' && (
+                {govCanvas.view === 'workspace_calendar_hub' && payload?.view === 'workspace_calendar_hub' && (
                   <WorkspaceHubSurface
+                    connected
                     mode="calendar"
                     dataPhase={dataPhase}
                     dataError={dataError}
-                    calendarRead={
-                      payload?.view === 'workspace_calendar_hub' ? payload.calendarRead : undefined
-                    }
+                    calendarRead={payload.calendarRead}
+                    onClose={closeCanvas}
+                    onBackToHub={() => void loadData('workspace_hub')}
+                  />
+                )}
+                {govCanvas.view === 'workspace_mail_hub' && payload?.view === 'workspace_mail_hub' && (
+                  <WorkspaceHubSurface
+                    connected
+                    mode="mail"
+                    dataPhase={dataPhase}
+                    dataError={dataError}
+                    mailSearch={payload.mailSearch}
                     onClose={closeCanvas}
                     onBackToHub={() => void loadData('workspace_hub')}
                   />
@@ -1849,86 +1727,24 @@ function AppImpl({
         </AnimatePresence>
       </main>
 
-      {/* Footer Interface */}
-      <footer className="fixed bottom-0 left-0 right-0 h-24 bg-white/90 backdrop-blur-xl border-t border-zinc-200 px-6 md:px-12 flex items-center justify-between z-50">
-        <div className="flex items-center gap-4 md:gap-8">
-          {mode === 'chat' ? (
-            <button 
-              onClick={() => setMode('voice')}
-              className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-600 transition-colors"
-            >
-              <Home className="w-6 h-6" />
-              <span className="text-[10px] uppercase tracking-widest font-bold">Home</span>
-            </button>
-          ) : (
-            <button 
-              onClick={() => setMode('chat')}
-              className={`flex flex-col items-center gap-1 transition-colors ${mode === 'chat' ? 'text-emerald-600' : 'text-zinc-400 hover:text-zinc-900'}`}
-            >
-              <MessageSquare className="w-6 h-6" />
-              <span className="text-[10px] uppercase tracking-widest font-bold">Chat</span>
-            </button>
-          )}
-        </div>
-
-        {/* PTT Button — pointer capture ensures release/end even if pointer leaves the button */}
-        <div className="absolute left-1/2 -translate-x-1/2 -top-8">
-          <button 
-            type="button"
-            onPointerDown={(e) => void handlePTTDown(e)}
-            onPointerUp={(e) => void handlePTTUp(e)}
-            onPointerCancel={(e) => void handlePTTUp(e)}
-            className={`
-              w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all duration-300
-              ${isPTTActive 
-                ? 'bg-emerald-400 scale-90 shadow-[0_0_40px_rgba(52,211,153,0.4)]' 
-                : 'bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.2)]'}
-            `}
-          >
-            <Mic className={`w-8 h-8 md:w-10 md:h-10 text-white ${isPTTActive ? 'animate-pulse' : ''}`} />
-          </button>
-          <div className="mt-10 text-center">
-            <span className="text-[10px] uppercase tracking-[0.2em] font-black text-zinc-400">Push to Talk</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 md:gap-8">
-          <button 
-            onClick={() => setMode(mode === 'menu' ? 'voice' : 'menu')}
-            className={`flex flex-col items-center gap-1 transition-colors ${mode === 'menu' ? 'text-emerald-600' : 'text-zinc-400 hover:text-zinc-900'}`}
-          >
-            <MenuIcon className="w-6 h-6" />
-            <span className="text-[10px] uppercase tracking-widest font-bold">Menu</span>
-          </button>
-
-          {/* System Status */}
-          <div className="hidden sm:flex items-center gap-3 pl-4 md:pl-8 border-l border-zinc-200">
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] uppercase tracking-widest font-black text-zinc-300">Status</span>
-              <span className={`text-[10px] uppercase tracking-widest font-bold ${
-                status === 'error' ? 'text-red-500' : 
-                status === 'offline' ? 'text-zinc-400' : 
-                'text-emerald-600'
-              }`}>
-                {status}
-              </span>
-            </div>
-            <motion.div 
-              animate={status === 'connected' ? { opacity: [0.4, 1, 0.4] } : {}}
-              transition={{ duration: 2, repeat: Infinity }}
-            >
-              <Circle className={`w-2 h-2 fill-current ${
-                status === 'error' ? 'text-red-500' : 
-                status === 'offline' ? 'text-zinc-400' : 
-                'text-emerald-600'
-              }`} />
-            </motion.div>
-          </div>
-        </div>
-      </footer>
+      <CommandRail
+        rail={commandRail}
+        mode={mode === 'chat' ? 'chat' : 'voice'}
+        menuOpen={mode === 'menu'}
+        chatInput={chatInput}
+        onChatInputChange={setChatInput}
+        onChatSubmit={handleChatSubmit}
+        onToggleVoiceChat={() => setMode(mode === 'chat' ? 'voice' : 'chat')}
+        onMenuClick={() => setMode(mode === 'menu' ? 'voice' : 'menu')}
+        isPTTActive={isPTTActive}
+        onPTTDown={(e) => void handlePTTDown(e)}
+        onPTTUp={(e) => void handlePTTUp(e)}
+        displayStatus={statusDisplay}
+        statusTone={statusTone}
+      />
 
       {/* Powered By Branding */}
-      <div className="fixed bottom-28 left-6 md:left-12 opacity-40 flex items-center gap-2 pointer-events-none">
+      <div className="fixed bottom-[calc(var(--shell-footer-height)+0.5rem)] left-6 md:left-12 opacity-40 flex items-center gap-2 pointer-events-none z-[var(--z-shell-chrome)]">
         <span className="text-[8px] uppercase tracking-widest font-bold text-zinc-400">Powered by</span>
         <div className="flex items-center gap-1">
           <span className="font-black text-xs text-zinc-900">CLEAR</span>

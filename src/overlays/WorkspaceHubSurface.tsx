@@ -5,30 +5,44 @@
  */
 
 import { motion } from 'motion/react';
-import { AlertTriangle, Building2, Calendar, ChevronLeft, Loader2, Shield } from 'lucide-react';
+import { AlertTriangle, Building2, Calendar, ChevronLeft, Loader2, Mail, Shield } from 'lucide-react';
 import type { GovernanceDataPhase } from '../governance/GovernanceCanvasContext';
-import type { GovernanceWorkspaceCalendarRead } from '../governance/loadGovernancePayload';
+import type {
+  GovernanceWorkspaceCalendarRead,
+  GovernanceWorkspaceMailSearch,
+} from '../governance/loadGovernancePayload';
 
 type Props = {
-  mode: 'hub' | 'calendar';
+  /** Hub renders only when Workspace gate is satisfied (connected). */
+  connected: boolean;
+  mode: 'hub' | 'calendar' | 'mail';
   dataPhase: GovernanceDataPhase;
   dataError?: string | null;
   /** Calendar read-plane outcome (from `loadGovernancePayload` → control plane). */
   calendarRead?: GovernanceWorkspaceCalendarRead;
+  /** Mail search outcome (`workspace.mail.search`). */
+  mailSearch?: GovernanceWorkspaceMailSearch;
   onClose: () => void;
   onOpenCalendar?: () => void;
+  onOpenMail?: () => void;
   onBackToHub?: () => void;
 };
 
 export function WorkspaceHubSurface({
+  connected,
   mode,
   dataPhase,
   dataError,
   calendarRead,
+  mailSearch,
   onClose,
   onOpenCalendar,
+  onOpenMail,
   onBackToHub,
 }: Props) {
+  if (!connected) {
+    return null;
+  }
   const loading = dataPhase === 'loading';
 
   return (
@@ -49,7 +63,11 @@ export function WorkspaceHubSurface({
                 Workspace (governed)
               </p>
               <h2 className="text-2xl md:text-3xl font-bold text-zinc-900 tracking-tight">
-                {mode === 'calendar' ? 'Calendar — read plane' : 'Google Workspace'}
+                {mode === 'calendar'
+                  ? 'Calendar — read plane'
+                  : mode === 'mail'
+                    ? 'Mail — read plane'
+                    : 'Google Workspace'}
               </h2>
               <p className="text-zinc-500 text-sm mt-1 max-w-xl">
                 Phase 1: read-only intents per AIOS-SPEC-007. Routing goes through the Integration
@@ -84,10 +102,12 @@ export function WorkspaceHubSurface({
               <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4 text-sm text-zinc-700">
                 <p className="font-semibold text-zinc-900 mb-2">Workspace hub</p>
                 <p>
-                  Open Calendar to run <code className="text-xs bg-zinc-200/60 px-1 rounded">workspace.calendar.list</code>{' '}
-                  through the control plane. Configure{' '}
-                  <code className="text-xs bg-zinc-200/60 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> for
-                  live MCP.
+                  Open Calendar or Mail to run{' '}
+                  <code className="text-xs bg-zinc-200/60 px-1 rounded">workspace.calendar.list</code> or{' '}
+                  <code className="text-xs bg-zinc-200/60 px-1 rounded">workspace.mail.search</code> through the
+                  control plane. Configure{' '}
+                  <code className="text-xs bg-zinc-200/60 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> for live
+                  MCP. Empty search query is sent until the MCP tool defines defaults.
                 </p>
               </div>
             )}
@@ -95,6 +115,8 @@ export function WorkspaceHubSurface({
             {mode === 'calendar' && calendarRead && (
               <CalendarReadPanel read={calendarRead} />
             )}
+
+            {mode === 'mail' && mailSearch && <MailSearchPanel read={mailSearch} />}
 
             {mode === 'hub' && onOpenCalendar && (
               <button
@@ -109,7 +131,20 @@ export function WorkspaceHubSurface({
                 <ChevronLeft className="w-4 h-4 text-zinc-400 rotate-180" />
               </button>
             )}
-            {mode === 'calendar' && onBackToHub && (
+            {mode === 'hub' && onOpenMail && (
+              <button
+                type="button"
+                onClick={onOpenMail}
+                className="w-full flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-4 text-left hover:border-sky-300 transition-colors"
+              >
+                <span className="flex items-center gap-2 font-medium text-zinc-900">
+                  <Mail className="w-5 h-5 text-sky-600" />
+                  Mail (read plane)
+                </span>
+                <ChevronLeft className="w-4 h-4 text-zinc-400 rotate-180" />
+              </button>
+            )}
+            {(mode === 'calendar' || mode === 'mail') && onBackToHub && (
               <button
                 type="button"
                 onClick={onBackToHub}
@@ -192,6 +227,69 @@ function CalendarReadPanel({ read }: { read: GovernanceWorkspaceCalendarRead }) 
       <p className="text-xs text-zinc-600">
         Structured result from <code className="bg-white/80 px-1 rounded">workspace.calendar.list</code> via
         MCP JSON-RPC.
+      </p>
+      <pre className="text-xs bg-white/90 border border-zinc-100 rounded-xl p-3 overflow-x-auto max-h-48">
+        {JSON.stringify(read.data, null, 2)}
+      </pre>
+      {read.auditId ? <p className="text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
+    </div>
+  );
+}
+
+function MailSearchPanel({ read }: { read: GovernanceWorkspaceMailSearch }) {
+  if (read.loadState === 'not_configured') {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <p className="font-bold flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          MCP not configured
+        </p>
+        <p className="mt-2 text-amber-900/90">
+          Set <code className="text-xs bg-amber-100 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> to your Workspace
+          MCP base URL. The control plane returned{' '}
+          <code className="text-xs bg-amber-100 px-1 rounded">not_configured</code>.
+        </p>
+        {read.errorMessage ? (
+          <p className="mt-2 text-xs font-mono text-amber-950/80">{read.errorMessage}</p>
+        ) : null}
+        {read.auditId ? <p className="mt-2 text-xs text-amber-800">Audit: {read.auditId}</p> : null}
+      </div>
+    );
+  }
+
+  if (read.loadState === 'error') {
+    return (
+      <div
+        role="alert"
+        className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950"
+      >
+        <p className="font-bold">Mail search failed</p>
+        <p className="mt-1">{read.errorMessage ?? 'Unknown error'}</p>
+        <p className="mt-2 text-xs text-red-800">
+          {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
+          {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
+        </p>
+        {read.auditId ? <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p> : null}
+      </div>
+    );
+  }
+
+  if (read.loadState === 'empty') {
+    return (
+      <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 text-sm text-zinc-700">
+        <p className="font-semibold text-zinc-900 mb-1">No messages (empty)</p>
+        <p>The MCP adapter returned an empty result. This is distinct from a load failure.</p>
+        {read.auditId ? <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-zinc-800 space-y-2">
+      <p className="font-semibold text-emerald-900">Mail search (read plane)</p>
+      <p className="text-xs text-zinc-600">
+        Structured result from <code className="bg-white/80 px-1 rounded">workspace.mail.search</code> via MCP
+        JSON-RPC.
       </p>
       <pre className="text-xs bg-white/90 border border-zinc-100 rounded-xl p-3 overflow-x-auto max-h-48">
         {JSON.stringify(read.data, null, 2)}

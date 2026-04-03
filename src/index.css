@@ -5,6 +5,15 @@
   --font-display: "Space Grotesk", sans-serif;
 }
 
+:root {
+  --shell-footer-height: 5.5rem;
+  --z-shell-base: 0;
+  --z-shell-main: 10;
+  --z-shell-chrome: 40;
+  --z-shell-footer: 50;
+  --z-shell-governance-canvas: 60;
+}
+
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgb(212 212 216) transparent;

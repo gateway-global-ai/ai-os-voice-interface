@@ -19,7 +19,9 @@ export type CanvasView =
   | 'lifecycle_status'
   | 'action_plan_review'
   | 'workspace_hub'
-  | 'workspace_calendar_hub';
+  | 'workspace_onboarding'
+  | 'workspace_calendar_hub'
+  | 'workspace_mail_hub';
 
 /** Structured intents from the agent (INTENT_JSON). */
 export type GovernanceIntentId =
@@ -126,5 +128,7 @@ export const ALL_CANVAS_VIEWS: CanvasView[] = [
   'lifecycle_status',
   'action_plan_review',
   'workspace_hub',
+  'workspace_onboarding',
   'workspace_calendar_hub',
+  'workspace_mail_hub',
 ];

@@ -260,7 +260,9 @@ export function GovernanceCanvasProvider({
         );
         if (ac.signal.aborted) return false;
         setPayload(p);
-        if (p.view === 'amendment_workflow' && p.run?.run_id) {
+        if (p.view === 'workspace_onboarding') {
+          setCanvas({ view: 'workspace_onboarding' });
+        } else if (p.view === 'amendment_workflow' && p.run?.run_id) {
           const rid = p.run.run_id;
           const mode = p.mode ?? next.amendmentWorkflowMode ?? 'edit';
           setCanvas({
@@ -443,7 +445,11 @@ export function GovernanceCanvasProvider({
 
   const stepBackFromSubSurface = useCallback(() => {
     if (!canvas) return;
-    if (canvas.view === 'workspace_calendar_hub') {
+    if (canvas.view === 'workspace_onboarding') {
+      void loadData(GOVERNANCE_HOME_VIEW, undefined, { transitionMode: 'ui' });
+      return;
+    }
+    if (canvas.view === 'workspace_calendar_hub' || canvas.view === 'workspace_mail_hub') {
       void loadData('workspace_hub', undefined, { transitionMode: 'ui' });
       return;
     }
@@ -515,7 +521,12 @@ export function GovernanceCanvasProvider({
 
   const dismissBackdrop = useCallback(() => {
     if (!canvas) return;
-    if (canvas.view === 'workspace_calendar_hub') {
+    if (canvas.view === 'workspace_onboarding') {
+      logGovernanceAudit('backdrop_dismiss', { from: canvas.view });
+      void loadData(GOVERNANCE_HOME_VIEW, undefined, { transitionMode: 'ui' });
+      return;
+    }
+    if (canvas.view === 'workspace_calendar_hub' || canvas.view === 'workspace_mail_hub') {
       logGovernanceAudit('backdrop_dismiss', { from: canvas.view });
       void loadData('workspace_hub', undefined, { transitionMode: 'ui' });
       return;
