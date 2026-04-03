@@ -174,6 +174,111 @@ export type AmendmentWorkflowRunState = {
   console: Array<{ ts: string; level: string; message: string }>;
 };
 
+/** List item shape (subset of full run; API may return snake_case fields). */
+export type AmendmentWorkflowRunSummary = {
+  run_id: string;
+  template_id: string;
+  created_at: string;
+  updated_at: string;
+  status: string;
+  meta?: Record<string, unknown>;
+};
+
+function coerceRunSummary(raw: Record<string, unknown>): AmendmentWorkflowRunSummary | null {
+  const run_id =
+    (typeof raw.run_id === 'string' && raw.run_id) ||
+    (typeof raw.runId === 'string' && raw.runId) ||
+    '';
+  if (!run_id) return null;
+  const template_id =
+    (typeof raw.template_id === 'string' && raw.template_id) ||
+    (typeof raw.templateId === 'string' && raw.templateId) ||
+    '';
+  const status = typeof raw.status === 'string' ? raw.status : 'unknown';
+  const created_at =
+    (typeof raw.created_at === 'string' && raw.created_at) ||
+    (typeof raw.createdAt === 'string' && raw.createdAt) ||
+    '';
+  const updated_at =
+    (typeof raw.updated_at === 'string' && raw.updated_at) ||
+    (typeof raw.updatedAt === 'string' && raw.updatedAt) ||
+    created_at;
+  const meta =
+    raw.meta && typeof raw.meta === 'object' ? (raw.meta as Record<string, unknown>) : undefined;
+  return { run_id, template_id, created_at, updated_at, status, meta };
+}
+
+/** Truthful load outcome for the hub — never conflate transport failure with an empty registry. */
+export type AmendmentLoadState = 'ok' | 'empty' | 'error';
+
+export type AmendmentWorkflowRunsListResult = {
+  runs: AmendmentWorkflowRunSummary[];
+  loadState: AmendmentLoadState;
+  errorMessage?: string;
+};
+
+/**
+ * Loads amendment workflow runs. On success, `loadState` is `ok` if there are runs, else `empty`.
+ * On failure, `loadState` is `error` and `runs` is empty — the hub must surface `errorMessage`.
+ */
+export async function loadAmendmentWorkflowRunsList(): Promise<AmendmentWorkflowRunsListResult> {
+  try {
+    const data = await fetchJson<unknown>('/amendment-workflow/runs');
+    const rows: unknown[] = Array.isArray(data)
+      ? data
+      : data && typeof data === 'object' && 'runs' in data && Array.isArray((data as { runs: unknown }).runs)
+        ? (data as { runs: unknown[] }).runs
+        : [];
+    const out: AmendmentWorkflowRunSummary[] = [];
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue;
+      const s = coerceRunSummary(row as Record<string, unknown>);
+      if (s) out.push(s);
+    }
+    return {
+      runs: out,
+      loadState: out.length === 0 ? 'empty' : 'ok',
+    };
+  } catch (e) {
+    return {
+      runs: [],
+      loadState: 'error',
+      errorMessage: e instanceof Error ? e.message : 'Failed to load amendment runs',
+    };
+  }
+}
+
+export type AmendmentWorkflowTemplateItem = {
+  template_id: string;
+  title: string;
+  amendment_id: string;
+  affected_documents: string[];
+};
+
+export type AmendmentWorkflowTemplatesListResult = {
+  templates: AmendmentWorkflowTemplateItem[];
+  loadState: AmendmentLoadState;
+  errorMessage?: string;
+};
+
+/** Same contract as runs: distinguish empty registry vs failed fetch. */
+export async function loadAmendmentWorkflowTemplatesList(): Promise<AmendmentWorkflowTemplatesListResult> {
+  try {
+    const templates = await listAmendmentWorkflowTemplates();
+    const t = Array.isArray(templates) ? templates : [];
+    return {
+      templates: t,
+      loadState: t.length === 0 ? 'empty' : 'ok',
+    };
+  } catch (e) {
+    return {
+      templates: [],
+      loadState: 'error',
+      errorMessage: e instanceof Error ? e.message : 'Failed to load amendment templates',
+    };
+  }
+}
+
 export function listAmendmentWorkflowTemplates(): Promise<
   Array<{
     template_id: string;

@@ -29,6 +29,8 @@ import { parseApprovalItemsFromPlan } from './amendmentPlanApproval';
 
 type Props = {
   run: AmendmentWorkflowRunState | null;
+  /** Read-only review of a completed (or frozen) run — no server advance. */
+  workflowMode?: 'edit' | 'review';
   dataPhase: GovernanceDataPhase;
   dataError: string | null;
   onBack: () => void;
@@ -44,6 +46,7 @@ function renderMarkdown(md: string): string {
 
 export function AmendmentWorkflowSurface({
   run,
+  workflowMode = 'edit',
   dataPhase,
   dataError,
   onBack,
@@ -57,6 +60,13 @@ export function AmendmentWorkflowSurface({
 
   const loading = dataPhase === 'loading';
   const err = dataError;
+  const readOnly = workflowMode === 'review';
+  /** In review mode, disable primary when the only action left is POST /advance. */
+  const reviewBlocksAdvance =
+    readOnly &&
+    ((screen === 'reviews' && !hasPlan) ||
+      (screen === 'plan' && approvalItems.length === 0 && hasPlan) ||
+      (screen === 'console' && !statusComplete));
 
   const approvalItems = useMemo(
     () => parseApprovalItemsFromPlan(run?.consolidated_plan_markdown ?? ''),
@@ -78,6 +88,7 @@ export function AmendmentWorkflowSurface({
   }, [demoHints]);
 
   const handleAdvance = async () => {
+    if (readOnly) return;
     if (!run?.run_id) return;
     setAdvancing(true);
     setAdvanceError(null);
@@ -212,6 +223,11 @@ export function AmendmentWorkflowSurface({
             </h2>
             <p className="text-zinc-500 text-xs mt-0.5">
               Run <span className="font-mono">{run?.run_id ?? '…'}</span>
+              {readOnly ? (
+                <span className="ml-2 text-amber-700 font-bold uppercase tracking-wide text-[10px]">
+                  Review mode
+                </span>
+              ) : null}
               {run?.meta?.amendment_id ? (
                 <span className="ml-2 font-mono">· {String(run.meta.amendment_id)}</span>
               ) : null}
@@ -547,6 +563,7 @@ export function AmendmentWorkflowSurface({
                 loading ||
                 !!err ||
                 !run ||
+                reviewBlocksAdvance ||
                 (screen === 'console' && statusComplete && !advancing) ||
                 advancing
               }
