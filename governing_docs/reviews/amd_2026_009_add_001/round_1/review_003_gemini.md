@@ -16,23 +16,27 @@ composite_score: null
 
 ## Responses (fill in)
 
-### §A — DuckDuckGo and privacy search
+### §A — Intent: skill, action, outcome
 
 *(Reviewer answers)*
 
-### §B — Provider diversity
+### §B — Source authority: docs vs forums
 
 *(Reviewer answers)*
 
-### §C — Knowledge vs search
+### §C — Retrieval backends
 
 *(Reviewer answers)*
 
-### §D — Policy register
+### §D — LLM grounding vs evidence
 
 *(Reviewer answers)*
 
-### §E — Disposition
+### §E — Policy register
+
+*(Reviewer answers)*
+
+### §F — Disposition
 
 *(Reviewer answers)*
 
@@ -46,5 +50,6 @@ composite_score: null
 | 2 | Legal / ToS operability | | |
 | 3 | Practical backends (DDG, APIs) | | |
 | 4 | Non-goals preserved (no browsing sprawl) | | |
+| 5 | Skill / action / outcome + source tiers (A/B/C) | | |
 
 **Composite (optional):** 

@@ -14,6 +14,8 @@
 
 ## Recommended edits to ADD-001 or AMD-2026-009
 
+*(Prioritize: **skill → action → outcome** linkage; **tier A** default; **tier C** labeled when used.)*
+
 ## Next step
 
 - [ ] Round 2 (if needed)
