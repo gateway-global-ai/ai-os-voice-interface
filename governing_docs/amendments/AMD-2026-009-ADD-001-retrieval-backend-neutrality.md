@@ -2,7 +2,7 @@
 document_id: AMD-2026-009-ADD-001
 parent_amendment: AMD-2026-009
 parent_version: 0.1.6
-version: 1.0.0
+version: 1.0.1
 status: draft
 category: amendment_addendum
 title: Retrieval backend neutrality (beyond Google PSE / Custom Search)
@@ -14,7 +14,12 @@ cross_references:
   - doc_id: AMD-2026-009
   - doc_id: AIOS-SPEC-007
   - doc_id: AIOS-SPEC-010
+  - path: governing_docs/reviews/amd_2026_009_add_001/round_1/REVIEW_BRIEF.md
+    note: Triangulated peer review prompt (search/knowledge strategy)
 addendum_history:
+  - version: 1.0.1
+    date: 2026-04-03
+    summary: §2.1 privacy/independent providers (DuckDuckGo et al.); triangulated peer review brief under governing_docs/reviews/amd_2026_009_add_001/.
   - version: 1.0.0
     date: 2026-04-03
     summary: Initial draft — policy-registered retrieval backends; PSE optional; exemplar providers.
@@ -48,6 +53,21 @@ When **AMD-2026-009-ADD-001** is ratified alongside or after **AMD-2026-009**:
 4. **Logical resource keys** in **AIOS-SPEC-010** **`review_files`** **SHALL** support a **backend-agnostic** pattern in addition to **`web:pse:…`** (see §3).
 5. **MUST NOT:** This addendum **does not** authorize **unbounded** browsing, **silent** provider switching, or **weakening** **AMD-2026-009 §4** / **§11** non-goals.
 
+### 2.1 Privacy-first and independent index providers (informative)
+
+Operators may prefer **non-Google** search surfaces for **privacy**, **jurisdiction**, or **vendor diversity**. Examples below are **illustrative**, not endorsements; **each** must satisfy **§2** (policy registration, bounded results, no silent weakening of parent amendment): **documented** programmatic access, **bounded** structured results, **ToS/commercial** fit, and **server-side** secrets.
+
+| Class | Examples (informative) | Governance notes |
+|-------|------------------------|------------------|
+| **Independent / privacy-oriented** | **DuckDuckGo** (official offerings are **narrow** — e.g. Instant Answer / limited APIs; **not** a full public SERP product comparable to PSE for all use cases), **Brave Search API**, other **paid** search APIs | Prefer **vendor-documented** HTTP APIs with **stable** result shapes. **MUST NOT** treat **HTML scraping** or **unofficial** reverse-engineered endpoints as **governed** retrieval in production without **legal** review and explicit risk acceptance. |
+| **Major index APIs** | **Bing Web Search**, **Google** programmatic surfaces **other than** PSE where licensed | Register **backend_id** per tenant; respect **quota**, **attribution**, and **region** terms. |
+| **Aggregator / SERP proxies** | Third parties that return structured SERP from multiple engines | **Contract** is with the **aggregator**; still **SHALL** record **which** logical engine family was requested in **audit** metadata where knowable. |
+| **LLM-native “search” tools** | **Gemini**, **OpenAI**, **DeepSeek** tool or grounding features | Already listed in §2; must still return **citable** segments for **result_set_review**, not prose-only “trust me.” |
+
+**DuckDuckGo specifically:** There is **no** drop-in replacement for **PSE** with identical governance knobs for every tenant. If **DuckDuckGo** (or similar) is chosen, Council **SHALL** record **which** integration path is used (official limited API vs **commercial** search API product vs aggregator) and **SHALL** not claim **AMD-2026-009** compliance for **scraping**-based paths without a **separate** risk decision.
+
+**Triangulated peer input:** See **[round_1/REVIEW_BRIEF.md](../reviews/amd_2026_009_add_001/round_1/REVIEW_BRIEF.md)** for questions to put to **three** independent reviewers (e.g. DeepSeek, OpenAI, Gemini-class) before ratifying backend diversity.
+
 ## 3. SPEC-010 logical keys (addition to AMD-2026-009 §1.2)
 
 Implementations **SHALL** accept at least the following **generic** pattern (alongside existing **`web:pse:…`** examples):
@@ -79,7 +99,8 @@ Implementations **SHALL** accept at least the following **generic** pattern (alo
 - [ ] **POL-WEB-RETRIEVAL-BACKEND-001** (or merged policy row) drafted.
 - [ ] **SPEC-010** / product **review_files** validators accept **`web:retrieval:…`** where applicable.
 - [ ] **WORKSPACE.md** / operator docs updated for **multi-backend** configuration.
+- [ ] **Triangulated peer review** (see `governing_docs/reviews/amd_2026_009_add_001/round_1/`) completed or consciously waived with rationale.
 
 ---
 
-*End of AMD-2026-009-ADD-001, version 1.0.0.*
+*End of AMD-2026-009-ADD-001, version 1.0.1.*
