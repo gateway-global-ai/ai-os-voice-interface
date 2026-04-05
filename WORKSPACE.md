@@ -60,6 +60,13 @@ With **`MCP_ENABLE_OAUTH21=true`**, the MCP expects a **valid Google access toke
 
 **Troubleshooting — Web search / `search_custom` / `GOOGLE_PSE_API_KEY` not set:** Enabling **Custom Search API** in Cloud Console is required but **not sufficient**. The **Workspace MCP server** (the process that runs `search_custom`) must have **`GOOGLE_PSE_API_KEY`** and **`GOOGLE_PSE_ENGINE_ID`** in **its** environment — create an API key with Custom Search API access, create a [Programmable Search Engine](https://programmablesearchengine.google.com/) and use its **Search engine ID** (`cx`). Restart the MCP after changing env. These variables are **not** set in this voice app’s **`VITE_*`** files; they do not belong in the browser bundle.
 
+## Governed web search (AMD-2026-009) — informative
+
+This file is **informative**; normative rules are in **[AMD-2026-009](governing_docs/amendments/AMD-2026-009.md)**, **[AIOS-SPEC-007](governing_docs/specifications/GoogleWorkspaceIntegrationGovernance.md)**, **[AIOS-SPEC-009](governing_docs/specifications/IntentPrimitiveAndExecutionModel.md)**, and **[AIOS-SPEC-010](governing_docs/specifications/ExecutionScopeAndContextBounding.md)**.
+
+- **Search scope classes** (e.g. approved domains vs **broad public**) are **policy** — not ad hoc query parameters alone. **`web.search.broad_public`** is **non-default** and trigger-gated per the amendment §4.
+- **PSE / Custom Search** credentials stay on the **MCP host** (see troubleshooting above). The voice app remains a **Phase 1 bridge** (`workspace.web.search` → MCP `search_custom`); full **result-set review**, **SPEC-010** logical keys, and **§9** audit fields land with the **post-ratification** implementation slice ([merge plan](governing_docs/amendments/AMD-2026-009-merge-deltas-and-first-slice.md) Part B).
+
 ## Phase 1
 
 - **Read plane** intents only (`src/workspace/intentRegistry.ts`).

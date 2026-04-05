@@ -1,12 +1,12 @@
 ---
 document_id: AIOS-SPEC-009
-version: 0.5.0
+version: 0.5.1
 status: draft
 category: specification
 title: Intent Primitive and Execution Model
 author: Gateway Global AIOS
 created: 2026-04-04
-last_updated: 2026-04-04
+last_updated: 2026-04-03
 reviewers: []
 ratification_target: null
 supersedes: null
@@ -20,7 +20,11 @@ cross_references:
   - OLLAMA_RUNTIME_STANDARD
   - WHISPER_RUNTIME_STANDARD
   - LOCAL_TTS_RUNTIME_STANDARD
+  - AMD-2026-009
 amendment_history:
+  - version: 0.5.1
+    date: 2026-04-03
+    summary: §2 external knowledge in scope; §15.8 external knowledge steps, audit chain, AMD-2026-009 §7.1 cross-link.
   - version: 0.5.0
     date: 2026-04-04
     summary: Added §17 Sovereign voice and local runtime lanes (STT, interpretation cross-ref, TTS); WHISPER_RUNTIME_STANDARD and LOCAL_TTS_RUNTIME_STANDARD cross-references.
@@ -43,6 +47,8 @@ This specification defines the **core primitive of the AI OS: Intent**.
 All routing, UI, policy, voice interaction, and capability execution **MUST** conform to this model.
 
 **Relationship to AMD-2026-007:** Amendment **AMD-2026-007** §11 and this specification **MUST** remain aligned; on conflict, **governance process** determines precedence (typically: ratified spec over draft AMD section, or merged text in a single revision).
+
+**Relationship to AMD-2026-009:** Where execution includes **bounded web retrieval** or **governed website review**, **[AMD-2026-009](../amendments/AMD-2026-009.md)** **SHALL** govern search scope classes, review modes, audit fields, and failure behavior — see **§15.8**.
 
 ---
 
@@ -72,6 +78,7 @@ Define a **single, canonical model for intent** that:
 - UI contract tied to intent.
 - **Temporal grounding** and **result-set disclosure** for **time-indexed** Workspace domains (at minimum **mail** and **calendar**).
 - **Intent compilation**, **proposal / approval**, **execution**, **verification**, and **playbook promotion** (**§15**) — the bridge between intent, capability registry, governance, and long-term system learning.
+- **External knowledge acquisition** — bounded **web retrieval** and optional **governed website review** when **intent** or plan steps reference **`web.*`** capabilities, per **[AMD-2026-009](../amendments/AMD-2026-009.md)** and **§15.8**.
 
 **Out of scope**
 
@@ -523,6 +530,30 @@ Not every plan requires a full proposal. The system **SHALL** apply rules at lea
 
 Domain packs **MAY** refine this table; **MUST NOT** weaken **write-plane** or **unverified-plan** protections without governance amendment.
 
+### 15.8 External knowledge steps (web retrieval and governed review)
+
+When an **execution plan** includes **web retrieval** (e.g. PSE / Custom Search) or **governed website review** under **[AMD-2026-009](../amendments/AMD-2026-009.md)**, the plan and its audit trail **SHALL** record at minimum:
+
+1. **Search scope class** used (AMD-2026-009 §4).
+2. **Review mode**: `snippet_only`, `result_set_review`, or `page_review` (AMD-2026-009 §5.1).
+3. A stable **`retrieval_id`** (or equivalent) for the governed retrieval step.
+4. Linkage to **AIOS-SPEC-010**: logical resource keys in **`review_files`** (or equivalent read surface) **SHALL** be **consistent** with the envelope for that step (AMD-2026-009 §1.1, §6).
+
+**Audit chain:** **Retrieval → review → proposal** **SHALL** be joinable with **plan_id**, execution / step correlation, and product **auditId** as defined by the control plane (AMD-2026-009 §9). Implementations **MAY** extend **ExecutionPlan** or step metadata with, for example:
+
+```ts
+externalKnowledge?: {
+  retrievalId: string;
+  scopeClass: string;
+  reviewMode: 'snippet_only' | 'result_set_review' | 'page_review';
+  reviewArtifactId?: string;
+};
+```
+
+Exact schema is **product-defined** but **SHALL** satisfy AMD-2026-009 §9 minimum fields.
+
+**Execution gating:** Invalid structured review output or **low confidence** / misalignment per **AMD-2026-009 §7.1** **SHALL NOT** be promoted to **executable** write/send or **irreversible** actions without **user**, **operator**, or **policy** gates — consistent with **§15.4–15.5** and **POL-INTENT-006**.
+
 ---
 
 ## 16. Local interpretation lane and Ollama runtime (REQUIRED)
@@ -690,6 +721,10 @@ If **any** of the three lanes is **not** `running_ready`, the system **SHALL** *
 
 **SHOULD** surface **speech-input** and **speech-output** readiness when **§17** sovereign voice is in scope, per **WHISPER_RUNTIME_STANDARD** and **LOCAL_TTS_RUNTIME_STANDARD**.
 
+### AMD-2026-009
+
+Where **web retrieval** or **governed website review** is in scope, implementations **MUST** conform to **[AMD-2026-009](../amendments/AMD-2026-009.md)** and **§15.8** of this specification (audit chain, review modes, **§7.1** gating).
+
 ---
 
 ## 19. Implementation alignment (informative)
@@ -703,6 +738,7 @@ Non-exhaustive implementation loci (repository may differ):
 - Control plane execution
 - **Local interpretation lane** (Ollama readiness, **§16**, **POL-MODEL-001**–**004**)
 - **Sovereign voice lanes** (**§17**, Whisper / local TTS readiness when wired)
+- **External knowledge** (web retrieval / review, **§15.8**, **AMD-2026-009**) when product adds `web.*` execution paths
 - UI rendering, **proposal** flows, and shell chrome
 
 ---

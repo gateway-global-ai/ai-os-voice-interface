@@ -1,12 +1,12 @@
 ---
 document_id: AIOS-SPEC-010
 title: Execution Scope and Context Bounding
-version: 1.0.2
+version: 1.0.3
 status: draft
 category: specification
 author: Gateway Global AIOS
 created: 2026-04-04
-last_updated: 2026-04-06
+last_updated: 2026-04-03
 reviewers: []
 supersedes: null
 cross_references:
@@ -17,11 +17,14 @@ cross_references:
   - { doc_id: "AIOS-SPEC-005", relationship: "complements" }
   - { doc_id: "AIOS-SPEC-009", relationship: "constrained_by" }
   - { doc_id: "AIOS-SPEC-001", relationship: "complements" }
+  - { doc_id: "AMD-2026-009", relationship: "constrained_by" }
 amendment_history:
+  - { version: "1.0.3", date: "2026-04-03", summary: "§4.1.1 logical web keys; §5.2 web/PSE bounding; §6 AMD-2026-009; §8 web review_files conformance." }
+  - { version: "1.0.2", date: "2026-04-06", summary: "Deterministic escalation trigger (§3.1); required scope_confidence and scope_rationale (§4.1); Article IV + multi-party override rules (§5.3); MPOA liability linkage (§5.2); DCP compliance hook (§8)." }
   - { version: "1.0.1", date: "2026-04-04", summary: "Scope confidence, breadth/risk, expansion prohibition, context bounding, read/write line, audited overrides, scope_rationale." }
 ---
 
-# AIOS Execution Scope and Context Bounding v1.0.1
+# AIOS Execution Scope and Context Bounding v1.0.3
 
 ## 1. Architectural Purpose
 
@@ -107,13 +110,23 @@ The scope object **SHALL** be carried as a JSON object (embedded in the plan art
 | `plan_id` | string | yes | Stable identifier for the plan instance (UUID or DCP reference). |
 | `scope_confidence` | string | yes | One of `high`, `medium`, `low`. Omission or an invalid value **SHALL** fail validation or require operator review per Section 3.1. |
 | `scope_rationale` | array of strings | yes | Short bullets explaining *why* this scope is sufficient (e.g. which components own the behavior). Supports audit, debugging, and human review. |
-| `scope.review_files` | array of strings | yes | Repository-relative or corpus-relative paths that may be read for analysis. May be empty only if justified in plan metadata. |
+| `scope.review_files` | array of strings | yes | Repository-relative or corpus-relative paths that may be read for analysis. Entries **MAY** be **logical resource keys** for governed external reads (see **§4.1.1**). May be empty only if justified in plan metadata. |
 | `scope.modify_files` | array of strings | yes | Paths the plan is authorized to modify. Empty array means no file write beyond ephemeral build artifacts (must be stated explicitly). |
 | `scope.protected_files` | array of strings | yes | Paths that **must not** be read or written by executors for this plan. Typical examples: unrelated tenants, production secrets, out-of-scope governing docs. |
 | `scope.governing_docs` | array of strings | yes | `document_id` values or paths to markdown under the governing corpus that bound the work. |
 | `scope.verification_targets` | array of strings | yes | Commands or named checks (e.g. `npm test`, `pnpm lint`, conformance suite id). May be empty with explicit risk acceptance recorded in DCP. |
 
 Paths **SHALL** use forward slashes and **SHALL NOT** contain `..` traversal segments.
+
+### 4.1.1 Logical resource keys (web retrieval and review)
+
+For **bounded web retrieval** and **governed website review** under **[AMD-2026-009](../amendments/AMD-2026-009.md)**, `scope.review_files` **MAY** include **logical keys** (illustrative patterns in AMD-2026-009 §1.2), for example:
+
+- `web:pse:{engine_alias}:{query_fingerprint}` — one governed PSE / Custom Search call.
+- `web:review:resultset:{retrieval_id}` — structured **result_set_review** over that retrieval.
+- `web:review:page:{retrieval_id}:{index}` — single **page_review** for one result index.
+
+Such keys **SHALL** appear in the approved envelope for the step; executors **MUST NOT** treat **search scope class** or client hints as authority that **overrides** envelope validation (**AMD-2026-009** §1.1).
 
 ### 4.2 Consistency Rules
 
@@ -162,6 +175,7 @@ Silent or implicit scope creep **SHALL** be treated as a policy violation.
 
 - Coding agents and MCP servers **SHALL** receive only **allow-listed** path operations: reads and writes must stay within `review_files`, `modify_files`, and governing-doc reads as authorized by the plan type.
 - **Context bounding:** By default, **only** files and governing documents that appear in the approved scope envelope **SHALL** be supplied as **model or tool context** to LLMs, agents, or MCP-backed tools for that plan. Broader retrieval (e.g. whole-repo embedding search) **SHALL** be disabled or filtered to the envelope unless the plan explicitly authorizes a wider retrieval mode under DCP.
+- **Web retrieval / PSE:** Programmable Search Engine or equivalent **SHALL** be bounded by the same **Execution Scope Envelope**; **whole-web** or **unbounded** retrieval **SHALL NOT** be the default context expansion. **MUST NOT** authorize crawling, multi-page deep research, or arbitrary URL open outside **[AMD-2026-009](../amendments/AMD-2026-009.md)** §5.2 and §6.
 - Attempts to access paths outside the envelope **SHALL** be denied and logged as **policy violations** (see **AIOS-SPEC-009** for security logging expectations).
 - **Confirmed policy violations** resulting from scope breaches **SHALL** be subject to the **liability and indemnification** provisions in the **Master Platform Operating Agreement (Article III)**.
 
@@ -189,6 +203,7 @@ Post-hoc review **SHALL** be available to governance roles as under **AIOS-CORE-
 | **AIOS-SPEC-009** (Security & Sandboxing) | Sandboxing, logging, and MCP constraints apply within the scope envelope; scope breadth informs risk alongside security tiering. |
 | **AIOS-SPEC-001** (NodeContract) | NodeContracts define deterministic law; scope envelopes define which files and docs may be edited when implementing a change. |
 | **AIOS-CORE-002** | DCP and legislative pipeline are the authoritative process for when scope may expand (e.g. new capability). |
+| **AMD-2026-009** | Web retrieval and governed review **SHALL** run inside an approved envelope; **search scope class** **SHALL** be **consistent** with **`review_files`** / logical keys — **no** parallel bounding authority. |
 
 ---
 
@@ -212,6 +227,7 @@ A platform component **conforms** to AIOS-SPEC-010 if it:
 3. Applies **context bounding** (Section 5.2) so model and tool context defaults to the envelope.
 4. Honors **scope expansion** rules (Section 4.4) without silent broadening.
 5. Records violations, denials, and **authorized overrides** in a manner auditable under **AIOS-CORE-002** and **AIOS-SPEC-009**.
+6. Where the plan emits **web** logical keys in **`review_files`**, validates them against **[AMD-2026-009](../amendments/AMD-2026-009.md)** and the approved envelope for that step.
 
 ---
 
@@ -221,4 +237,5 @@ A platform component **conforms** to AIOS-SPEC-010 if it:
 |---------|------|---------|
 | 1.0.0 | 2026-04-04 | Initial draft: execution scope envelope, JSON shape, enforcement hooks. |
 | 1.0.1 | 2026-04-04 | Confidence/escalation, breadth/risk, expansion prohibition, context bounding, read/write rule, audited overrides, `scope_rationale`. |
+| 1.0.3 | 2026-04-03 | AMD-2026-009 alignment: §4.1.1 web logical keys; §5.2 PSE/web bounding; §6 table row; §8 item 6. |
 | 1.0.2 | 2026-04-06 | Deterministic escalation trigger (§3.1); required `scope_confidence` and `scope_rationale` (§4.1); Article IV + multi-party override rules (§5.3); MPOA liability linkage (§5.2); DCP compliance hook (§8). |
