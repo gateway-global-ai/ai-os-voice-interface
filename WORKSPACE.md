@@ -65,6 +65,7 @@ With **`MCP_ENABLE_OAUTH21=true`**, the MCP expects a **valid Google access toke
 This file is **informative**; normative rules are in **[AMD-2026-009](governing_docs/amendments/AMD-2026-009.md)**, **[AIOS-SPEC-007](governing_docs/specifications/GoogleWorkspaceIntegrationGovernance.md)**, **[AIOS-SPEC-009](governing_docs/specifications/IntentPrimitiveAndExecutionModel.md)**, and **[AIOS-SPEC-010](governing_docs/specifications/ExecutionScopeAndContextBounding.md)**.
 
 - **Search scope classes** (e.g. approved domains vs **broad public**) are **policy** — not ad hoc query parameters alone. **`web.search.broad_public`** is **non-default** and trigger-gated per the amendment §4.
+- **Retrieval backend:** **PSE / Custom Search** is one supported path; **[AMD-2026-009-ADD-001](governing_docs/amendments/AMD-2026-009-ADD-001-retrieval-backend-neutrality.md)** (draft) allows **policy-registered** alternatives (e.g. vendor **Gemini** / **OpenAI** grounding APIs) when Council ratifies the addendum and the MCP product wires them — credentials remain **server-side** only.
 - **PSE / Custom Search** credentials stay on the **MCP host** (see troubleshooting above). The voice app remains a **Phase 1 bridge** (`workspace.web.search` → MCP `search_custom`); full **result-set review**, **SPEC-010** logical keys, and **§9** audit fields land with the **post-ratification** implementation slice ([merge plan](governing_docs/amendments/AMD-2026-009-merge-deltas-and-first-slice.md) Part B).
 
 ## Phase 1

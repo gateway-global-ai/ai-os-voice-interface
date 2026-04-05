@@ -1,6 +1,6 @@
 ---
 document_id: AIOS-SPEC-007
-version: 0.1.0
+version: 0.1.1
 status: draft
 category: specification
 title: Google Workspace Integration Governance
@@ -18,6 +18,9 @@ cross_references:
   - path: WORKSPACE.md
     note: Informative operator and capability notes (repository root)
 amendment_history:
+  - version: 0.1.1
+    date: 2026-04-03
+    summary: §3 retrieval backends — PSE optional; policy-registered alternatives per AMD-2026-009-ADD-001.
   - version: 0.1.0
     date: 2026-04-03
     summary: Initial repository copy; routing model; web search / PSE alignment with AMD-2026-009 §10.
@@ -36,7 +39,7 @@ amendment_history:
 
 1. Ensure **intent** is the **only** governed entry point for Workspace capability execution from the product UI — not ad hoc tool strings or direct MCP exposure to untrusted layers.
 2. Align the **integration control plane** and **MCP adapter** with **AIOS-SPEC-009** (intent primitive, execution, audit expectations).
-3. Bind **web retrieval** (Programmable Search Engine / Custom Search JSON API) to **policy** and **[AMD-2026-009](../amendments/AMD-2026-009.md)** — not unconstrained public browsing.
+3. Bind **web retrieval** to **policy** and **[AMD-2026-009](../amendments/AMD-2026-009.md)** (including **[ADD-001](../amendments/AMD-2026-009-ADD-001-retrieval-backend-neutrality.md)** where ratified) — **not** unconstrained public browsing. **Programmable Search Engine / Custom Search** is **one** permitted backend; **others** **SHALL** be **policy-registered**.
 
 ## 2. Normative routing model
 
@@ -64,4 +67,4 @@ This section incorporates **[AMD-2026-009](../amendments/AMD-2026-009.md)** requ
 
 ---
 
-*End of AIOS-SPEC-007, version 0.1.0.*
+*End of AIOS-SPEC-007, version 0.1.1.*

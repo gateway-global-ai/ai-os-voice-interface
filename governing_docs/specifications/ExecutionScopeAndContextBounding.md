@@ -1,7 +1,7 @@
 ---
 document_id: AIOS-SPEC-010
 title: Execution Scope and Context Bounding
-version: 1.0.3
+version: 1.0.4
 status: draft
 category: specification
 author: Gateway Global AIOS
@@ -19,12 +19,13 @@ cross_references:
   - { doc_id: "AIOS-SPEC-001", relationship: "complements" }
   - { doc_id: "AMD-2026-009", relationship: "constrained_by" }
 amendment_history:
+  - { version: "1.0.4", date: "2026-04-03", summary: "§4.1.1 web:retrieval key pattern (AMD-2026-009-ADD-001)." }
   - { version: "1.0.3", date: "2026-04-03", summary: "§4.1.1 logical web keys; §5.2 web/PSE bounding; §6 AMD-2026-009; §8 web review_files conformance." }
   - { version: "1.0.2", date: "2026-04-06", summary: "Deterministic escalation trigger (§3.1); required scope_confidence and scope_rationale (§4.1); Article IV + multi-party override rules (§5.3); MPOA liability linkage (§5.2); DCP compliance hook (§8)." }
   - { version: "1.0.1", date: "2026-04-04", summary: "Scope confidence, breadth/risk, expansion prohibition, context bounding, read/write line, audited overrides, scope_rationale." }
 ---
 
-# AIOS Execution Scope and Context Bounding v1.0.3
+# AIOS Execution Scope and Context Bounding v1.0.4
 
 ## 1. Architectural Purpose
 
@@ -123,6 +124,7 @@ Paths **SHALL** use forward slashes and **SHALL NOT** contain `..` traversal seg
 For **bounded web retrieval** and **governed website review** under **[AMD-2026-009](../amendments/AMD-2026-009.md)**, `scope.review_files` **MAY** include **logical keys** (illustrative patterns in AMD-2026-009 §1.2), for example:
 
 - `web:pse:{engine_alias}:{query_fingerprint}` — one governed PSE / Custom Search call.
+- `web:retrieval:{backend_id}:{query_fingerprint}` — one governed call for a **policy-registered** backend (**AMD-2026-009-ADD-001**).
 - `web:review:resultset:{retrieval_id}` — structured **result_set_review** over that retrieval.
 - `web:review:page:{retrieval_id}:{index}` — single **page_review** for one result index.
 
@@ -237,5 +239,6 @@ A platform component **conforms** to AIOS-SPEC-010 if it:
 |---------|------|---------|
 | 1.0.0 | 2026-04-04 | Initial draft: execution scope envelope, JSON shape, enforcement hooks. |
 | 1.0.1 | 2026-04-04 | Confidence/escalation, breadth/risk, expansion prohibition, context bounding, read/write rule, audited overrides, `scope_rationale`. |
+| 1.0.4 | 2026-04-03 | `web:retrieval:{backend_id}:…` in §4.1.1 (ADD-001). |
 | 1.0.3 | 2026-04-03 | AMD-2026-009 alignment: §4.1.1 web logical keys; §5.2 PSE/web bounding; §6 table row; §8 item 6. |
 | 1.0.2 | 2026-04-06 | Deterministic escalation trigger (§3.1); required `scope_confidence` and `scope_rationale` (§4.1); Article IV + multi-party override rules (§5.3); MPOA liability linkage (§5.2); DCP compliance hook (§8). |
