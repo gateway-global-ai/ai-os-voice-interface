@@ -1,7 +1,7 @@
 ---
 document_id: AMD-2026-009-SPEC-MERGE-CHECKLIST
 parent_amendment: AMD-2026-009
-parent_version: 0.1.4
+parent_version: 0.1.5
 version: 1.0.0
 status: draft
 category: operational_checklist
@@ -12,6 +12,7 @@ last_updated: 2026-04-03
 related:
   - governing_docs/amendments/AMD-2026-009.md
   - governing_docs/amendments/AMD-2026-009-ratification-motion.md
+  - governing_docs/amendments/AMD-2026-009-merge-deltas-and-first-slice.md
   - governing_docs/specifications/GoogleWorkspaceIntegrationGovernance.md
   - governing_docs/specifications/IntentPrimitiveAndExecutionModel.md
   - governing_docs/specifications/ExecutionScopeAndContextBounding.md
@@ -23,6 +24,8 @@ related:
 **Purpose:** Bridge **Council ratification** → **normative merges** across SPEC-007 / SPEC-009 / SPEC-010 / policy register / informative repo notes → **bounded first implementation**, without inconsistent deltas.
 
 **Authority:** Grounded in [AMD-2026-009 §10](AMD-2026-009.md#10-cross-references-and-future-spec-deltas) and supporting sections (§1.1–§1.2, §4.1, §5–§7, §9, §11).
+
+**Pre-apply outline (recommended):** [Normative merge deltas + first implementation slice](AMD-2026-009-merge-deltas-and-first-slice.md) — per-artifact patch plan, **SPEC-007 repo gap** note, and **§4 gate** slice definition before you edit specs or code.
 
 **Canonical paths in this repository (merge targets):**
 
