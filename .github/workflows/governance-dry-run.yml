@@ -1,0 +1,32 @@
+# When governing_docs/scripts contains the automated pipeline, PRs touching governing_docs
+# run the same dry-run gate as the standalone governing_docs repo (no model API calls).
+
+name: Governance dry-run
+
+on:
+  pull_request:
+    paths:
+      - "governing_docs/**"
+
+jobs:
+  dry-run:
+    if: ${{ hashFiles('governing_docs/scripts/automated_review_pipeline.py') != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies (dry-run only)
+        run: pip install "openai>=1.30.0" "google-genai>=1.0.0" "python-dotenv>=1.0.0" "pyyaml>=6.0" "httpx>=0.27.0"
+
+      - name: Run dry-run for changed governing documents
+        run: |
+          python governing_docs/scripts/ci_governance_dry_run.py \
+            --repo-prefix governing_docs \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}"

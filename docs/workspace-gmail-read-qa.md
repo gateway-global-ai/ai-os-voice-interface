@@ -1,6 +1,6 @@
 # QA checklist — Phase 1 Workspace Gmail read / search
 
-This document verifies **operational correctness** of the Gmail read-plane slice and supports **[pre-workplace-checklist.md](./pre-workplace-checklist.md)** (especially **Track C** — no MCP bypass). Use it once **`workspace_mail_hub`** (or equivalent) is implemented per **[workspace-gmail-read-search-slice.md](./workspace-gmail-read-search-slice.md)**.
+This document verifies **operational correctness** of the Gmail read-plane slice and supports **[pre-workplace-checklist.md](./pre-workplace-checklist.md)** (especially **Track C** — no MCP bypass). Use it for PRs that touch **`workspace_mail_hub`** / mail read-search per **[workspace-gmail-read-search-slice.md](./workspace-gmail-read-search-slice.md)**.
 
 **Intents under test:** `workspace.mail.search`, `workspace.mail.read`
 
@@ -20,7 +20,7 @@ workspace_mail_hub
   → runWorkspaceControlPlane
   → callWorkspaceMcpAdapter
   → MCP tools/call (params.name = workspace.mail.search | workspace.mail.read)
-  → GovernanceWorkspaceMailHubPayload (planned)
+  → GovernanceWorkspaceMailHubPayload
   → WorkspaceHubSurface (mode: mail)
 ```
 
@@ -89,14 +89,15 @@ The slice **passes** when all of the following are true:
 
 ---
 
-### TC-04 — Happy path / mail read (when implemented)
+### TC-04 — Happy path / mail read
 
-| Setup | Valid MCP; server accepts **`workspace.mail.read`**; valid message id (or ref). |
+| Setup | Valid MCP; server accepts **`workspace.mail.read`**; valid message id from search payload (or test id). |
 |-------|----------------------------------------|
-| Steps | Select a message or trigger read with `resource_ref` per envelope rules. |
+| Steps | Open mail hub (search runs on load). Enter message id → **Load message** (or `loadData('workspace_mail_hub', { mailMessageId })`). |
 
-| Expected adapter request | **`params.name` = `workspace.mail.read`**. |
-| Expected UI | Message body/metadata shown; not conflated with search error states. |
+| Expected adapter request | `POST` JSON-RPC `tools/call`; **`params.name` = `workspace.mail.read`**; tool **`args`** include **`resource_ref`** with message **`id`** (not a free-text query in `resource_ref`). |
+| Expected control plane | After successful search, read path returns `ok: true` when MCP succeeds. |
+| Expected UI | Message read panel (JSON preview) or explicit **empty** / **error**; not conflated with search-only failure. |
 
 ---
 
@@ -194,7 +195,7 @@ Same discipline as calendar: intent id, scope class (`workspace.google.read`), p
 
 ## 6. Final pass criteria
 
-The Gmail read/search slice is **accepted** when TC-01 through TC-11 pass (TC-09/10 may be **N/A** until a harness exists), build is green, no bypass, no silent fallback, UI matches outcomes.
+The Gmail read/search slice is **accepted** when TC-01 through TC-11 pass (TC-06b, TC-09/10 may be **N/A** without a harness or deterministic abort setup), build is green, no bypass, no silent fallback, UI matches outcomes.
 
 Broader gate: **[pre-workplace-checklist.md](./pre-workplace-checklist.md)**.
 
@@ -202,12 +203,14 @@ Broader gate: **[pre-workplace-checklist.md](./pre-workplace-checklist.md)**.
 
 ## 7. Test result template
 
+Use this for **merge / “live enough”** decisions: fill it after running against a **real** MCP (see **[workspace-mcp-phase1-checklist.md](./workspace-mcp-phase1-checklist.md)** §1).
+
 ```markdown
 ## Workspace Gmail read/search QA
 
 - Branch:
 - Commit:
-- MCP URL configured: yes/no
+- MCP URL configured: yes/no (`VITE_WORKSPACE_MCP_URL` = …)
 - Date: YYYY-MM-DD
 
 | Test case | Result | Notes |
@@ -215,14 +218,22 @@ Broader gate: **[pre-workplace-checklist.md](./pre-workplace-checklist.md)**.
 | TC-01 Build | Pass/Fail | |
 | TC-02 Not configured | Pass/Fail | |
 | TC-03 Search happy path | Pass/Fail | |
-| TC-04 Read happy path | Pass/Fail / N/A | |
+| TC-04 Read happy path | Pass/Fail | |
 | TC-05 Unreachable host | Pass/Fail | |
 | TC-06 Timeout | Pass/Fail | |
+| TC-06b Aborted vs timeout | Pass/Fail / N/A | |
 | TC-07 Auth | Pass/Fail | |
 | TC-08 Malformed | Pass/Fail | |
 | TC-09 Empty | Pass/Fail | |
 | TC-10 Policy denial | Pass/Fail / N/A | |
 | TC-11 No bypass | Pass/Fail | |
+
+### Behavioral notes (required for ruling)
+
+- **Empty-query search** (`workspace.mail.search` with empty query): 
+- **`workspace.mail.read`** (single message / paste id / selection): 
+- **Auth anomalies** (401/403, consent, test users): 
+- **Timeout / abort** anomalies: 
 
 ### Overall
 Pass / Fail

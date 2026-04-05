@@ -14,7 +14,9 @@ cross_references:
   - AIOS-SPEC-003
   - AIOS-SPEC-006
   - AIOS-SPEC-007
+  - AIOS-SPEC-009
   - AMD-2026-005
+  - AMD-2026-007
 amendment_history: []
 ---
 
@@ -23,6 +25,8 @@ amendment_history: []
 ## Implementation status (v0.1)
 
 This specification defines the intended model for intent discovery and onboarding.
+
+The **normative intent primitive** (definition, schema, lifecycle, UI contract) is **[AIOS-SPEC-009 — Intent Primitive and Execution Model](./IntentPrimitiveAndExecutionModel.md)**. This document (**AIOS-SPEC-008**) **MUST** stay aligned with SPEC-009 for intent semantics; discovery and onboarding extend that primitive.
 
 At v0.1:
 
@@ -471,7 +475,8 @@ This specification is expected to interact with:
 - AIOS-SPEC-003 for agent intent emission
 - AIOS-SPEC-006 for governed surfaces
 - AIOS-SPEC-007 for Workspace-dependent intents
-- future shell governance specification/amendment
+- AIOS-SPEC-009 for the intent primitive and execution model
+- AMD-2026-007 for shell affordances, transparency, and policy scaffolding (see **AIOS-SPEC-009** for core primitive)
 - future ingestion protocol specification/amendment
 
 ---
@@ -508,6 +513,8 @@ Normative mapping of this specification to the current repository (documentation
 | Agent Integration Protocol | AIOS-SPEC-003 | extends |
 | UI Component Registry Standard | AIOS-SPEC-006 | extends |
 | Google Workspace Integration Governance | AIOS-SPEC-007 | depends_on |
+| Intent Primitive and Execution Model | AIOS-SPEC-009 | extends |
+| Shell affordances & intent policy scaffolding | AMD-2026-007 | extends |
 | Workspace Model & Governed Interface Surfaces | AMD-2026-005 | constrained_by |
 
 ---

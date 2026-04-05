@@ -27,7 +27,10 @@ export function evaluateCanvasPolicy(view: CanvasView): PolicyDecision {
     view === 'workspace_hub' ||
     view === 'workspace_onboarding' ||
     view === 'workspace_calendar_hub' ||
-    view === 'workspace_mail_hub'
+    view === 'workspace_mail_hub' ||
+    view === 'workspace_drive_hub' ||
+    view === 'workspace_contacts_hub' ||
+    view === 'workspace_search_hub'
   ) {
     const w = evaluateWorkspaceCanvasPolicy(view);
     if (!w.allowed) {

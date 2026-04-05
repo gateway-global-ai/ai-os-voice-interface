@@ -51,7 +51,7 @@ Suggested verification:
 rg 'agentText\.includes\(' src/App.tsx src/governance/
 ```
 
-— review each hit; governed transitions must be keyed off structured intent, not phrase matching.
+— review each hit; governed transitions must be keyed off structured intent, not phrase matching. **Note:** `src/governance/intentParse.ts` `legacyPhraseParse` may retain phrase `includes` for demo/fallback; ensure production paths for mode, workspace, and governance **canvas** navigation still go through **`INTENT_JSON`** (or document and audit fallback per Track B).
 
 ---
 

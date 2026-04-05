@@ -1,0 +1,9 @@
+{
+  "threads": [
+    {
+      "id": "thread-no-msg-id",
+      "snippet": "Looks like a thread row without message refs — must not become a clickable message id.",
+      "historyId": "12345"
+    }
+  ]
+}

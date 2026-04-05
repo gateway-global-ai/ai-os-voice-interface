@@ -22,6 +22,12 @@ export function classifyAmendmentRunStatus(status: string): AmendmentStatusBucke
     return 'completed';
   }
 
+  // Failed / cancelled — must run before in-progress patterns that match substrings like "review"
+  // (e.g. "failed review", "review cancelled" must not become in_progress).
+  if (/\b(fail|failed|failure|error|cancel|cancelled|canceled|abort|aborted|rejected)\b/.test(s)) {
+    return 'unknown';
+  }
+
   // Active pipeline (explicit — do not guess from vague words)
   if (
     /\b(active|running|pending|in_progress|in progress|queued|waiting|executing|processing)\b/.test(s) ||
@@ -29,11 +35,6 @@ export function classifyAmendmentRunStatus(status: string): AmendmentStatusBucke
     /\b(peer|review|reviewing|planning|synthesis)\b/.test(s)
   ) {
     return 'in_progress';
-  }
-
-  // Failed / cancelled — not "completed" success; surface as unknown so operators verify
-  if (/\b(fail|failed|failure|error|cancel|cancelled|canceled|abort|aborted|rejected)\b/.test(s)) {
-    return 'unknown';
   }
 
   return 'unknown';

@@ -4,6 +4,8 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
+import type { ExecutionScopeEnvelope } from '../scope/executionScopeTypes';
+
 /** Layer 1 — canonical governance scope classes (policy / risk). */
 export type WorkspaceScopeClass =
   | 'workspace.google.read'
@@ -18,9 +20,20 @@ export type WorkspaceExecutionMode = 'observe' | 'prepare' | 'execute' | 'automa
 
 export type WorkspaceActorType = string;
 
+/**
+ * For `workspace.mail.read`, use e.g. `{ type: 'message', id }` so the adapter forwards `id` in tool args.
+ * For `workspace.mail.draft_reply`, include `threadId` when known so the MCP server can thread the draft.
+ */
 export type WorkspaceResourceRef = {
   type: string;
   id?: string;
+  /** Gmail thread id (optional; used by draft/reply tools when distinct from `id`). */
+  threadId?: string;
+  /**
+   * Google Calendar id (e.g. `primary` or `foo@group.calendar.google.com`) for `get_events` / event list.
+   * Optional; defaults to `primary` in MCP mapping when omitted.
+   */
+  calendarId?: string;
 };
 
 export type WorkspacePolicyContext = {
@@ -47,13 +60,33 @@ export type WorkspaceRoutingEnvelope = {
    * Omit for other intents. Empty string is valid if the MCP tool defines a default listing.
    */
   query?: string;
+  /**
+   * AIOS-SPEC-010: when set, `runWorkspaceControlPlane` validates the resolved MCP operation
+   * against this envelope before calling the adapter.
+   */
+  execution_scope?: ExecutionScopeEnvelope;
+  /**
+   * `workspace.calendar.events.list` — RFC3339 window (inclusive start, exclusive end per API usage).
+   * Required for that intent.
+   */
+  calendar_time_range?: { time_min: string; time_max: string };
+  /**
+   * `workspace.contacts.list` — People API `connections.list` pagination (`page_token` in MCP tool args).
+   */
+  contacts_page_token?: string;
 };
 
 export type WorkspaceControlPlaneResult<T = unknown> =
   | { ok: true; data: T; auditId: string }
   | {
       ok: false;
-      code: 'policy_denied' | 'invalid_intent' | 'adapter_error' | 'not_configured';
+      code:
+        | 'policy_denied'
+        | 'invalid_intent'
+        | 'adapter_error'
+        | 'not_configured'
+        | 'auth_required'
+        | 'scope_denied';
       message: string;
       auditId: string;
       /** Set when code is `adapter_error` — original MCP adapter failure class. */

@@ -5,6 +5,7 @@
 
 import { motion } from 'motion/react';
 import { Building2, ChevronRight, Loader2, Shield } from 'lucide-react';
+import { GoogleWorkspaceSignInBar } from '../components/workspace/GoogleWorkspaceSignInBar';
 import type { WorkspaceState } from '../shell/workspaceState';
 
 type Props = {
@@ -65,8 +66,14 @@ export function WorkspaceOnboardingSurface({
             <li>Calendar and Workspace tools use the same audited control plane as governance.</li>
             <li>Your session stays on the AI OS shell — no parallel &quot;app folder&quot; shortcuts.</li>
             <li>Operators configure <code className="text-xs bg-zinc-200/60 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> for the MCP server.</li>
+            <li>
+              Use <strong>Sign in with Google</strong> below for MCP OAuth 2.1 — “Connect Workspace” alone does not log
+              you into Google.
+            </li>
           </ul>
         </div>
+
+        <GoogleWorkspaceSignInBar />
 
         {showEnvHint ? (
           <div

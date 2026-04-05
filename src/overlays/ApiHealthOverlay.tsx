@@ -34,7 +34,7 @@ export function ApiHealthOverlay({ onClose }: { onClose: () => void }) {
         <div>
           <h2 className="text-xl font-bold text-zinc-900 tracking-tight">API health</h2>
           <p className="text-zinc-500 text-sm">
-            Test Gemini, OpenAI, DeepSeek, and the Governance API proxy
+            Test Gemini, OpenAI, DeepSeek, local Ollama readiness, and the Governance API proxy
           </p>
         </div>
       </div>

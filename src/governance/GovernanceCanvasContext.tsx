@@ -58,6 +58,8 @@ export type GovernanceCanvasOpenParams = {
   returnAfterList?: CanvasView;
   /** Slimmer list chrome for Review Docs (hide conflicts / compliance / lifecycle shortcuts). */
   listMode?: 'full' | 'review';
+  /** Message id for `workspace.mail.read` when opening `workspace_mail_hub`. */
+  mailMessageId?: string;
 };
 
 export type GovernanceCanvasOpenOptions = {
@@ -255,6 +257,8 @@ export function GovernanceCanvasProvider({
             actionPlanSource:
               next.view === 'action_plan_review' ? next.actionPlanSource : undefined,
             amendmentWorkflowMode: next.amendmentWorkflowMode,
+            mailMessageId:
+              next.view === 'workspace_mail_hub' ? next.mailMessageId : undefined,
           },
           ac.signal
         );
@@ -279,7 +283,7 @@ export function GovernanceCanvasProvider({
         setDataPhase(isPayloadEmpty(p) ? 'empty' : 'success');
         logGovernanceAudit('view_opened', {
           ...(options?.auditDetail ?? {}),
-          view: next.view,
+          view: p.view,
           documentId: next.documentId,
           eventId,
         });
@@ -449,7 +453,13 @@ export function GovernanceCanvasProvider({
       void loadData(GOVERNANCE_HOME_VIEW, undefined, { transitionMode: 'ui' });
       return;
     }
-    if (canvas.view === 'workspace_calendar_hub' || canvas.view === 'workspace_mail_hub') {
+    if (
+      canvas.view === 'workspace_calendar_hub' ||
+      canvas.view === 'workspace_mail_hub' ||
+      canvas.view === 'workspace_drive_hub' ||
+      canvas.view === 'workspace_contacts_hub' ||
+      canvas.view === 'workspace_search_hub'
+    ) {
       void loadData('workspace_hub', undefined, { transitionMode: 'ui' });
       return;
     }
@@ -526,7 +536,13 @@ export function GovernanceCanvasProvider({
       void loadData(GOVERNANCE_HOME_VIEW, undefined, { transitionMode: 'ui' });
       return;
     }
-    if (canvas.view === 'workspace_calendar_hub' || canvas.view === 'workspace_mail_hub') {
+    if (
+      canvas.view === 'workspace_calendar_hub' ||
+      canvas.view === 'workspace_mail_hub' ||
+      canvas.view === 'workspace_drive_hub' ||
+      canvas.view === 'workspace_contacts_hub' ||
+      canvas.view === 'workspace_search_hub'
+    ) {
       logGovernanceAudit('backdrop_dismiss', { from: canvas.view });
       void loadData('workspace_hub', undefined, { transitionMode: 'ui' });
       return;
