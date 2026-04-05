@@ -1,7 +1,7 @@
 ---
 document_id: AMD-2026-009-RATIFICATION-MOTION
 subject_amendment: AMD-2026-009
-subject_version: 0.1.4
+subject_version: 0.1.5
 motion_version: 1.0.0
 status: draft
 category: council_motion
@@ -16,7 +16,7 @@ execution_path: governing_docs/amendments/AMD-2026-009-spec-merge-checklist.md
 
 ## Statement
 
-Council is asked to **ratify** **[AMD-2026-009](AMD-2026-009.md)** at **version 0.1.4** (*Intent-Scoped Web Retrieval and Governed Website Review / External Knowledge Acquisition*), as the governing amendment for **bounded web retrieval and governed website review** in the AIOS stack, after **peer review Round 2** (triangulated) recorded on the amendment. *(Version 0.1.4 adds procedural links: spec-merge checklist and this motion; normative substance aligns with v0.1.2 editorial and Round 2 review.)*
+Council is asked to **ratify** **[AMD-2026-009](AMD-2026-009.md)** at **version 0.1.5** (*Intent-Scoped Web Retrieval and Governed Website Review / External Knowledge Acquisition*), as the governing amendment for **bounded web retrieval and governed website review** in the AIOS stack, after **peer review Round 2** (triangulated) recorded on the amendment. *(Versions 0.1.3–0.1.5 add procedural artifacts: spec-merge checklist, ratification motion, and pre-merge delta / first-slice plan; normative substance aligns with v0.1.2 editorial and Round 2 review.)*
 
 ## Scope (what this ratifies)
 
@@ -59,7 +59,7 @@ Upon **approval**, the following **SHALL** apply:
 
 | Option | Council use |
 |--------|----------------|
-| **Approve** | Ratify AMD-2026-009 v0.1.4; execute checklist as **Authority** above. |
+| **Approve** | Ratify AMD-2026-009 v0.1.5; execute checklist as **Authority** above. |
 | **Reject** | No normative merge under this motion; amendment remains **draft** until revised. |
 | **Amend** | Council records conditions (e.g. textual edits, follow-up date); **SHALL** produce a revised amendment version or supplementary motion before merges proceed. |
 
