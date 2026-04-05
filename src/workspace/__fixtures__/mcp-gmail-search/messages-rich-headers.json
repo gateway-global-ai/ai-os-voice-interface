@@ -1,0 +1,13 @@
+{
+  "messages": [
+    {
+      "id": "rich-1",
+      "threadId": "t-rich",
+      "labelIds": ["UNREAD"],
+      "snippet": "Q4 numbers attached.",
+      "internalDate": "1710000000000",
+      "subject": "Q4 review",
+      "sender": { "name": "Alex Kim", "email": "alex@example.com" }
+    }
+  ]
+}

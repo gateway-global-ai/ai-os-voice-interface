@@ -10,3 +10,6 @@ coverage/
 
 # Local scratch / peer-review artifacts (not versioned)
 user uploads/
+
+# Local scope-efficiency append log (keep example + README in repo)
+evidence/scope_efficiency_log.jsonl

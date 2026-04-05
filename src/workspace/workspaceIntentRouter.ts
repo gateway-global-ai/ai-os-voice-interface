@@ -33,8 +33,23 @@ export function workspaceIntentToCanvasView(parsed: ParsedWorkspaceIntent): Gove
   if (intent === 'workspace.calendar.list' || intent === 'workspace.calendar.get') {
     return { view: 'workspace_calendar_hub' };
   }
-  if (intent === 'workspace.mail.search' || intent === 'workspace.mail.read') {
+  if (
+    intent === 'workspace.mail.search' ||
+    intent === 'workspace.mail.read' ||
+    intent === 'workspace.mail.thread.read' ||
+    intent === 'workspace.mail.thread.summarize' ||
+    intent === 'workspace.mail.draft_reply'
+  ) {
     return { view: 'workspace_mail_hub' };
+  }
+  if (intent === 'workspace.drive.search' || intent === 'workspace.drive.read') {
+    return { view: 'workspace_drive_hub' };
+  }
+  if (intent === 'workspace.contacts.list' || intent === 'workspace.contacts.search') {
+    return { view: 'workspace_contacts_hub' };
+  }
+  if (intent === 'workspace.web.search') {
+    return { view: 'workspace_search_hub' };
   }
   return { view: 'workspace_hub' };
 }

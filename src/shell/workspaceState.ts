@@ -18,6 +18,7 @@ export type WorkspaceSessionHints = {
   lastGateError?: boolean;
 };
 
+/** Local “Connect Workspace” flag — **not** Google OAuth. MCP auth uses Bearer token (GIS sign-in or env). */
 const LS_CONNECTED = 'aios.workspace.connected';
 
 export function getWorkspaceMcpUrl(): string | undefined {

@@ -9,4 +9,16 @@ export { resolveScopeClass, INTENT_TO_SCOPE_CLASS, WORKSPACE_SCOPE_CLASSES } fro
 export { PHASE_1_WORKSPACE_INTENTS, isPhase1WorkspaceIntent } from './intentRegistry';
 export { workspaceIntentToCanvasView, type ParsedWorkspaceIntent } from './workspaceIntentRouter';
 export { logWorkspaceAudit } from './workspaceAudit';
-export { callWorkspaceMcpAdapter } from './mcpAdapter';
+export {
+  callWorkspaceMcpAdapter,
+  getWorkspaceMcpPublicBase,
+  getWorkspaceMcpBearerTokenFromEnv,
+  describeWorkspaceMcpNetworkError,
+} from './mcpAdapter';
+export { resolveWorkspaceMcpToolCall, getWorkspaceGoogleUserEmail } from './mcpIntentToolMap';
+export {
+  clearSessionGoogleAccessToken,
+  getSessionGoogleAccessToken,
+  setSessionGoogleAccessToken,
+  WORKSPACE_GIS_OAUTH_SCOPES,
+} from './workspaceSessionAuth';

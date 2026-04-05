@@ -1,0 +1,8 @@
+{
+  "result": {
+    "messages": [
+      { "id": "wrap-msg-1", "threadId": "wrap-thread-1" },
+      { "id": "wrap-msg-2", "threadId": "wrap-thread-2" }
+    ]
+  }
+}

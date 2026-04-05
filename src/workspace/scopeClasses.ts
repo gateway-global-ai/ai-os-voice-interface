@@ -24,16 +24,22 @@ export const WORKSPACE_SCOPE_CLASSES: readonly WorkspaceScopeClass[] = [
 export const INTENT_TO_SCOPE_CLASS: Record<Phase1WorkspaceIntent, WorkspaceScopeClass> = {
   'workspace.hub': 'workspace.google.read',
   'workspace.calendar.list': 'workspace.google.read',
+  'workspace.calendar.events.list': 'workspace.google.read',
   'workspace.calendar.get': 'workspace.google.read',
   'workspace.mail.search': 'workspace.google.read',
   'workspace.mail.read': 'workspace.google.read',
+  'workspace.mail.thread.read': 'workspace.google.read',
+  'workspace.mail.thread.summarize': 'workspace.google.read',
+  'workspace.mail.draft_reply': 'workspace.google.write',
   'workspace.drive.search': 'workspace.google.read',
   'workspace.drive.read': 'workspace.google.read',
   'workspace.docs.read': 'workspace.google.read',
   'workspace.docs.export': 'workspace.google.read',
+  'workspace.contacts.list': 'workspace.google.identity',
   'workspace.contacts.search': 'workspace.google.identity',
   'workspace.tasks.list': 'workspace.google.read',
   'workspace.tasks.get': 'workspace.google.read',
+  'workspace.web.search': 'workspace.google.search',
 };
 
 function assertOneToOneMapping(): void {

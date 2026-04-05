@@ -6,7 +6,7 @@
 import { GoogleGenAI } from '@google/genai';
 
 export type ProviderCheck = {
-  id: 'gemini' | 'openai' | 'deepseek' | 'governance_api';
+  id: 'gemini' | 'openai' | 'deepseek' | 'governance_api' | 'local_llm';
   label: string;
   ok: boolean;
   detail: string;
@@ -102,6 +102,61 @@ export async function checkDeepSeek(): Promise<ProviderCheck> {
   }
 }
 
+/** Ollama readiness via same-origin `/api/local-model/readiness` (Vite dev middleware). */
+export async function checkLocalModel(): Promise<ProviderCheck> {
+  try {
+    const { ms, result } = await timed(async () => {
+      const res = await fetch('/api/local-model/readiness');
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+      }
+      return JSON.parse(text) as Record<string, unknown>;
+    });
+    const r = result as {
+      status?: string;
+      baseUrl?: string;
+      fallbackPolicy?: string;
+      models?: string[];
+      requiredModels?: string[];
+      missingModels?: string[];
+      error?: string;
+    };
+    const ok = r.status === 'running_ready';
+    const detail = JSON.stringify(
+      {
+        status: r.status,
+        baseUrl: r.baseUrl,
+        fallbackPolicy: r.fallbackPolicy,
+        models: r.models,
+        requiredModels: r.requiredModels,
+        missingModels: r.missingModels,
+        error: r.error,
+      },
+      null,
+      2,
+    );
+    return {
+      id: 'local_llm',
+      label: 'Local model (Ollama)',
+      ok,
+      detail,
+      ms,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      id: 'local_llm',
+      label: 'Local model (Ollama)',
+      ok: false,
+      detail: msg.includes('Failed to fetch')
+        ? 'Not reachable — start Vite dev (middleware) and Ollama on OLLAMA_BASE_URL'
+        : msg,
+      ms: 0,
+    };
+  }
+}
+
 /** Proxied governance API (Vite → localhost:8100). Optional if server not running. */
 export async function checkGovernanceApi(): Promise<ProviderCheck> {
   try {
@@ -134,11 +189,12 @@ export async function checkGovernanceApi(): Promise<ProviderCheck> {
 }
 
 export async function runAllProviderChecks(): Promise<ProviderCheck[]> {
-  const [gemini, openai, deepseek, gov] = await Promise.all([
+  const [gemini, openai, deepseek, local, gov] = await Promise.all([
     checkGemini(),
     checkOpenAI(),
     checkDeepSeek(),
+    checkLocalModel(),
     checkGovernanceApi(),
   ]);
-  return [gemini, openai, deepseek, gov];
+  return [gemini, openai, deepseek, local, gov];
 }

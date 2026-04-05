@@ -31,9 +31,20 @@ import {
   type PlanningDocumentItem,
 } from './governanceIntroductionOrder';
 import type { WorkspaceRoutingEnvelope } from '../workspace/types';
+import type { ExecutionPlanDecision } from '../intent/executionPlanPolicy';
 import { runWorkspaceControlPlane } from '../workspace/integrationControlPlane';
+import { buildCalendarListScope } from '../scope/buildExecutionScope';
 import type { WorkspaceState } from '../shell/workspaceState';
 import { resolveWorkspaceState, shouldShowWorkspaceHub } from '../shell/workspaceState';
+import {
+  MAIL_REVIEW_UNREAD_APPROVAL_RATIONALE,
+  MAIL_REVIEW_UNREAD_INTENT_LABEL,
+  MAIL_REVIEW_UNREAD_PERIOD_LABEL,
+  MAIL_REVIEW_UNREAD_SCOPE_SUMMARY,
+  runReviewUnreadMailGovernance,
+  type MailReviewUnreadGovernanceResult,
+} from '../workspace/mailReviewUnreadPlan';
+import { estimateMcpResultCount } from '../workspace/workspaceMcpDisplay';
 
 export type GovernanceHubPayload = {
   view: 'governance_hub';
@@ -180,6 +191,22 @@ export type GovernanceWorkspaceCalendarHubPayload = {
   calendarRead: GovernanceWorkspaceCalendarRead;
 };
 
+/** Governed mail hub slice — AIOS-SPEC-009 §15 (intent, period, policy, disclosure). */
+export type GovernanceWorkspaceMailGovernanceSlice = {
+  intentLabel: string;
+  /** User-facing scope in governance language (not raw provider query syntax). */
+  scopeSummary: string;
+  periodLabel: string;
+  expectedOutcome: string;
+  policyDecision: ExecutionPlanDecision;
+  userMessages: string[];
+  /** Operator / adapter: Gmail query string (secondary in UI). */
+  gmailQuery: string;
+  estimatedResultCount?: number;
+  /** When policy is auto_approve — why this ran without a proposal step. */
+  approvalRationale?: string[];
+};
+
 /** Result of `workspace.mail.search` via control plane (Phase 1 read plane). */
 export type GovernanceWorkspaceMailSearch = {
   loadState: 'ok' | 'empty' | 'error' | 'not_configured';
@@ -188,10 +215,15 @@ export type GovernanceWorkspaceMailSearch = {
   controlPlaneCode?: string;
   adapterCode?: 'not_configured' | 'timeout' | 'aborted' | 'http_error' | 'auth_error';
   auditId?: string;
+  /** Present for default mail hub load (review unread / last 7d governed path). */
+  governanceSlice?: GovernanceWorkspaceMailGovernanceSlice;
 };
 
 /** Result of `workspace.mail.read` (single message) via control plane. */
 export type GovernanceWorkspaceMailRead = GovernanceWorkspaceMailSearch;
+
+/** Drive / Contacts / Web search surfaces — same load shape as mail search. */
+export type GovernanceWorkspaceToolRead = GovernanceWorkspaceMailSearch;
 
 export type GovernanceWorkspaceMailHubPayload = {
   view: 'workspace_mail_hub';
@@ -200,6 +232,47 @@ export type GovernanceWorkspaceMailHubPayload = {
   mailSearch: GovernanceWorkspaceMailSearch;
   /** Present when load included `mailMessageId` (read path). */
   mailRead?: GovernanceWorkspaceMailRead;
+  /** Route param when a single message is open — stable id for governed actions. */
+  openMailMessageId?: string;
+};
+
+function buildMailHubGovernanceSlice(
+  gov: MailReviewUnreadGovernanceResult,
+  estimatedCount?: number
+): GovernanceWorkspaceMailGovernanceSlice {
+  return {
+    intentLabel: MAIL_REVIEW_UNREAD_INTENT_LABEL,
+    scopeSummary: MAIL_REVIEW_UNREAD_SCOPE_SUMMARY,
+    periodLabel: MAIL_REVIEW_UNREAD_PERIOD_LABEL,
+    expectedOutcome: gov.plan.expectedOutcome,
+    policyDecision: gov.evaluation.decision,
+    userMessages: gov.userMessages,
+    gmailQuery: gov.gmailQuery,
+    estimatedResultCount: estimatedCount,
+    approvalRationale:
+      gov.evaluation.decision === 'auto_approve' ? [...MAIL_REVIEW_UNREAD_APPROVAL_RATIONALE] : undefined,
+  };
+}
+
+export type GovernanceWorkspaceDriveHubPayload = {
+  view: 'workspace_drive_hub';
+  phase: 1;
+  specRef: 'AIOS-SPEC-007';
+  toolRead: GovernanceWorkspaceToolRead;
+};
+
+export type GovernanceWorkspaceContactsHubPayload = {
+  view: 'workspace_contacts_hub';
+  phase: 1;
+  specRef: 'AIOS-SPEC-007';
+  toolRead: GovernanceWorkspaceToolRead;
+};
+
+export type GovernanceWorkspaceSearchHubPayload = {
+  view: 'workspace_search_hub';
+  phase: 1;
+  specRef: 'AIOS-SPEC-007';
+  toolRead: GovernanceWorkspaceToolRead;
 };
 
 export type GovernanceViewPayload =
@@ -219,7 +292,10 @@ export type GovernanceViewPayload =
   | GovernanceWorkspaceHubPayload
   | GovernanceWorkspaceOnboardingPayload
   | GovernanceWorkspaceCalendarHubPayload
-  | GovernanceWorkspaceMailHubPayload;
+  | GovernanceWorkspaceMailHubPayload
+  | GovernanceWorkspaceDriveHubPayload
+  | GovernanceWorkspaceContactsHubPayload
+  | GovernanceWorkspaceSearchHubPayload;
 
 function summaryToHubRow(r: AmendmentWorkflowRunSummary): AmendmentHubRunRow {
   const meta = r.meta ?? {};
@@ -296,6 +372,14 @@ export function isPayloadEmpty(p: GovernanceViewPayload): boolean {
       if (ms.loadState === 'empty') return true;
       return false;
     }
+    case 'workspace_drive_hub':
+    case 'workspace_contacts_hub':
+    case 'workspace_search_hub': {
+      const tr = p.toolRead;
+      if (!tr) return false;
+      if (tr.loadState === 'empty') return true;
+      return false;
+    }
     default:
       return false;
   }
@@ -318,6 +402,7 @@ function workspaceCalendarDataIsEmpty(data: unknown): boolean {
 /** Heuristic: MCP returned no mail rows (shape varies by server — keep permissive). */
 function workspaceMailDataIsEmpty(data: unknown): boolean {
   if (data == null) return true;
+  if (typeof data === 'string') return data.trim().length === 0;
   if (Array.isArray(data)) return data.length === 0;
   if (typeof data === 'object') {
     const o = data as Record<string, unknown>;
@@ -325,6 +410,21 @@ function workspaceMailDataIsEmpty(data: unknown): boolean {
     if (Array.isArray(o.threads)) return o.threads.length === 0;
     if (Array.isArray(o.items)) return o.items.length === 0;
     if (Array.isArray(o.messageList)) return o.messageList.length === 0;
+  }
+  return false;
+}
+
+/** Drive / contacts / PSE search — empty list or blank formatted string. */
+function workspaceToolDataIsEmpty(data: unknown): boolean {
+  if (data == null) return true;
+  if (typeof data === 'string') return data.trim().length === 0;
+  if (Array.isArray(data)) return data.length === 0;
+  if (typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    if (Array.isArray(o.files)) return o.files.length === 0;
+    if (Array.isArray(o.contacts)) return o.contacts.length === 0;
+    if (Array.isArray(o.messages)) return o.messages.length === 0;
+    if (Array.isArray(o.items)) return o.items.length === 0;
   }
   return false;
 }
@@ -567,6 +667,7 @@ export async function loadGovernancePayload(
         user_binding: 'browser',
         execution_mode: 'execute',
         policy_context: { scope_class: 'workspace.google.read' },
+        execution_scope: buildCalendarListScope(),
       };
       const result = await runWorkspaceControlPlane(envelope, { surfaceMode: 'founder', signal });
       abort();
@@ -609,6 +710,21 @@ export async function loadGovernancePayload(
           workspaceState: wsMailGate,
         };
       }
+      const mailGov = runReviewUnreadMailGovernance();
+      const baseSlice = buildMailHubGovernanceSlice(mailGov);
+      if (mailGov.evaluation.decision === 'block') {
+        return {
+          view: 'workspace_mail_hub',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          mailSearch: {
+            loadState: 'error',
+            errorMessage:
+              mailGov.userMessages[0] ?? 'This mail review action is blocked by execution policy.',
+            governanceSlice: baseSlice,
+          },
+        };
+      }
       const mailEnvelope: WorkspaceRoutingEnvelope = {
         intent: 'workspace.mail.search',
         actor_type: 'founder',
@@ -616,7 +732,7 @@ export async function loadGovernancePayload(
         user_binding: 'browser',
         execution_mode: 'execute',
         policy_context: { scope_class: 'workspace.google.read' },
-        query: '',
+        query: mailGov.gmailQuery,
       };
       const mailResult = await runWorkspaceControlPlane(mailEnvelope, {
         surfaceMode: 'founder',
@@ -636,14 +752,17 @@ export async function loadGovernancePayload(
             controlPlaneCode: mailResult.code,
             adapterCode: mailResult.adapterCode,
             auditId: mailResult.auditId,
+            governanceSlice: baseSlice,
           },
         };
       }
       const mailEmpty = workspaceMailDataIsEmpty(mailResult.data);
+      const est = estimateMcpResultCount(mailResult.data);
       const mailSearch: GovernanceWorkspaceMailSearch = {
         loadState: mailEmpty ? 'empty' : 'ok',
         data: mailResult.data,
         auditId: mailResult.auditId,
+        governanceSlice: buildMailHubGovernanceSlice(mailGov, est),
       };
 
       const mid = params?.mailMessageId?.trim();
@@ -685,6 +804,7 @@ export async function loadGovernancePayload(
             adapterCode: readResult.adapterCode,
             auditId: readResult.auditId,
           },
+          openMailMessageId: mid,
         };
       }
       const readEmpty = workspaceMailReadDataIsEmpty(readResult.data);
@@ -697,6 +817,162 @@ export async function loadGovernancePayload(
           loadState: readEmpty ? 'empty' : 'ok',
           data: readResult.data,
           auditId: readResult.auditId,
+        },
+        openMailMessageId: mid,
+      };
+    }
+    case 'workspace_drive_hub': {
+      abort();
+      const wsDriveGate = resolveWorkspaceState();
+      if (!shouldShowWorkspaceHub(wsDriveGate)) {
+        return {
+          view: 'workspace_onboarding',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          workspaceState: wsDriveGate,
+        };
+      }
+      const driveEnvelope: WorkspaceRoutingEnvelope = {
+        intent: 'workspace.drive.search',
+        actor_type: 'founder',
+        tenant_id: 'local',
+        user_binding: 'browser',
+        execution_mode: 'execute',
+        policy_context: { scope_class: 'workspace.google.read' },
+        query: '',
+      };
+      const driveResult = await runWorkspaceControlPlane(driveEnvelope, {
+        surfaceMode: 'founder',
+        signal,
+      });
+      abort();
+      if (driveResult.ok === false) {
+        const ls = driveResult.code === 'not_configured' ? 'not_configured' : ('error' as const);
+        return {
+          view: 'workspace_drive_hub',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          toolRead: {
+            loadState: ls,
+            errorMessage: driveResult.message,
+            controlPlaneCode: driveResult.code,
+            adapterCode: driveResult.adapterCode,
+            auditId: driveResult.auditId,
+          },
+        };
+      }
+      const driveEmpty = workspaceToolDataIsEmpty(driveResult.data);
+      return {
+        view: 'workspace_drive_hub',
+        phase: 1,
+        specRef: 'AIOS-SPEC-007',
+        toolRead: {
+          loadState: driveEmpty ? 'empty' : 'ok',
+          data: driveResult.data,
+          auditId: driveResult.auditId,
+        },
+      };
+    }
+    case 'workspace_contacts_hub': {
+      abort();
+      const wsContactsGate = resolveWorkspaceState();
+      if (!shouldShowWorkspaceHub(wsContactsGate)) {
+        return {
+          view: 'workspace_onboarding',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          workspaceState: wsContactsGate,
+        };
+      }
+      const contactsEnvelope: WorkspaceRoutingEnvelope = {
+        intent: 'workspace.contacts.list',
+        actor_type: 'founder',
+        tenant_id: 'local',
+        user_binding: 'browser',
+        execution_mode: 'execute',
+        policy_context: { scope_class: 'workspace.google.identity' },
+      };
+      const contactsResult = await runWorkspaceControlPlane(contactsEnvelope, {
+        surfaceMode: 'founder',
+        signal,
+      });
+      abort();
+      if (contactsResult.ok === false) {
+        const ls = contactsResult.code === 'not_configured' ? 'not_configured' : ('error' as const);
+        return {
+          view: 'workspace_contacts_hub',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          toolRead: {
+            loadState: ls,
+            errorMessage: contactsResult.message,
+            controlPlaneCode: contactsResult.code,
+            adapterCode: contactsResult.adapterCode,
+            auditId: contactsResult.auditId,
+          },
+        };
+      }
+      const contactsEmpty = workspaceToolDataIsEmpty(contactsResult.data);
+      return {
+        view: 'workspace_contacts_hub',
+        phase: 1,
+        specRef: 'AIOS-SPEC-007',
+        toolRead: {
+          loadState: contactsEmpty ? 'empty' : 'ok',
+          data: contactsResult.data,
+          auditId: contactsResult.auditId,
+        },
+      };
+    }
+    case 'workspace_search_hub': {
+      abort();
+      const wsSearchGate = resolveWorkspaceState();
+      if (!shouldShowWorkspaceHub(wsSearchGate)) {
+        return {
+          view: 'workspace_onboarding',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          workspaceState: wsSearchGate,
+        };
+      }
+      const searchEnvelope: WorkspaceRoutingEnvelope = {
+        intent: 'workspace.web.search',
+        actor_type: 'founder',
+        tenant_id: 'local',
+        user_binding: 'browser',
+        execution_mode: 'execute',
+        policy_context: { scope_class: 'workspace.google.search' },
+        query: '',
+      };
+      const searchResult = await runWorkspaceControlPlane(searchEnvelope, {
+        surfaceMode: 'founder',
+        signal,
+      });
+      abort();
+      if (searchResult.ok === false) {
+        const ls = searchResult.code === 'not_configured' ? 'not_configured' : ('error' as const);
+        return {
+          view: 'workspace_search_hub',
+          phase: 1,
+          specRef: 'AIOS-SPEC-007',
+          toolRead: {
+            loadState: ls,
+            errorMessage: searchResult.message,
+            controlPlaneCode: searchResult.code,
+            adapterCode: searchResult.adapterCode,
+            auditId: searchResult.auditId,
+          },
+        };
+      }
+      const searchEmpty = workspaceToolDataIsEmpty(searchResult.data);
+      return {
+        view: 'workspace_search_hub',
+        phase: 1,
+        specRef: 'AIOS-SPEC-007',
+        toolRead: {
+          loadState: searchEmpty ? 'empty' : 'ok',
+          data: searchResult.data,
+          auditId: searchResult.auditId,
         },
       };
     }

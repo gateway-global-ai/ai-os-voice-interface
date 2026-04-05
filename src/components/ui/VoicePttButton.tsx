@@ -30,7 +30,7 @@ export function VoicePttButton({
   const glowKey = isPTTActive ? 'press' : busy ? 'busy' : 'idle';
 
   return (
-    <div className="pointer-events-auto flex w-[40%] min-w-[9rem] max-w-[28rem] shrink-0 flex-col items-center gap-1">
+    <div className="pointer-events-auto flex w-[40%] min-w-[9rem] max-w-[28rem] shrink-0 flex-col items-center gap-3 pb-1">
       <motion.button
         type="button"
         aria-label="Push to talk — AI OS Command Center. Hold to speak."
@@ -38,7 +38,7 @@ export function VoicePttButton({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         className={cn(
-          'flex h-[calc(var(--shell-footer-height)*0.5)] w-full items-center justify-center overflow-hidden rounded-xl border px-2 text-white transition-colors',
+          'flex h-[calc(var(--shell-footer-height)*0.5)] w-full items-center justify-center overflow-hidden rounded-xl border px-4 text-white transition-colors sm:px-5',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white/90',
           isPTTActive
             ? 'border-emerald-300/80 bg-emerald-400'
@@ -72,13 +72,13 @@ export function VoicePttButton({
       >
         <Mic
           className={cn(
-            'h-5 w-5 shrink-0 sm:h-6 sm:w-6',
+            'h-6 w-6 shrink-0 sm:h-8 sm:w-8',
             (isPTTActive || busy) && 'animate-pulse',
           )}
           aria-hidden
         />
       </motion.button>
-      <p className="pointer-events-none m-0 w-full whitespace-nowrap text-center text-[8px] font-black uppercase leading-tight tracking-[0.12em] text-zinc-500 sm:text-[9px] sm:tracking-[0.14em]">
+      <p className="pointer-events-none m-0 mt-0.5 w-full whitespace-nowrap text-center text-[8px] font-black uppercase leading-snug tracking-[0.12em] text-zinc-500 sm:text-[9px] sm:tracking-[0.14em]">
         AI OS COMMAND CENTER
       </p>
     </div>

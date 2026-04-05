@@ -56,11 +56,14 @@ import { WorkspaceHubSurface } from './overlays/WorkspaceHubSurface';
 import { WorkspaceOnboardingSurface } from './overlays/WorkspaceOnboardingSurface';
 import { ApiHealthOverlay } from './overlays/ApiHealthOverlay';
 import { stripIntentLineForDisplay } from './governance/intentParse';
-import { GovernanceCanvasProvider, useGovernanceCanvas } from './governance/GovernanceCanvasContext';
+import { useGovernanceCanvas } from './governance/GovernanceCanvasContext';
 import { CommandRail, type CommandRailState } from './components/shell/CommandRail';
 import { ShellIdentityBar } from './components/shell/ShellIdentityBar';
+import { fetchLocalModelReadiness } from './api/localModelClient';
+import type { LocalModelReadiness } from './local-llm/types';
 import { routeShellAgentText } from './shell/shellIntentRouter';
 import { resolveWorkspaceState, setWorkspaceUserConnected } from './shell/workspaceState';
+import { ScopeMetricsDevHud } from './dev/ScopeMetricsDevHud';
 
 type SystemStatus =
   | "connected"
@@ -787,7 +790,7 @@ const MenuOverlay = ({
   </motion.div>
 );
 
-function AppImpl({
+export default function App({
   speakTextRef,
 }: {
   speakTextRef: MutableRefObject<(text: string, overrideVoice?: string) => Promise<void>>;
@@ -817,6 +820,7 @@ function AppImpl({
   ]);
   const [chatInput, setChatInput] = useState("");
   const [workspaceConnecting, setWorkspaceConnecting] = useState(false);
+  const [localModelReadiness, setLocalModelReadiness] = useState<LocalModelReadiness | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const workspaceDisclosure = useMemo(
@@ -862,6 +866,25 @@ function AppImpl({
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, mode]);
+
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      void fetchLocalModelReadiness()
+        .then((r) => {
+          if (alive) setLocalModelReadiness(r);
+        })
+        .catch(() => {
+          if (alive) setLocalModelReadiness(null);
+        });
+    };
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
 
   useEffect(() => {
     // Initialize Speech Recognition (start/stop only from PTT handlers)
@@ -946,11 +969,17 @@ function AppImpl({
   };
 
   const speakText = async (text: string, overrideVoice?: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setStatus("connected");
+      setTranscription("");
+      return;
+    }
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Say cheerfully: ${text}` }] }],
+        contents: [{ parts: [{ text: `Say cheerfully: ${trimmed}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -988,11 +1017,16 @@ function AppImpl({
         
         setStatus("speaking");
         source.start();
-        
+
         source.onended = () => {
           setStatus("connected");
           setTranscription("");
         };
+      } else {
+        // TTS returned no audio — avoid leaving UI stuck on "Reasoning" (processing)
+        console.warn('TTS returned no audio; returning to ready');
+        setStatus("connected");
+        setTranscription("");
       }
     } catch (err) {
       console.error('TTS error:', err);
@@ -1124,7 +1158,7 @@ function AppImpl({
 
           GOVERNANCE CANVAS (structured intent): Same INTENT_JSON line when opening governance/workspace surfaces:
           INTENT_JSON:{"intent":"<id>","document_id":""}
-          intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
+          intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.list | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
           Use intent "none" when no governance or workspace surface should open.
           governance.documents.list opens the governance intent hub (founder work modes — Review Docs, Discuss Documents, Planning Assistant, Research Assistant, Amendment Program, Action plan, Google Workspace), not the full document library by itself.
           governance.amendment.workflow opens the amendment program workflow (demo: AMD-2026-004 template; no repo merge).
@@ -1203,7 +1237,7 @@ function AppImpl({
 
           GOVERNANCE CANVAS (structured intent): Same INTENT_JSON line when opening governance/workspace surfaces:
           INTENT_JSON:{"intent":"<id>","document_id":""}
-          intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
+          intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.list | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
           Use intent "none" when no governance or workspace surface should open.
           governance.documents.list opens the governance intent hub (founder work modes — Review Docs, Discuss Documents, Planning Assistant, Research Assistant, Amendment Program, Action plan, Google Workspace), not the full document library by itself.
           governance.amendment.workflow opens the amendment program workflow (demo: AMD-2026-004 template; no repo merge).
@@ -1237,7 +1271,10 @@ function AppImpl({
     govCanvas?.view === 'workspace_hub' ||
     govCanvas?.view === 'workspace_onboarding' ||
     govCanvas?.view === 'workspace_calendar_hub' ||
-    govCanvas?.view === 'workspace_mail_hub';
+    govCanvas?.view === 'workspace_mail_hub' ||
+    govCanvas?.view === 'workspace_drive_hub' ||
+    govCanvas?.view === 'workspace_contacts_hub' ||
+    govCanvas?.view === 'workspace_search_hub';
 
   const commandRail: CommandRailState = {
     mode: mode === 'chat' ? 'chat' : 'voice',
@@ -1275,6 +1312,7 @@ function AppImpl({
         actorModeLabel="Admin"
         workspaceState={workspaceDisclosure}
         intentSummary={govCanvas?.view ? `canvas:${govCanvas.view}` : undefined}
+        localModelReadiness={localModelReadiness}
       />
       
       {/* Main Content Area */}
@@ -1522,6 +1560,10 @@ function AppImpl({
                     onClose={closeCanvas}
                     onOpenCalendar={() => void loadData('workspace_calendar_hub')}
                     onOpenMail={() => void loadData('workspace_mail_hub')}
+                    onOpenDrive={() => void loadData('workspace_drive_hub')}
+                    onOpenContacts={() => void loadData('workspace_contacts_hub')}
+                    onOpenSearch={() => void loadData('workspace_search_hub')}
+                    onWorkspaceGoogleAuthChange={() => void loadData('workspace_hub')}
                   />
                 )}
                 {govCanvas.view === 'workspace_calendar_hub' && payload?.view === 'workspace_calendar_hub' && (
@@ -1533,6 +1575,7 @@ function AppImpl({
                     calendarRead={payload.calendarRead}
                     onClose={closeCanvas}
                     onBackToHub={() => void loadData('workspace_hub')}
+                    onWorkspaceGoogleAuthChange={() => void loadData('workspace_calendar_hub')}
                   />
                 )}
                 {govCanvas.view === 'workspace_mail_hub' && payload?.view === 'workspace_mail_hub' && (
@@ -1543,10 +1586,48 @@ function AppImpl({
                     dataError={dataError}
                     mailSearch={payload.mailSearch}
                     mailRead={payload.mailRead}
+                    openMailMessageId={payload.openMailMessageId}
                     onClose={closeCanvas}
                     onBackToHub={() => void loadData('workspace_hub')}
                     onReadMail={(messageId) => void loadData('workspace_mail_hub', { mailMessageId: messageId })}
                     onClearMailRead={() => void loadData('workspace_mail_hub')}
+                    onWorkspaceGoogleAuthChange={() => void loadData('workspace_mail_hub')}
+                  />
+                )}
+                {govCanvas.view === 'workspace_drive_hub' && payload?.view === 'workspace_drive_hub' && (
+                  <WorkspaceHubSurface
+                    connected
+                    mode="drive"
+                    dataPhase={dataPhase}
+                    dataError={dataError}
+                    toolRead={payload.toolRead}
+                    onClose={closeCanvas}
+                    onBackToHub={() => void loadData('workspace_hub')}
+                    onWorkspaceGoogleAuthChange={() => void loadData('workspace_drive_hub')}
+                  />
+                )}
+                {govCanvas.view === 'workspace_contacts_hub' && payload?.view === 'workspace_contacts_hub' && (
+                  <WorkspaceHubSurface
+                    connected
+                    mode="contacts"
+                    dataPhase={dataPhase}
+                    dataError={dataError}
+                    toolRead={payload.toolRead}
+                    onClose={closeCanvas}
+                    onBackToHub={() => void loadData('workspace_hub')}
+                    onWorkspaceGoogleAuthChange={() => void loadData('workspace_contacts_hub')}
+                  />
+                )}
+                {govCanvas.view === 'workspace_search_hub' && payload?.view === 'workspace_search_hub' && (
+                  <WorkspaceHubSurface
+                    connected
+                    mode="search"
+                    dataPhase={dataPhase}
+                    dataError={dataError}
+                    toolRead={payload.toolRead}
+                    onClose={closeCanvas}
+                    onBackToHub={() => void loadData('workspace_hub')}
+                    onWorkspaceGoogleAuthChange={() => void loadData('workspace_search_hub')}
                   />
                 )}
                 {govCanvas.view === 'review_docs' && (
@@ -1746,28 +1827,18 @@ function AppImpl({
         statusTone={statusTone}
       />
 
+      <ScopeMetricsDevHud />
+
       {/* Powered By Branding */}
-      <div className="fixed bottom-[calc(var(--shell-footer-height)+0.5rem)] left-6 md:left-12 opacity-40 flex items-center gap-2 pointer-events-none z-[var(--z-shell-chrome)]">
-        <span className="text-[8px] uppercase tracking-widest font-bold text-zinc-400">Powered by</span>
+      <div className="fixed bottom-[calc(var(--shell-footer-height)+0.5rem)] left-6 md:left-12 flex items-center gap-2 pointer-events-none z-[var(--z-shell-chrome)]">
+        <span className="text-[8px] uppercase tracking-widest font-bold text-zinc-500">Powered by</span>
         <div className="flex items-center gap-1">
-          <span className="font-black text-xs text-zinc-900">CLEAR</span>
-          <span className="text-emerald-500 font-black text-xs">VOICE</span>
-          <div className="bg-zinc-900 text-white text-[8px] px-1 rounded">AI</div>
+          <span className="font-black text-xs text-zinc-600">CLEAR</span>
+          <span className="text-emerald-600 font-black text-xs">VOICE</span>
+          <div className="rounded bg-zinc-700 px-1 text-[8px] text-white">AI</div>
         </div>
       </div>
     </div>
   );
 }
 
-export default function App() {
-  const speakTextRef = useRef<(text: string, overrideVoice?: string) => Promise<void>>(async () => {});
-  return (
-    <GovernanceCanvasProvider
-      onPolicyDenied={(payload) =>
-        void speakTextRef.current(payload.spokenMessage ?? payload.reason)
-      }
-    >
-      <AppImpl speakTextRef={speakTextRef} />
-    </GovernanceCanvasProvider>
-  );
-}

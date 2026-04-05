@@ -69,6 +69,9 @@ export const UI_ALLOWED_TRANSITIONS: Record<CanvasView, readonly CanvasView[]> =
     'governance_hub',
     'workspace_calendar_hub',
     'workspace_mail_hub',
+    'workspace_drive_hub',
+    'workspace_contacts_hub',
+    'workspace_search_hub',
     'workspace_onboarding',
   ],
   workspace_onboarding: [
@@ -76,9 +79,15 @@ export const UI_ALLOWED_TRANSITIONS: Record<CanvasView, readonly CanvasView[]> =
     'workspace_hub',
     'workspace_calendar_hub',
     'workspace_mail_hub',
+    'workspace_drive_hub',
+    'workspace_contacts_hub',
+    'workspace_search_hub',
   ],
   workspace_calendar_hub: ['governance_hub', 'workspace_hub', 'workspace_onboarding'],
   workspace_mail_hub: ['governance_hub', 'workspace_hub', 'workspace_onboarding'],
+  workspace_drive_hub: ['governance_hub', 'workspace_hub', 'workspace_onboarding'],
+  workspace_contacts_hub: ['governance_hub', 'workspace_hub', 'workspace_onboarding'],
+  workspace_search_hub: ['governance_hub', 'workspace_hub', 'workspace_onboarding'],
 } as const satisfies Record<CanvasView, readonly CanvasView[]>;
 
 export type CanvasTransitionMode = 'ui' | 'intent';
@@ -152,7 +161,10 @@ export function buildGovernanceCanvasState(
   if (
     view === 'workspace_hub' ||
     view === 'workspace_onboarding' ||
-    view === 'workspace_calendar_hub'
+    view === 'workspace_calendar_hub' ||
+    view === 'workspace_drive_hub' ||
+    view === 'workspace_contacts_hub' ||
+    view === 'workspace_search_hub'
   ) {
     return { view };
   }

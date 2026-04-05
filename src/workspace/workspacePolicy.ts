@@ -15,6 +15,9 @@ const ALLOWED_PHASE1_VIEWS: ReadonlySet<CanvasView> = new Set([
   'workspace_onboarding',
   'workspace_calendar_hub',
   'workspace_mail_hub',
+  'workspace_drive_hub',
+  'workspace_contacts_hub',
+  'workspace_search_hub',
 ]);
 
 export function evaluateWorkspaceCanvasPolicy(view: CanvasView): { allowed: boolean; reason?: string } {
@@ -26,14 +29,19 @@ export function evaluateWorkspaceCanvasPolicy(view: CanvasView): { allowed: bool
 
 export function canExecuteScopeClass(
   scope: WorkspaceScopeClass,
-  _mode: WorkspaceSurfaceMode
+  mode: WorkspaceSurfaceMode
 ): { allowed: boolean; reason?: string } {
   const readPlane: WorkspaceScopeClass[] = [
     'workspace.google.read',
     'workspace.google.identity',
     'workspace.google.search',
   ];
+  /** Draft/create paths (e.g. Gmail draft reply) — founder-only in Phase 1; still proposal-gated in policy. */
+  const founderWritePlane: WorkspaceScopeClass[] = ['workspace.google.write'];
   if (readPlane.includes(scope)) {
+    return { allowed: true };
+  }
+  if (mode === 'founder' && founderWritePlane.includes(scope)) {
     return { allowed: true };
   }
   return {

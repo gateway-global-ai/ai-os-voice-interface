@@ -453,7 +453,13 @@ export function GovernanceCanvasProvider({
       void loadData(GOVERNANCE_HOME_VIEW, undefined, { transitionMode: 'ui' });
       return;
     }
-    if (canvas.view === 'workspace_calendar_hub' || canvas.view === 'workspace_mail_hub') {
+    if (
+      canvas.view === 'workspace_calendar_hub' ||
+      canvas.view === 'workspace_mail_hub' ||
+      canvas.view === 'workspace_drive_hub' ||
+      canvas.view === 'workspace_contacts_hub' ||
+      canvas.view === 'workspace_search_hub'
+    ) {
       void loadData('workspace_hub', undefined, { transitionMode: 'ui' });
       return;
     }
@@ -530,7 +536,13 @@ export function GovernanceCanvasProvider({
       void loadData(GOVERNANCE_HOME_VIEW, undefined, { transitionMode: 'ui' });
       return;
     }
-    if (canvas.view === 'workspace_calendar_hub' || canvas.view === 'workspace_mail_hub') {
+    if (
+      canvas.view === 'workspace_calendar_hub' ||
+      canvas.view === 'workspace_mail_hub' ||
+      canvas.view === 'workspace_drive_hub' ||
+      canvas.view === 'workspace_contacts_hub' ||
+      canvas.view === 'workspace_search_hub'
+    ) {
       logGovernanceAudit('backdrop_dismiss', { from: canvas.view });
       void loadData('workspace_hub', undefined, { transitionMode: 'ui' });
       return;

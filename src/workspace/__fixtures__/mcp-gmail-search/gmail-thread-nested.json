@@ -1,0 +1,18 @@
+{
+  "threads": [
+    {
+      "id": "thread-nested-1",
+      "snippet": "Conversation preview…",
+      "messages": [
+        {
+          "id": "nested-msg-1",
+          "threadId": "thread-nested-1",
+          "labelIds": ["UNREAD", "INBOX"],
+          "snippet": "Please review the attached doc",
+          "internalDate": "1713129600000",
+          "payload": { "mimeType": "multipart/alternative" }
+        }
+      ]
+    }
+  ]
+}

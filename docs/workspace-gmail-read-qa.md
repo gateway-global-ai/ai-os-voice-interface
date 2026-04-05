@@ -203,12 +203,14 @@ Broader gate: **[pre-workplace-checklist.md](./pre-workplace-checklist.md)**.
 
 ## 7. Test result template
 
+Use this for **merge / “live enough”** decisions: fill it after running against a **real** MCP (see **[workspace-mcp-phase1-checklist.md](./workspace-mcp-phase1-checklist.md)** §1).
+
 ```markdown
 ## Workspace Gmail read/search QA
 
 - Branch:
 - Commit:
-- MCP URL configured: yes/no
+- MCP URL configured: yes/no (`VITE_WORKSPACE_MCP_URL` = …)
 - Date: YYYY-MM-DD
 
 | Test case | Result | Notes |
@@ -225,6 +227,13 @@ Broader gate: **[pre-workplace-checklist.md](./pre-workplace-checklist.md)**.
 | TC-09 Empty | Pass/Fail | |
 | TC-10 Policy denial | Pass/Fail / N/A | |
 | TC-11 No bypass | Pass/Fail | |
+
+### Behavioral notes (required for ruling)
+
+- **Empty-query search** (`workspace.mail.search` with empty query): 
+- **`workspace.mail.read`** (single message / paste id / selection): 
+- **Auth anomalies** (401/403, consent, test users): 
+- **Timeout / abort** anomalies: 
 
 ### Overall
 Pass / Fail
