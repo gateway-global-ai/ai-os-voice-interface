@@ -42,6 +42,8 @@ export function extractIntentJsonObject(text: string): Record<string, unknown> |
 }
 
 function legacyPhraseParse(agentText: string): ParsedGovernanceIntent | null {
+  /** Pre–Workplace Track B: governed navigation must not depend on phrase matching in production. */
+  if (import.meta.env.PROD) return null;
   if (agentText.includes('display the governance dashboard')) {
     return { intent: 'governance.documents.list' };
   }

@@ -571,7 +571,10 @@ export function GovernanceCanvasProvider({
           subsystem: 'google_workspace',
         });
         const next = workspaceIntentToCanvasView(agent.parsed);
-        void loadData(next.view, {}, { transitionMode: 'intent' });
+        const mid = agent.parsed.resource_id?.trim();
+        const openParams =
+          next.view === 'workspace_mail_hub' && mid ? { mailMessageId: mid } : undefined;
+        void loadData(next.view, openParams, { transitionMode: 'intent' });
         return;
       }
       if (agent.kind === 'none') return;
