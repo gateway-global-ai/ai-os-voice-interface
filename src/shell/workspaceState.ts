@@ -1,14 +1,16 @@
 /**
  * Workspace connection gate — browser-local until auth/MCP health is wired.
+ *
+ * **#14:** `connected` requires an **execution-time** MCP bearer (GIS session or env token), not
+ * only the “Connect Workspace” preference. `auth_required` = user opted in + MCP URL set, but no token.
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-export type WorkspaceState =
-  | 'unknown'
-  | 'not_configured'
-  | 'connecting'
-  | 'connected'
-  | 'error';
+import { getWorkspaceMcpBearerTokenFromEnv } from '../workspace/mcpAdapter';
+import { getSessionGoogleAccessToken } from '../workspace/workspaceSessionAuth';
+import type { WorkspaceState } from '../core/types/workspaceState';
+
+export type { WorkspaceState };
 
 /** Session-time overrides for disclosure (not persisted). Persistence stays in localStorage / env. */
 export type WorkspaceSessionHints = {
@@ -44,8 +46,18 @@ export function setWorkspaceUserConnected(connected: boolean): void {
 }
 
 /**
+ * Same bearer sources as `integrationControlPlane` / MCP `tools/call` (GIS first, then env).
+ * Single source of truth for whether Workspace MCP execution can authenticate.
+ */
+export function hasWorkspaceMcpExecutionToken(): boolean {
+  if (getSessionGoogleAccessToken()?.trim()) return true;
+  if (getWorkspaceMcpBearerTokenFromEnv()?.trim()) return true;
+  return false;
+}
+
+/**
  * Derive gate state for shell disclosure and onboarding vs hub routing.
- * For static payload materialization (e.g. `loadGovernancePayload`), call with no hints.
+ * For static payload materialization (e.g. `loadWorkspacePayload`), call with no hints.
  * Pass `isConnecting` during Connect; pass `lastGateError` when a future health/ping step fails.
  */
 export function resolveWorkspaceState(hints?: WorkspaceSessionHints): WorkspaceState {
@@ -53,10 +65,12 @@ export function resolveWorkspaceState(hints?: WorkspaceSessionHints): WorkspaceS
   if (hints?.lastGateError) return 'error';
   const url = getWorkspaceMcpUrl();
   if (!url) return 'not_configured';
-  if (readWorkspaceUserConnected()) return 'connected';
-  return 'unknown';
+  if (!readWorkspaceUserConnected()) return 'unknown';
+  if (!hasWorkspaceMcpExecutionToken()) return 'auth_required';
+  return 'connected';
 }
 
+/** User may open governed Workspace hub UIs (MCP URL + preference). May still need GIS sign-in (`auth_required`). */
 export function shouldShowWorkspaceHub(ws: WorkspaceState): boolean {
-  return ws === 'connected';
+  return ws === 'connected' || ws === 'auth_required';
 }

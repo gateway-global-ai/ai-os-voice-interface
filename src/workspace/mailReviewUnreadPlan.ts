@@ -16,11 +16,11 @@ export const GMAIL_REVIEW_UNREAD_7D_QUERY = 'newer_than:7d is:unread';
 
 export const MAIL_REVIEW_UNREAD_INTENT_ID = 'workspace.mail.review_unread_7d';
 
-/** Human-readable labels for governance UI (POL-WS-UI / SPEC-009 disclosure). */
+/** Human-readable labels for workspace mail UI (POL-WS-UI / SPEC-009 disclosure). */
 export const MAIL_REVIEW_UNREAD_INTENT_LABEL = 'Review unread emails (last 7 days)';
 export const MAIL_REVIEW_UNREAD_PERIOD_LABEL = 'Last 7 days';
 
-/** Primary human scope line — governance language, not Gmail syntax (POL-WS-UI). */
+/** Primary human scope line — policy language, not Gmail syntax (POL-WS-UI). */
 export const MAIL_REVIEW_UNREAD_SCOPE_SUMMARY =
   'Unread mail from the last 7 days, bounded so review stays actionable.';
 
@@ -28,7 +28,7 @@ export const MAIL_REVIEW_UNREAD_SCOPE_SUMMARY =
 export const MAIL_REVIEW_UNREAD_APPROVAL_RATIONALE: readonly string[] = [
   'Read-only scope (no send or modify)',
   'Time-bounded window (last 7 days)',
-  'Single governed search step (SPEC-009 Phase 1 read plane)',
+  'Single bounded search step (SPEC-009 Phase 1 read plane)',
   'Low-risk execution plan',
 ];
 
@@ -57,14 +57,14 @@ export function buildReviewUnreadMailExecutionPlan(): ExecutionPlan {
   };
 }
 
-export type MailReviewUnreadGovernanceResult = {
+export type MailReviewUnreadPolicyResult = {
   plan: ExecutionPlan;
   evaluation: { decision: ExecutionPlanDecision; reasons: string[] };
   userMessages: string[];
   gmailQuery: string;
 };
 
-export function runReviewUnreadMailGovernance(): MailReviewUnreadGovernanceResult {
+export function runReviewUnreadMailPolicy(): MailReviewUnreadPolicyResult {
   const plan = buildReviewUnreadMailExecutionPlan();
   const evaluation = evaluateExecutionPlan(plan, { actor: FOUNDER_ACTOR, mode: 'founder' });
   const userMessages = mapPolicyReasonsToUserCopy(evaluation.reasons);

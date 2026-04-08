@@ -9,6 +9,7 @@ title: Normative merge deltas (sanity-check) and first implementation slice
 author: Gateway Global AIOS
 created: 2026-04-03
 last_updated: 2026-04-03
+applied_normative_merge: 2026-04-03
 related:
   - governing_docs/amendments/AMD-2026-009.md
   - governing_docs/amendments/AMD-2026-009-spec-merge-checklist.md
@@ -26,9 +27,9 @@ related:
 
 | Expected path (checklist) | Status in this repo |
 |---------------------------|---------------------|
-| `governing_docs/specifications/GoogleWorkspaceIntegrationGovernance.md` (**AIOS-SPEC-007**) | **Missing.** `WORKSPACE.md` references this path, but only four specification files exist under `governing_docs/specifications/` (009, 010, 008 framework, conformance test). |
+| `governing_docs/specifications/GoogleWorkspaceIntegrationGovernance.md` (**AIOS-SPEC-007**) | **Present** (v0.1.0 draft, 2026-04-03). Earlier gap closed; expand with fuller upstream content if your org maintains a richer SPEC-007 elsewhere. |
 
-**Implication:** Normative merge for **SPEC-007** is either **(1)** introduce `GoogleWorkspaceIntegrationGovernance.md` from a canonical source (e.g. upstream org repo) and then patch, **(2)** record SPEC-007 as **external** to this repository with a pointer URL, or **(3)** temporarily fold **integration-bridge** deltas into **`WORKSPACE.md`** as **informative** only — **not** a substitute for a ratified SPEC-007 if your Council requires the spec file to exist. **Resolve this decision before claiming SPEC-007 merge complete.**
+**Note:** If a **canonical** SPEC-007 exists outside this repo, **merge** non-conflicting sections or add a pointer in §0 of the repository file.
 
 ---
 

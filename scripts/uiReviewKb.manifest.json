@@ -1,0 +1,13 @@
+{
+  "productDirs": ["docs/conformance", "docs/implementation"],
+  "productFiles": ["WORKSPACE.md", "package.json"],
+  "governingRelativePaths": [
+    "reference/implementation/AIOS-MASTER-IMPLEMENTATION-PROGRAM.md",
+    "reference/implementation/AIOS-DEVELOPMENT-CONFORMANCE-PROCESS.md",
+    "reference/implementation/COUNCIL-REVIEW-BRIEF-AIOS-INTERFACE-CONTROL-001.md",
+    "amendments/AMD-2026-012.md"
+  ],
+  "maxTotalChars": 450000,
+  "maxChunkChars": 2800,
+  "retrieveTopK": 12
+}

@@ -4,7 +4,7 @@
  * Run after build: `npm run build && npm start` (see `PORT` in `.env.example`).
  * Env: `vite` `loadEnv` from app root — OLLAMA_*, LOCAL_LLM_*, VITE_OLLAMA_* (same semantics as dev).
  *
- * Other `/api/*` routes (e.g. governance proxy on :8100) are not mounted here — use a reverse proxy
+ * Other `/api/*` routes (e.g. optional local documents proxy on :8100) are not mounted here — use a reverse proxy
  * or extend this server if you need one process to serve both.
  *
  * @license SPDX-License-Identifier: Apache-2.0

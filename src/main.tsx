@@ -1,20 +1,23 @@
 import { StrictMode, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { GovernanceCanvasProvider } from './governance/GovernanceCanvasContext';
+import { WorkspaceCanvasProvider } from './shellCanvas/WorkspaceCanvasContext';
+import { ShellStateProvider } from './shell/ShellStateContext';
 import App from './App.tsx';
 import './index.css';
 
-/** Provider lives at the entry root so `useGovernanceCanvas` always runs under the same React tree as the context. */
+/** Workspace canvas provider — must wrap the same React tree as `App`. */
 function Root() {
   const speakTextRef = useRef<(text: string, overrideVoice?: string) => Promise<void>>(async () => {});
   return (
-    <GovernanceCanvasProvider
+    <WorkspaceCanvasProvider
       onPolicyDenied={(payload) =>
         void speakTextRef.current(payload.spokenMessage ?? payload.reason)
       }
     >
-      <App speakTextRef={speakTextRef} />
-    </GovernanceCanvasProvider>
+      <ShellStateProvider>
+        <App speakTextRef={speakTextRef} />
+      </ShellStateProvider>
+    </WorkspaceCanvasProvider>
   );
 }
 

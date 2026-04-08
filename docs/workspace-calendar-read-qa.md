@@ -51,7 +51,7 @@ The slice **passes** when all of the following are true:
 - [ ] No silent fallback to generic chat or fake success.
 - [ ] **`npm run build`** stays green.
 
-Implementation references: `src/workspace/integrationControlPlane.ts`, `src/workspace/mcpAdapter.ts`, `src/governance/loadGovernancePayload.ts` (`workspace_calendar_hub`), `src/overlays/WorkspaceHubSurface.tsx`.
+Implementation references: `src/workspace/integrationControlPlane.ts`, `src/workspace/mcpAdapter.ts`, `src/shellCanvas/loadWorkspacePayload.ts` (`workspace_calendar_hub`), `src/overlays/WorkspaceHubSurface.tsx`.
 
 ---
 

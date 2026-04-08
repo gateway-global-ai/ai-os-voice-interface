@@ -1,7 +1,7 @@
 ---
 document_id: AMD-2026-009-SPEC-MERGE-CHECKLIST
 parent_amendment: AMD-2026-009
-parent_version: 0.1.5
+parent_version: 0.1.6
 version: 1.0.0
 status: draft
 category: operational_checklist
@@ -13,6 +13,8 @@ related:
   - governing_docs/amendments/AMD-2026-009.md
   - governing_docs/amendments/AMD-2026-009-ratification-motion.md
   - governing_docs/amendments/AMD-2026-009-merge-deltas-and-first-slice.md
+  - governing_docs/amendments/AMD-2026-009-ADD-001-retrieval-backend-neutrality.md
+  - governing_docs/reviews/amd_2026_009_add_001/round_1/REVIEW_BRIEF.md
   - governing_docs/specifications/GoogleWorkspaceIntegrationGovernance.md
   - governing_docs/specifications/IntentPrimitiveAndExecutionModel.md
   - governing_docs/specifications/ExecutionScopeAndContextBounding.md

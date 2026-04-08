@@ -1,0 +1,20 @@
+# Run dev triangulation package checks when review docs change.
+name: Dev review docs
+
+on:
+  pull_request:
+    paths:
+      - 'docs/reviews/dev_triangulation/**'
+
+jobs:
+  check-dev-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate dev triangulation baseline / topics
+        run: python3 scripts/dev_triangulation_check.py

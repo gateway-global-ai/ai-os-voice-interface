@@ -1,9 +1,9 @@
 /**
- * Audit trail for Workspace control plane (extends governance audit patterns).
+ * Audit trail for Workspace control plane (shell canvas audit channel).
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-import { logGovernanceAudit } from '../governance/governanceAudit';
+import { logShellCanvasAudit } from '../shellCanvas/shellCanvasAudit';
 
 export type WorkspaceAuditPayload = {
   intent: string;
@@ -19,7 +19,7 @@ export type WorkspaceAuditPayload = {
 };
 
 export function logWorkspaceAudit(payload: WorkspaceAuditPayload): void {
-  logGovernanceAudit('workspace_control_plane', {
+  logShellCanvasAudit('workspace_control_plane', {
     subsystem: 'google_workspace',
     ...payload,
   });

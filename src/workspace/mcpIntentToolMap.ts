@@ -160,6 +160,7 @@ export function resolveWorkspaceMcpToolCall(envelope: WorkspaceRoutingEnvelope):
       };
     }
 
+    case 'workspace.drive.list':
     case 'workspace.drive.search':
       return {
         ok: true,
