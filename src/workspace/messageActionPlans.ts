@@ -83,15 +83,15 @@ export function buildDraftReplyPlan(messageId: string, threadId?: string): Execu
   };
 }
 
-export type MessageActionGovernance = {
+export type MessageActionPolicyResult = {
   decision: ExecutionPlanDecision;
   userMessages: string[];
 };
 
-export function runMessageActionGovernance(
+export function runMessageActionPolicy(
   plan: ExecutionPlan,
   mode: 'founder' | 'operator' = 'founder'
-): MessageActionGovernance {
+): MessageActionPolicyResult {
   const evaluation = evaluateExecutionPlan(plan, { actor: MESSAGE_ACTION_ACTOR, mode });
   return {
     decision: evaluation.decision,

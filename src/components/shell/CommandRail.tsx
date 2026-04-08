@@ -24,7 +24,11 @@ type Props = {
   onPTTDown: (e: PointerEvent<HTMLButtonElement>) => void;
   onPTTUp: (e: PointerEvent<HTMLButtonElement>) => void;
   displayStatus: string;
+  /** Secondary line under status (e.g. hold to speak) — primary users only. */
+  displayStatusDetail?: string;
   statusTone: 'ok' | 'error' | 'muted';
+  /** When false, hide canvas intent + activity sub-state (mono debug lines). */
+  showDiagnosticsChrome: boolean;
 };
 
 /** Activity sub-state for the rail debug line (not overall health — use `statusTone` for that). */
@@ -54,7 +58,9 @@ export function CommandRail({
   onPTTDown,
   onPTTUp,
   displayStatus,
+  displayStatusDetail,
   statusTone,
+  showDiagnosticsChrome,
 }: Props) {
   const voicePrimary = rail.mode === 'voice' && rail.primaryAction === 'ptt';
   const chatPrimary = rail.mode === 'chat' && rail.primaryAction === 'send';
@@ -132,7 +138,7 @@ export function CommandRail({
 
         <div className="flex shrink-0 items-center gap-2 md:gap-4">
           <div className="hidden items-center gap-2 border-l border-zinc-200 pl-3 sm:flex md:pl-6">
-            <div className="flex flex-col items-end">
+            <div className="flex flex-col items-end gap-0.5">
               <span className="text-[10px] font-black uppercase tracking-widest text-zinc-300">
                 Status
               </span>
@@ -147,6 +153,11 @@ export function CommandRail({
               >
                 {displayStatus}
               </span>
+              {displayStatusDetail ? (
+                <span className="max-w-[10rem] text-right text-[9px] font-medium leading-snug text-zinc-400">
+                  {displayStatusDetail}
+                </span>
+              ) : null}
             </div>
             <motion.div
               animate={pulseStatusDot ? { opacity: [0.4, 1, 0.4] } : { opacity: 1 }}
@@ -164,7 +175,7 @@ export function CommandRail({
                 }`}
               />
             </motion.div>
-            {rail.intent ? (
+            {showDiagnosticsChrome && rail.intent ? (
               <span
                 className="max-w-[100px] truncate font-mono text-[9px] text-zinc-400"
                 title={rail.intent}
@@ -172,9 +183,11 @@ export function CommandRail({
                 {rail.intent}
               </span>
             ) : null}
-            <span className="hidden font-mono text-[9px] text-zinc-300 lg:inline">
-              {railLabel}
-            </span>
+            {showDiagnosticsChrome ? (
+              <span className="hidden font-mono text-[9px] text-zinc-300 lg:inline">
+                {railLabel}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>

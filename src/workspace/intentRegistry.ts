@@ -17,6 +17,8 @@ export const PHASE_1_WORKSPACE_INTENTS = [
   'workspace.mail.thread.summarize',
   /** Create a Gmail draft reply (draft plane; proposal-gated). */
   'workspace.mail.draft_reply',
+  /** Default Drive hub load — list/search files (empty query = recent / default list per MCP). */
+  'workspace.drive.list',
   'workspace.drive.search',
   'workspace.drive.read',
   'workspace.docs.read',

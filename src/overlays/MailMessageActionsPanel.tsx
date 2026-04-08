@@ -5,19 +5,20 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import type { GovernanceWorkspaceMailRead } from '../governance/loadGovernancePayload';
+import type { WorkspaceMailRead } from '../shellCanvas/loadWorkspacePayload';
 import { runWorkspaceControlPlane } from '../workspace/integrationControlPlane';
 import {
   buildDraftReplyPlan,
   buildSummarizeThreadPlan,
   buildThreadReadPlan,
-  runMessageActionGovernance,
+  runMessageActionPolicy,
 } from '../workspace/messageActionPlans';
 import { runThreadSummarizeGoverned, type ThreadSummaryV1 } from '../workspace/threadSummarize';
 import {
   extractGmailMessageIdFromPayload,
   extractGmailThreadIdFromPayload,
 } from '../workspace/workspaceMcpDisplay';
+import { useDiagnosticsChromeEnabled } from '../shell/DiagnosticsChromeContext';
 
 function ThreadSummaryV1View({ summary }: { summary: ThreadSummaryV1 }) {
   const list = (title: string, items: string[]) =>
@@ -74,6 +75,29 @@ function ActionResultPreview({ data }: { data: unknown }) {
   );
 }
 
+/** Raw MCP payload only when diagnostics chrome is on; otherwise a short primary-safe status line. */
+function MailActionResultPreview({
+  data,
+  showDiagnosticsChrome,
+  primaryStatus,
+}: {
+  data: unknown;
+  showDiagnosticsChrome: boolean;
+  primaryStatus: string;
+}) {
+  if (showDiagnosticsChrome) {
+    return <ActionResultPreview data={data} />;
+  }
+  return (
+    <p
+      className="text-xs text-zinc-700 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2"
+      role="status"
+    >
+      {primaryStatus}
+    </p>
+  );
+}
+
 const BASE_ENVELOPE = {
   actor_type: 'founder' as const,
   tenant_id: 'local',
@@ -85,9 +109,10 @@ export function MailMessageActionsPanel({
   mailRead,
   openMailMessageId,
 }: {
-  mailRead: GovernanceWorkspaceMailRead;
+  mailRead: WorkspaceMailRead;
   openMailMessageId?: string;
 }) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
   const [threadData, setThreadData] = useState<unknown | null>(null);
   const [draftData, setDraftData] = useState<unknown | null>(null);
   const [threadError, setThreadError] = useState<string | null>(null);
@@ -119,14 +144,14 @@ export function MailMessageActionsPanel({
     setThreadError(null);
     setThreadData(null);
     const plan = buildThreadReadPlan(threadId);
-    const gov = runMessageActionGovernance(plan);
-    if (gov.decision === 'block') {
-      setThreadError(gov.userMessages[0] ?? 'Policy blocked this action.');
+    const pol = runMessageActionPolicy(plan);
+    if (pol.decision === 'block') {
+      setThreadError(pol.userMessages[0] ?? 'Policy blocked this action.');
       return;
     }
-    if (gov.decision === 'require_proposal') {
+    if (pol.decision === 'require_proposal') {
       setThreadError(
-        gov.userMessages[0] ?? 'Policy requires confirmation for this thread read — not expected for read-only.',
+        pol.userMessages[0] ?? 'Policy requires confirmation for this thread read — not expected for read-only.',
       );
       return;
     }
@@ -161,14 +186,14 @@ export function MailMessageActionsPanel({
     setSummarizeStructured(null);
     setSummarizeTrace(null);
     const plan = buildSummarizeThreadPlan(threadId);
-    const gov = runMessageActionGovernance(plan);
-    if (gov.decision === 'block') {
-      setSummarizeError(gov.userMessages[0] ?? 'Policy blocked summarization.');
+    const pol = runMessageActionPolicy(plan);
+    if (pol.decision === 'block') {
+      setSummarizeError(pol.userMessages[0] ?? 'Policy blocked summarization.');
       return;
     }
-    if (gov.decision === 'require_proposal') {
+    if (pol.decision === 'require_proposal') {
       setSummarizeError(
-        gov.userMessages[0] ?? 'Policy unexpectedly requires proposal for read-plane summarize.',
+        pol.userMessages[0] ?? 'Policy unexpectedly requires proposal for read-plane summarize.',
       );
       return;
     }
@@ -201,9 +226,9 @@ export function MailMessageActionsPanel({
     setDraftError(null);
     setDraftData(null);
     const plan = buildDraftReplyPlan(messageId, threadId);
-    const gov = runMessageActionGovernance(plan);
-    if (gov.decision === 'block') {
-      setDraftError(gov.userMessages[0] ?? 'Policy blocked this action.');
+    const pol = runMessageActionPolicy(plan);
+    if (pol.decision === 'block') {
+      setDraftError(pol.userMessages[0] ?? 'Policy blocked this action.');
       return;
     }
     setLoading('draft');
@@ -238,11 +263,18 @@ export function MailMessageActionsPanel({
     <div className="rounded-2xl border border-amber-200/80 bg-amber-50/30 p-4 space-y-4 text-sm text-zinc-800">
       <div>
         <p className="font-semibold text-zinc-900">Governed message actions</p>
-        <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
-          Plans are compiled and evaluated with the same policy model as mail search. Thread load uses the extended MCP
-          tool <span className="font-mono text-[11px]">get_gmail_thread_content</span>; drafts use{' '}
-          <span className="font-mono text-[11px]">draft_gmail_message</span> — align args with your server if calls fail.
-        </p>
+        {showDiagnosticsChrome ? (
+          <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
+            Plans are compiled and evaluated with the same policy model as mail search. Thread load uses the extended MCP
+            tool <span className="font-mono text-[11px]">get_gmail_thread_content</span>; drafts use{' '}
+            <span className="font-mono text-[11px]">draft_gmail_message</span> — align args with your server if calls fail.
+          </p>
+        ) : (
+          <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
+            The same safety checks apply as for mail search. Load the full thread to read everything, then draft a reply
+            after you review.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -264,18 +296,31 @@ export function MailMessageActionsPanel({
             {threadError}
           </p>
         ) : null}
-        {threadData != null ? <ActionResultPreview data={threadData} /> : null}
+        {threadData != null ? (
+          <MailActionResultPreview
+            data={threadData}
+            showDiagnosticsChrome={showDiagnosticsChrome}
+            primaryStatus="Thread loaded."
+          />
+        ) : null}
       </div>
 
       <div className="space-y-2 border-t border-amber-200/60 pt-3">
         <p className="text-xs font-medium text-zinc-700">Summarize thread (read / local interpretation)</p>
-        <p className="text-[11px] text-zinc-600 leading-relaxed">
-          Intent <span className="font-mono">workspace.mail.thread.summarize</span> — MCP retrieval +{' '}
-          <span className="font-mono">local.llm.summarize</span> (ThreadSummaryV1 JSON) when Ollama is{' '}
-          <span className="font-mono">running_ready</span>. Invalid JSON →{' '}
-          <span className="font-mono">interpretation_invalid</span>. Fallback:{' '}
-          <span className="font-mono">LOCAL_LLM_FALLBACK</span>.
-        </p>
+        {showDiagnosticsChrome ? (
+          <p className="text-[11px] text-zinc-600 leading-relaxed">
+            Intent <span className="font-mono">workspace.mail.thread.summarize</span> — MCP retrieval +{' '}
+            <span className="font-mono">local.llm.summarize</span> (ThreadSummaryV1 JSON) when Ollama is{' '}
+            <span className="font-mono">running_ready</span>. Invalid JSON →{' '}
+            <span className="font-mono">interpretation_invalid</span>. Fallback:{' '}
+            <span className="font-mono">LOCAL_LLM_FALLBACK</span>.
+          </p>
+        ) : (
+          <p className="text-[11px] text-zinc-600 leading-relaxed">
+            Summarization prefers your on-device interpreter when it is available; otherwise it may use the cloud if you
+            consent below.
+          </p>
+        )}
         <label className="flex items-start gap-2 text-xs text-zinc-700">
           <input
             type="checkbox"
@@ -285,7 +330,7 @@ export function MailMessageActionsPanel({
           />
           <span>
             If local is unavailable, I consent to cloud summarization when the connector is available (policy{' '}
-            <span className="font-mono">proposal</span>).
+            {showDiagnosticsChrome ? <span className="font-mono">proposal</span> : '"proposal"'}).
           </span>
         </label>
         <button
@@ -306,7 +351,7 @@ export function MailMessageActionsPanel({
           </p>
         ) : null}
         {summarizeStructured != null ? <ThreadSummaryV1View summary={summarizeStructured} /> : null}
-        {summarizeTrace != null ? (
+        {summarizeTrace != null && showDiagnosticsChrome ? (
           <details className="rounded-xl border border-zinc-200 bg-zinc-50/80 text-xs text-zinc-600">
             <summary className="cursor-pointer font-medium text-zinc-700 select-none px-3 py-2">
               Operator: readiness, lane trace, raw model output
@@ -353,7 +398,13 @@ export function MailMessageActionsPanel({
             {draftError}
           </p>
         ) : null}
-        {draftData != null ? <ActionResultPreview data={draftData} /> : null}
+        {draftData != null ? (
+          <MailActionResultPreview
+            data={draftData}
+            showDiagnosticsChrome={showDiagnosticsChrome}
+            primaryStatus="Draft saved to Gmail."
+          />
+        ) : null}
       </div>
     </div>
   );

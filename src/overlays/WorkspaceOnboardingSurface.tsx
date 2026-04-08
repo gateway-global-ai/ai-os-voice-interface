@@ -7,6 +7,7 @@ import { motion } from 'motion/react';
 import { Building2, ChevronRight, Loader2, Shield } from 'lucide-react';
 import { GoogleWorkspaceSignInBar } from '../components/workspace/GoogleWorkspaceSignInBar';
 import type { WorkspaceState } from '../shell/workspaceState';
+import { useDiagnosticsChromeEnabled } from '../shell/DiagnosticsChromeContext';
 
 type Props = {
   workspaceState: WorkspaceState;
@@ -23,6 +24,7 @@ export function WorkspaceOnboardingSurface({
   onContinueWithout,
   onClose,
 }: Props) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
   const canConnect =
     workspaceState === 'unknown' || workspaceState === 'error' || workspaceState === 'connecting';
   const showEnvHint = workspaceState === 'not_configured';
@@ -63,9 +65,14 @@ export function WorkspaceOnboardingSurface({
         <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4 text-sm text-zinc-700 space-y-2">
           <p className="font-semibold text-zinc-900">Why connect</p>
           <ul className="list-disc pl-5 space-y-1">
-            <li>Calendar and Workspace tools use the same audited control plane as governance.</li>
+            <li>Calendar and Workspace tools use the same audited integration control plane.</li>
             <li>Your session stays on the AI OS shell — no parallel &quot;app folder&quot; shortcuts.</li>
-            <li>Operators configure <code className="text-xs bg-zinc-200/60 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> for the MCP server.</li>
+            {showDiagnosticsChrome ? (
+              <li>
+                Operators configure{' '}
+                <code className="text-xs bg-zinc-200/60 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> for the MCP server.
+              </li>
+            ) : null}
             <li>
               Use <strong>Sign in with Google</strong> below for MCP OAuth 2.1 — “Connect Workspace” alone does not log
               you into Google.
@@ -83,8 +90,7 @@ export function WorkspaceOnboardingSurface({
             <p className="font-bold">MCP URL not configured</p>
             <p className="mt-1">
               Set <code className="text-xs bg-amber-100 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> in your
-              environment and restart the dev server. You can continue without connecting and return from
-              Governance later.
+              environment and restart the dev server. You can close this panel and return later.
             </p>
           </div>
         ) : null}
@@ -110,10 +116,11 @@ export function WorkspaceOnboardingSurface({
           </button>
           <button
             type="button"
+            title="Skip Workspace connection for now"
             onClick={onContinueWithout}
             className="inline-flex items-center justify-center rounded-2xl border border-zinc-200 bg-white px-6 py-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
           >
-            Continue without connecting
+            Skip for now
           </button>
         </div>
       </div>

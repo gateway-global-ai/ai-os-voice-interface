@@ -31,6 +31,7 @@ export const INTENT_TO_SCOPE_CLASS: Record<Phase1WorkspaceIntent, WorkspaceScope
   'workspace.mail.thread.read': 'workspace.google.read',
   'workspace.mail.thread.summarize': 'workspace.google.read',
   'workspace.mail.draft_reply': 'workspace.google.write',
+  'workspace.drive.list': 'workspace.google.read',
   'workspace.drive.search': 'workspace.google.read',
   'workspace.drive.read': 'workspace.google.read',
   'workspace.docs.read': 'workspace.google.read',

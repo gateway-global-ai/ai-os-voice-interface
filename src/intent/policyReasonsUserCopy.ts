@@ -7,7 +7,7 @@
 export function mapPolicyReasonsToUserCopy(reasons: string[]): string[] {
   return reasons.map((r) => {
     if (r.includes('promotion_blocked')) {
-      return 'This plan is blocked until a governance review clears it.';
+      return 'This plan is blocked until a policy review clears it.';
     }
     if (r.includes('Empty plan')) {
       return 'This action could not be prepared because the plan was empty.';

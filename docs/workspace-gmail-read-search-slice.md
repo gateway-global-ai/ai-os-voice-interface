@@ -2,7 +2,7 @@
 
 This document defines the **next governed Workplace slice** after calendar read: **Gmail search + message read** using the same control-plane → adapter → audit pattern as [`workspace.calendar.list`](./workspace-calendar-read-qa.md).
 
-**Status:** `workspace.mail.search` and **`workspace.mail.read`** are wired on `workspace_mail_hub`: loader in [`loadGovernancePayload.ts`](../src/governance/loadGovernancePayload.ts) (search on every load; read when `mailMessageId` is passed), UI in [`WorkspaceHubSurface.tsx`](../src/overlays/WorkspaceHubSurface.tsx) (`mode: 'mail'`, one primary panel: read when active, else search + “Read one message” id field). `resource_ref.id` flows envelope → control plane → adapter `args`.
+**Status:** `workspace.mail.search` and **`workspace.mail.read`** are wired on `workspace_mail_hub`: loader in [`loadWorkspacePayload.ts`](../src/shellCanvas/loadWorkspacePayload.ts) (search on every load; read when `mailMessageId` is passed), UI in [`WorkspaceHubSurface.tsx`](../src/overlays/WorkspaceHubSurface.tsx) (`mode: 'mail'`, one primary panel: read when active, else search + “Read one message” id field). `resource_ref.id` flows envelope → control plane → adapter `args`.
 
 ## Governance alignment
 

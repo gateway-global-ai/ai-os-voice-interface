@@ -15,9 +15,23 @@ The browser calls **`runWorkspaceControlPlane` → `callWorkspaceMcpAdapter`** o
 
 This repo implements only the **first** row. A Node `workspaceMcpAdapter` / `mcpStreamableHttpClient` lives with the API server that serves **`/api`**, not here.
 
+### Troubleshooting: “MCP initialize did not return Mcp-Session-Id”
+
+Browsers **hide** custom response headers on cross-origin responses unless the MCP (or nginx in front of it) sends **`Access-Control-Expose-Headers`** listing **`mcp-session-id`** (see [MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers)). The adapter reads **`Mcp-Session-Id`** from **`initialize`**; if JavaScript cannot see it, transport setup fails even when the server sent the header.
+
+**Local dev (usual fix):** Use the **same-origin** Vite proxy so the browser talks to `http://localhost:5173`, not directly to `https://mcp…`:
+
+1. Create or edit **`.env.development.local`** (gitignored) in the app root.
+2. Set **`VITE_WORKSPACE_MCP_URL=/__workspace_mcp`** (and keep your real MCP base in `.env.local` for production builds if needed).
+3. Restart **`npm run dev`**.
+
+`vite.config.ts` maps **`/__workspace_mcp`** → **`VITE_WORKSPACE_MCP_PROXY_TARGET`** (default `https://mcp.gatewayglobal.ai`) with path rewrite to **`/googleworkspace`**. No CORS header exposure is required for the browser to read response headers from the **same** origin.
+
+**Hosted MCP without proxy:** Add nginx (or equivalent) **`Access-Control-Expose-Headers: mcp-session-id`** on the MCP vhost. See **`docs/workspace-mcp-nginx-deploy.md`**.
+
 ### FastMCP streamable HTTP — which “session”?
 
-On **FastMCP streamable HTTP**, errors like **“Missing session ID”** refer to the **MCP transport** session, not a React session, not LLM `_meta.session_id`, and not the optional governance field **`session_id`** on **`WorkspaceRoutingEnvelope`**.
+On **FastMCP streamable HTTP**, errors like **“Missing session ID”** refer to the **MCP transport** session, not a React session, not LLM `_meta.session_id`, and not the optional audit **`session_id`** on **`WorkspaceRoutingEnvelope`**.
 
 **Server-expected flow:**
 
@@ -103,7 +117,7 @@ In **this repo**, define **`VITE_*`** in **`.env.local`** (see **`.env.example`*
 |--------|----------------|
 | **Process** | Separate container or systemd unit; **independent** restart/deploy from `ai-os-voice-interface`. |
 | **Listen** | **`127.0.0.1:<port>`** (or private interface only) until you intentionally expose it behind TLS. |
-| **Port** | Any free port (e.g. **8787** or **8000**). Avoid colliding with other local services (this repo’s governance API example uses **8100** in `README.md`). |
+| **Port** | Any free port (e.g. **8787** or **8000**). Avoid colliding with other local services (an optional local documents server example may use **8100** in `README.md`). |
 | **Transport** | **Streamable HTTP** where the upstream supports it; align **`VITE_WORKSPACE_MCP_JSONRPC_PATH`** with the server’s JSON-RPC POST path (default **`/mcp`** in this app). |
 | **Auth model** | **OAuth 2.1 multi-user** and **stateless** mode per upstream docs — suitable for central hosting. Do **not** use **`--single-user`** for production central hosting (see SPEC-007). |
 

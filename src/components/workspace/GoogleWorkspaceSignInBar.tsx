@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { useDiagnosticsChromeEnabled } from '../../shell/DiagnosticsChromeContext';
 import { clearWorkspaceMcpTransportSession, getWorkspaceMcpBearerTokenFromEnv } from '../../workspace/mcpAdapter';
 import {
   clearSessionGoogleAccessToken,
@@ -47,6 +48,7 @@ type Props = {
 };
 
 export function GoogleWorkspaceSignInBar({ onAuthSessionChange }: Props) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
   const clientId = getClientId();
   const [gsiReady, setGsiReady] = useState(false);
   const [signedIn, setSignedIn] = useState(() => hasWorkspaceMcpCredential());
@@ -219,11 +221,20 @@ export function GoogleWorkspaceSignInBar({ onAuthSessionChange }: Props) {
           </>
         )}
       </div>
-      <p className="text-[11px] text-zinc-500 leading-relaxed">
-        “Connect Workspace” only marks this device in local storage; it is <strong>not</strong> Google login. Use the
-        button above so the MCP receives <code className="bg-white/80 px-0.5 rounded">Authorization: Bearer</code>.
-      </p>
-      {lastError ? <p className="text-xs text-red-700 font-mono">{lastError}</p> : null}
+      {showDiagnosticsChrome ? (
+        <p className="text-[11px] text-zinc-500 leading-relaxed">
+          “Connect Workspace” only marks this device in local storage; it is <strong>not</strong> Google login. Use the
+          button above so the MCP receives <code className="bg-white/80 px-0.5 rounded">Authorization: Bearer</code>.
+        </p>
+      ) : (
+        <p className="text-[11px] text-zinc-500 leading-relaxed">
+          “Connect Workspace” only saves a preference on this device. Use <strong>Sign in with Google</strong> so your
+          requests can use your account.
+        </p>
+      )}
+      {lastError ? (
+        <p className={`text-xs text-red-700 ${showDiagnosticsChrome ? 'font-mono' : ''}`}>{lastError}</p>
+      ) : null}
     </div>
   );
 }

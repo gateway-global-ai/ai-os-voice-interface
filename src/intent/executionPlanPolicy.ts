@@ -18,7 +18,7 @@ export interface ExecutionPlanEvaluation {
 
 export interface EvaluateExecutionPlanContext {
   actor: Actor;
-  /** Surface / governance mode — extend per product. */
+  /** Surface mode — extend per product. */
   mode?: 'founder' | 'operator' | 'customer' | 'dev';
 }
 
@@ -34,7 +34,7 @@ export function evaluateExecutionPlan(
   const status = plan.verificationStatus ?? (plan.verified ? 'verified_once' : 'unverified');
 
   if (status === 'promotion_blocked') {
-    reasons.push('Plan is marked promotion_blocked — execution not allowed until governance review.');
+    reasons.push('Plan is marked promotion_blocked — execution not allowed until policy review.');
     return { decision: 'block', reasons };
   }
 

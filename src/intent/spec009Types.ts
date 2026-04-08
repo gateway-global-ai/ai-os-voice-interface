@@ -1,6 +1,6 @@
 /**
  * Canonical types for AIOS-SPEC-009 (Intent Primitive) and §15 (compilation / approval).
- * Single executable interpretation for governance — keep aligned with governing_docs/specifications/IntentPrimitiveAndExecutionModel.md
+ * Single executable interpretation for intent primitives (SPEC-009) — align with governing_docs/specifications/IntentPrimitiveAndExecutionModel.md
  * @license SPDX-License-Identifier: Apache-2.0
  */
 

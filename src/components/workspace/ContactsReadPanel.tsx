@@ -5,16 +5,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import type { GovernanceWorkspaceToolRead } from '../../governance/loadGovernancePayload';
+import type { WorkspaceToolRead } from '../../shellCanvas/loadWorkspacePayload';
 import { runWorkspaceControlPlane } from '../../workspace/integrationControlPlane';
 import { parseContactsListMcpText, type ParsedContactRow } from '../../workspace/contactsMcpParse';
 import { normalizeMcpText } from '../../workspace/workspaceMcpDisplay';
+import { useDiagnosticsChromeEnabled } from '../../shell/DiagnosticsChromeContext';
 
 type Props = {
-  read: GovernanceWorkspaceToolRead;
+  read: WorkspaceToolRead;
 };
 
 export function ContactsReadPanel({ read }: Props) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
   const [contacts, setContacts] = useState<ParsedContactRow[]>([]);
   const [summaryLine, setSummaryLine] = useState<string | null>(null);
   const [nextToken, setNextToken] = useState<string | null>(null);
@@ -80,7 +82,13 @@ export function ContactsReadPanel({ read }: Props) {
           <p className="text-xs text-zinc-600 mt-0.5 leading-relaxed">{summaryLine}</p>
         ) : (
           <p className="text-xs text-zinc-600 mt-0.5 leading-relaxed">
-            Loaded via <span className="font-mono">workspace.contacts.list</span> (People API connections).
+            {showDiagnosticsChrome ? (
+              <>
+                Loaded via <span className="font-mono">workspace.contacts.list</span> (People API connections).
+              </>
+            ) : (
+              'Loaded from your Google contacts.'
+            )}
           </p>
         )}
       </div>
@@ -90,7 +98,9 @@ export function ContactsReadPanel({ read }: Props) {
           {contacts.map((c) => (
             <li key={c.contactId} className="rounded-xl border border-zinc-200/80 bg-white px-3 py-2 text-xs shadow-sm">
               <p className="font-medium text-zinc-900">{c.name?.trim() || '—'}</p>
-              <p className="font-mono text-[10px] text-zinc-500 mt-0.5 break-all">ID: {c.contactId}</p>
+              {showDiagnosticsChrome ? (
+                <p className="font-mono text-[10px] text-zinc-500 mt-0.5 break-all">ID: {c.contactId}</p>
+              ) : null}
               {c.email ? (
                 <p className="text-zinc-700 mt-1">
                   <span className="text-zinc-500">Email:</span> {c.email}
@@ -110,7 +120,11 @@ export function ContactsReadPanel({ read }: Props) {
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-zinc-600">No contact rows parsed from the response; raw payload below.</p>
+        <p className="text-xs text-zinc-600">
+          {showDiagnosticsChrome
+            ? 'No contact rows parsed from the response; raw payload below.'
+            : 'No contacts to show from this list.'}
+        </p>
       )}
 
       {nextToken ? (
@@ -134,14 +148,18 @@ export function ContactsReadPanel({ read }: Props) {
         </p>
       ) : null}
 
-      <details className="text-xs text-zinc-500">
-        <summary className="cursor-pointer font-medium text-zinc-600 select-none">Operator: raw MCP text</summary>
-        <pre className="mt-2 rounded-lg border border-zinc-200 bg-white p-2 max-h-48 overflow-auto text-[11px] text-zinc-700 whitespace-pre-wrap break-words font-mono">
-          {normalizeMcpText(read.data)}
-        </pre>
-      </details>
+      {showDiagnosticsChrome ? (
+        <details className="text-xs text-zinc-500">
+          <summary className="cursor-pointer font-medium text-zinc-600 select-none">Operator: raw MCP text</summary>
+          <pre className="mt-2 rounded-lg border border-zinc-200 bg-white p-2 max-h-48 overflow-auto text-[11px] text-zinc-700 whitespace-pre-wrap break-words font-mono">
+            {normalizeMcpText(read.data)}
+          </pre>
+        </details>
+      ) : null}
 
-      {read.auditId ? <p className="text-[11px] text-zinc-500">Initial load audit: {read.auditId}</p> : null}
+      {read.auditId && showDiagnosticsChrome ? (
+        <p className="text-[11px] text-zinc-500">Initial load audit: {read.auditId}</p>
+      ) : null}
     </div>
   );
 }
