@@ -1,10 +1,10 @@
 /**
- * Google Workspace governed hub (AIOS-SPEC-007 — read plane + extended tool surfaces).
+ * Google Workspace hub (AIOS-SPEC-007 — read plane + extended tool surfaces).
  * MCP calls go through Integration Control Plane — not from this component.
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import {
   AlertTriangle,
@@ -22,14 +22,14 @@ import { GoogleWorkspaceSignInBar } from '../components/workspace/GoogleWorkspac
 import { ContactsReadPanel } from '../components/workspace/ContactsReadPanel';
 import { WorkspaceGoogleCloudApiDisabledHint } from '../components/workspace/WorkspaceGoogleCloudApiDisabledHint';
 import { WorkspaceMcpPseHint } from '../components/workspace/WorkspaceMcpPseHint';
-import type { GovernanceDataPhase } from '../governance/GovernanceCanvasContext';
+import type { WorkspaceDataPhase } from '../shellCanvas/WorkspaceCanvasContext';
 import type {
-  GovernanceWorkspaceCalendarRead,
-  GovernanceWorkspaceMailGovernanceSlice,
-  GovernanceWorkspaceMailRead,
-  GovernanceWorkspaceMailSearch,
-  GovernanceWorkspaceToolRead,
-} from '../governance/loadGovernancePayload';
+  WorkspaceCalendarRead,
+  WorkspaceMailReviewSlice,
+  WorkspaceMailRead,
+  WorkspaceMailSearch,
+  WorkspaceToolRead,
+} from '../shellCanvas/loadWorkspacePayload';
 import type { ExecutionPlanDecision } from '../intent/executionPlanPolicy';
 import {
   type MailSearchRow,
@@ -50,6 +50,7 @@ import {
   parseCalendarEventRowsFromGetEventsText,
 } from '../workspace/calendarMcpParse';
 import { computeCalendarPeriodRange, type CalendarPeriodPreset } from '../workspace/calendarTimeRange';
+import { useDiagnosticsChromeEnabled } from '../shell/DiagnosticsChromeContext';
 
 type WorkspaceSurfaceMode = 'hub' | 'calendar' | 'mail' | 'drive' | 'contacts' | 'search';
 
@@ -66,7 +67,11 @@ function workspaceSurfaceCopy(mode: WorkspaceSurfaceMode): { title: string; subt
         subtitle: 'Search your inbox and open messages. Sign in above so requests include your Google token.',
       };
     case 'drive':
-      return { title: 'Drive', subtitle: 'Search files and folders in Google Drive.' };
+      return {
+        title: 'Drive',
+        subtitle:
+          'List and search files in Google Drive (read-only). Results load through the integration control plane.',
+      };
     case 'contacts':
       return {
         title: 'Contacts',
@@ -81,7 +86,7 @@ function workspaceSurfaceCopy(mode: WorkspaceSurfaceMode): { title: string; subt
     default:
       return {
         title: 'Google Workspace',
-        subtitle: 'Use the tools below with your connected account. Governance routes every action through the control plane.',
+        subtitle: 'Use the tools below with your connected account. The integration control plane routes every action.',
       };
   }
 }
@@ -90,18 +95,18 @@ type Props = {
   /** Hub renders only when Workspace gate is satisfied (connected). */
   connected: boolean;
   mode: WorkspaceSurfaceMode;
-  dataPhase: GovernanceDataPhase;
+  dataPhase: WorkspaceDataPhase;
   dataError?: string | null;
-  /** Calendar read-plane outcome (from `loadGovernancePayload` → control plane). */
-  calendarRead?: GovernanceWorkspaceCalendarRead;
+  /** Calendar read-plane outcome (from `loadWorkspacePayload` → control plane). */
+  calendarRead?: WorkspaceCalendarRead;
   /** Mail search outcome (`workspace.mail.search`). */
-  mailSearch?: GovernanceWorkspaceMailSearch;
+  mailSearch?: WorkspaceMailSearch;
   /** Mail single-message read (`workspace.mail.read`) when `mailMessageId` was supplied to load. */
-  mailRead?: GovernanceWorkspaceMailRead;
-  /** Route message id when a message is open — governed actions use this as a stable id. */
+  mailRead?: WorkspaceMailRead;
+  /** Route message id when a message is open — mail actions use this as a stable id. */
   openMailMessageId?: string;
   /** Drive / Contacts / Web search — same load shape as mail search. */
-  toolRead?: GovernanceWorkspaceToolRead;
+  toolRead?: WorkspaceToolRead;
   onClose: () => void;
   onOpenCalendar?: () => void;
   onOpenMail?: () => void;
@@ -159,7 +164,7 @@ export function WorkspaceHubSurface({
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">
-                Workspace · governed
+                Workspace · read plane
               </p>
               <h2 className="text-2xl md:text-3xl font-bold text-zinc-900 tracking-tight">
                 {surfaceTitle}
@@ -212,7 +217,7 @@ export function WorkspaceHubSurface({
               <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4 text-sm text-zinc-700 leading-relaxed">
                 <p className="font-semibold text-zinc-900 mb-1">What you can do here</p>
                 <p>
-                  Connect Google, then open a tool. Results are loaded through the governed control plane (not raw MCP
+                  Connect Google, then open a tool. Results are loaded through the integration control plane (not raw MCP
                   from the browser UI).
                 </p>
               </div>
@@ -235,8 +240,8 @@ export function WorkspaceHubSurface({
             {mode === 'drive' && toolRead && (
               <WorkspaceToolReadPanel
                 read={toolRead}
-                successTitle="Drive search"
-                successDescription="Files and folders matching your workspace policy query (empty query = default search)."
+                successTitle="Drive list"
+                successDescription="Default load uses workspace.drive.list (search_drive_files with empty query). Narrow with voice intents workspace.drive.search or open a file via workspace.drive.read when wired."
               />
             )}
             {mode === 'contacts' && toolRead && (
@@ -359,7 +364,7 @@ function policyDecisionCaption(d: ExecutionPlanDecision): string {
  * Drill-in card: single deterministic line after the "Why:" label (trust surface).
  * Keep in sync with policy classes — do not vary casually; server reasons live under "More".
  */
-function compactGovernanceWhyLine(slice: GovernanceWorkspaceMailGovernanceSlice): string {
+function compactMailReviewWhyLine(slice: WorkspaceMailReviewSlice): string {
   switch (slice.policyDecision) {
     case 'auto_approve':
       return 'auto-approved because this is a known read-only bounded plan.';
@@ -372,13 +377,44 @@ function compactGovernanceWhyLine(slice: GovernanceWorkspaceMailGovernanceSlice)
   }
 }
 
-function MailGovernanceOutcomeCard({
+/** Plain-language trust line for primary users (no policy jargon). */
+function primaryMailReviewTrustLine(slice: WorkspaceMailReviewSlice): string {
+  switch (slice.policyDecision) {
+    case 'auto_approve':
+      return 'This search is read-only and limited to your account.';
+    case 'require_proposal':
+      return 'Some actions may ask for your confirmation before anything is sent.';
+    case 'block':
+      return 'This request cannot run with the current scope.';
+    default:
+      return '';
+  }
+}
+
+function primaryMailReviewCountLine(slice: WorkspaceMailReviewSlice): ReactNode {
+  if (slice.estimatedResultCount === undefined) {
+    return <span className="text-zinc-600">We could not show a count for this search.</span>;
+  }
+  if (slice.estimatedResultCount === 0) {
+    return <span className="text-zinc-700">No messages matched in this view.</span>;
+  }
+  return (
+    <>
+      <span className="font-semibold text-zinc-900">{slice.estimatedResultCount}</span> unread message
+      {slice.estimatedResultCount === 1 ? '' : 's'} in the last 7 days (matching this scope).
+    </>
+  );
+}
+
+function MailReviewOutcomeCard({
   slice,
   variant = 'full',
 }: {
-  slice: GovernanceWorkspaceMailGovernanceSlice;
+  slice: WorkspaceMailReviewSlice;
   variant?: 'full' | 'compact';
 }) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
+
   const countLine =
     slice.estimatedResultCount !== undefined ? (
       <p className="text-xs text-zinc-700 leading-relaxed">
@@ -421,14 +457,14 @@ function MailGovernanceOutcomeCard({
     </>
   );
 
-  const operatorQuery = (
+  const operatorQuery = showDiagnosticsChrome ? (
     <details className="text-xs text-zinc-500 border-t border-sky-100 pt-2 mt-1">
       <summary className="cursor-pointer font-medium text-zinc-600 select-none">Operator: Gmail query syntax</summary>
       <code className="mt-1 block text-[11px] bg-white/90 px-1.5 py-1 rounded border border-sky-100 text-zinc-800 break-all">
         {slice.gmailQuery}
       </code>
     </details>
-  );
+  ) : null;
 
   const countCompact =
     slice.estimatedResultCount !== undefined ? (
@@ -441,6 +477,18 @@ function MailGovernanceOutcomeCard({
     );
 
   if (variant === 'compact') {
+    if (!showDiagnosticsChrome) {
+      const trust = primaryMailReviewTrustLine(slice);
+      return (
+        <div className="rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/90 to-white px-3 py-2.5 text-xs text-zinc-700 shadow-sm space-y-1.5">
+          <p className="font-semibold text-zinc-900 leading-snug">{slice.intentLabel}</p>
+          <p className="text-zinc-600 leading-relaxed">{slice.expectedOutcome}</p>
+          <p className="leading-relaxed text-zinc-800">{primaryMailReviewCountLine(slice)}</p>
+          {trust ? <p className="text-zinc-600 leading-relaxed">{trust}</p> : null}
+        </div>
+      );
+    }
+
     return (
       <div className="rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/90 to-white px-3 py-2.5 text-xs text-zinc-700 shadow-sm space-y-1.5">
         <p>
@@ -454,10 +502,12 @@ function MailGovernanceOutcomeCard({
           <span className="font-medium text-zinc-600">Count:</span> {countCompact}
         </p>
         <p className="leading-relaxed">
-          <span className="font-medium text-zinc-600">Why:</span> {compactGovernanceWhyLine(slice)}
+          <span className="font-medium text-zinc-600">Why:</span> {compactMailReviewWhyLine(slice)}
         </p>
         <details className="text-zinc-600 pt-0.5">
-          <summary className="cursor-pointer font-medium text-sky-900">More: period, outcome, policy, operator query</summary>
+          <summary className="cursor-pointer font-medium text-sky-900">
+            More: period, outcome, policy, operator query
+          </summary>
           <div className="mt-2 space-y-2 pl-0.5 border-l border-sky-200/80 pl-3">
             <p>
               <span className="font-medium text-zinc-600">Period:</span> {slice.periodLabel}
@@ -485,7 +535,7 @@ function MailGovernanceOutcomeCard({
         dump).
       </p>
       <p className="text-xs text-zinc-600 leading-relaxed">{slice.expectedOutcome}</p>
-      {policyBlock}
+      {showDiagnosticsChrome ? policyBlock : null}
       {countLine}
       {operatorQuery}
     </div>
@@ -549,16 +599,17 @@ function MailSearchRowBody({ row }: { row: MailSearchRow }) {
 function WorkspaceMcpDataView({
   data,
   auditId,
-  governed,
+  hasReviewSlice,
   omitRowList,
 }: {
   data: unknown;
   auditId?: string;
   /** When true, raw text/JSON fallbacks are tucked under operator disclosure (POL-WS-UI). */
-  governed?: boolean;
+  hasReviewSlice?: boolean;
   /** Hide generic row list when a typed primary list (e.g. mail rows) is shown instead. */
   omitRowList?: boolean;
 }) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
   const rows = extractMcpRowArray(data);
   const asString = typeof data === 'string' ? normalizeMcpText(data) : null;
 
@@ -578,15 +629,17 @@ function WorkspaceMcpDataView({
 
   const rawTextBlock =
     asString !== null ? (
-      governed ? (
-        <details className="rounded-xl border border-zinc-200 bg-zinc-50/80 text-xs text-zinc-600">
-          <summary className="cursor-pointer font-medium text-zinc-700 select-none px-3 py-2">
-            Operator: raw text response
-          </summary>
-          <div className="px-3 pb-3 pt-0 text-sm text-zinc-800 whitespace-pre-wrap break-words max-h-80 overflow-y-auto leading-relaxed">
-            {asString}
-          </div>
-        </details>
+      hasReviewSlice ? (
+        showDiagnosticsChrome ? (
+          <details className="rounded-xl border border-zinc-200 bg-zinc-50/80 text-xs text-zinc-600">
+            <summary className="cursor-pointer font-medium text-zinc-700 select-none px-3 py-2">
+              Operator: raw text response
+            </summary>
+            <div className="px-3 pb-3 pt-0 text-sm text-zinc-800 whitespace-pre-wrap break-words max-h-80 overflow-y-auto leading-relaxed">
+              {asString}
+            </div>
+          </details>
+        ) : null
       ) : (
         <div className="rounded-xl border border-zinc-100 bg-white p-4 text-sm text-zinc-800 whitespace-pre-wrap break-words max-h-80 overflow-y-auto leading-relaxed shadow-sm">
           {asString}
@@ -596,15 +649,17 @@ function WorkspaceMcpDataView({
 
   const showGenericRowList = Boolean(!omitRowList && rows && rows.length > 0);
   const rawJsonBlock =
-    showGenericRowList || asString !== null ? null : governed ? (
-      <details className="text-xs bg-zinc-50/80 border border-zinc-200 rounded-xl overflow-hidden">
-        <summary className="cursor-pointer font-medium text-zinc-600 select-none px-3 py-2">
-          Operator: raw transport (JSON)
-        </summary>
-        <pre className="px-3 pb-3 overflow-x-auto max-h-64 text-zinc-800 border-t border-zinc-100 bg-white">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      </details>
+    showGenericRowList || asString !== null ? null : hasReviewSlice ? (
+      showDiagnosticsChrome ? (
+        <details className="text-xs bg-zinc-50/80 border border-zinc-200 rounded-xl overflow-hidden">
+          <summary className="cursor-pointer font-medium text-zinc-600 select-none px-3 py-2">
+            Operator: raw transport (JSON)
+          </summary>
+          <pre className="px-3 pb-3 overflow-x-auto max-h-64 text-zinc-800 border-t border-zinc-100 bg-white">
+            {JSON.stringify(data, null, 2)}
+          </pre>
+        </details>
+      ) : null
     ) : (
       <pre className="text-xs bg-white border border-zinc-100 rounded-xl p-3 overflow-x-auto max-h-64 shadow-sm">
         {JSON.stringify(data, null, 2)}
@@ -616,7 +671,7 @@ function WorkspaceMcpDataView({
       {rowList}
       {!rowList ? rawTextBlock : null}
       {!rowList && asString === null ? rawJsonBlock : null}
-      {auditId ? (
+      {auditId && showDiagnosticsChrome ? (
         <details className="text-[11px] text-zinc-500">
           <summary className="cursor-pointer font-medium text-zinc-600 select-none">Audit reference</summary>
           <p className="mt-1 font-mono break-all">{auditId}</p>
@@ -631,10 +686,12 @@ function WorkspaceToolReadPanel({
   successTitle,
   successDescription,
 }: {
-  read: GovernanceWorkspaceToolRead;
+  read: WorkspaceToolRead;
   successTitle: string;
   successDescription: string;
 }) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
+
   if (read.loadState === 'not_configured') {
     return <WorkspaceNotConfiguredCallout errorMessage={read.errorMessage} auditId={read.auditId} />;
   }
@@ -647,7 +704,9 @@ function WorkspaceToolReadPanel({
         >
           <p className="font-bold">Google sign-in required</p>
           <p className="mt-1">{read.errorMessage ?? 'Sign in with Google first.'}</p>
-          {read.auditId ? <p className="mt-2 text-xs text-amber-800">Audit: {read.auditId}</p> : null}
+          {read.auditId && showDiagnosticsChrome ? (
+            <p className="mt-2 text-xs text-amber-800">Audit: {read.auditId}</p>
+          ) : null}
         </div>
       );
     }
@@ -658,11 +717,15 @@ function WorkspaceToolReadPanel({
       >
         <p className="font-bold">Request failed</p>
         <p className="mt-1">{read.errorMessage ?? 'Unknown error'}</p>
-        <p className="mt-2 text-xs text-red-800">
-          {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
-          {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
-        </p>
-        {read.auditId ? <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p> : null}
+        {showDiagnosticsChrome ? (
+          <p className="mt-2 text-xs text-red-800">
+            {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
+            {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
+          </p>
+        ) : null}
+        {read.auditId && showDiagnosticsChrome ? (
+          <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p>
+        ) : null}
         <WorkspaceGoogleCloudApiDisabledHint message={read.errorMessage} />
         <WorkspaceMcpPseHint message={read.errorMessage} />
         <WorkspaceMcpOAuth21Hint message={read.errorMessage} controlPlaneCode={read.controlPlaneCode} />
@@ -674,7 +737,9 @@ function WorkspaceToolReadPanel({
       <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 text-sm text-zinc-700">
         <p className="font-semibold text-zinc-900 mb-1">No results</p>
         <p>The server returned an empty list or blank text.</p>
-        {read.auditId ? <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
+        {read.auditId && showDiagnosticsChrome ? (
+          <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p>
+        ) : null}
       </div>
     );
   }
@@ -695,8 +760,23 @@ function WorkspaceMcpOAuth21Hint({
   message?: string | null;
   controlPlaneCode?: string | null;
 }) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
+
   if (controlPlaneCode === 'auth_required') return null;
   if (!message || !/oauth|authenticated user|bearer|requires an authenticated/i.test(message)) return null;
+
+  if (!showDiagnosticsChrome) {
+    return (
+      <div className="mt-3 text-xs text-red-900/90 leading-relaxed border-t border-red-200 pt-2">
+        <p>
+          <span className="font-semibold">Try this:</span> use <strong>Sign in with Google</strong> at the top of this
+          panel, then try again. If it still fails, your sign-in may have expired—sign out and sign back in (sessions are
+          short-lived).
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-3 text-xs text-red-900/90 leading-relaxed border-t border-red-200 pt-2 space-y-2">
       <p>
@@ -737,31 +817,43 @@ function WorkspaceNotConfiguredCallout({
   errorMessage?: string | null;
   auditId?: string | null;
 }) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
+
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
       <p className="font-bold flex items-center gap-2">
         <AlertTriangle className="w-4 h-4 shrink-0" />
         Workspace MCP not ready
       </p>
-      <p className="mt-2 text-amber-900/90">
-        Set <code className="text-xs bg-amber-100 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> in{' '}
-        <code className="text-xs bg-amber-100 px-1 rounded">.env.local</code> and restart{' '}
-        <code className="text-xs bg-amber-100 px-1 rounded">npm run dev</code>. OAuth 2.1 MCP does not need a Google
-        email in env for tool args (use <code className="text-xs bg-amber-100 px-1 rounded">Authorization: Bearer</code>{' '}
-        when wired). Legacy single-user: <code className="text-xs bg-amber-100 px-1 rounded">VITE_WORKSPACE_MCP_INCLUDE_USER_EMAIL=true</code>{' '}
-        plus <code className="text-xs bg-amber-100 px-1 rounded">VITE_AIOS_GOOGLE_USER_EMAIL</code>. If a shell var
-        overrides <code className="text-xs bg-amber-100 px-1 rounded">.env</code>, see{' '}
-        <code className="text-xs bg-amber-100 px-1 rounded">.env.example</code>.
-      </p>
-      {errorMessage ? (
+      {showDiagnosticsChrome ? (
+        <p className="mt-2 text-amber-900/90">
+          Set <code className="text-xs bg-amber-100 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> in{' '}
+          <code className="text-xs bg-amber-100 px-1 rounded">.env.local</code> and restart{' '}
+          <code className="text-xs bg-amber-100 px-1 rounded">npm run dev</code>. OAuth 2.1 MCP does not need a Google
+          email in env for tool args (use <code className="text-xs bg-amber-100 px-1 rounded">Authorization: Bearer</code>{' '}
+          when wired). Legacy single-user: <code className="text-xs bg-amber-100 px-1 rounded">VITE_WORKSPACE_MCP_INCLUDE_USER_EMAIL=true</code>{' '}
+          plus <code className="text-xs bg-amber-100 px-1 rounded">VITE_AIOS_GOOGLE_USER_EMAIL</code>. If a shell var
+          overrides <code className="text-xs bg-amber-100 px-1 rounded">.env</code>, see{' '}
+          <code className="text-xs bg-amber-100 px-1 rounded">.env.example</code>.
+        </p>
+      ) : (
+        <p className="mt-2 text-amber-900/90 leading-relaxed">
+          Google Workspace tools are not connected in this build. Ask your administrator to configure the connection, or
+          sign in with Google if the server is already set up.
+        </p>
+      )}
+      {errorMessage && showDiagnosticsChrome ? (
         <p className="mt-2 text-xs font-mono text-amber-950/80 border-t border-amber-200/80 pt-2">{errorMessage}</p>
+      ) : errorMessage && !showDiagnosticsChrome ? (
+        <p className="mt-2 text-xs text-amber-900/90 border-t border-amber-200/80 pt-2 leading-relaxed">{errorMessage}</p>
       ) : null}
-      {auditId ? <p className="mt-2 text-xs text-amber-800">Audit: {auditId}</p> : null}
+      {auditId && showDiagnosticsChrome ? <p className="mt-2 text-xs text-amber-800">Audit: {auditId}</p> : null}
     </div>
   );
 }
 
-function CalendarReadPanel({ read }: { read: GovernanceWorkspaceCalendarRead }) {
+function CalendarReadPanel({ read }: { read: WorkspaceCalendarRead }) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
   const calendars = useMemo(
     () => (read.loadState === 'ok' ? normalizeCalendarListFromMcpPayload(read.data) : []),
     [read.data, read.loadState],
@@ -887,7 +979,9 @@ function CalendarReadPanel({ read }: { read: GovernanceWorkspaceCalendarRead }) 
         >
           <p className="font-bold">Google sign-in required</p>
           <p className="mt-1">{read.errorMessage ?? 'Sign in with Google first, then reload Calendar.'}</p>
-          {read.auditId ? <p className="mt-2 text-xs text-amber-800">Audit: {read.auditId}</p> : null}
+          {read.auditId && showDiagnosticsChrome ? (
+            <p className="mt-2 text-xs text-amber-800">Audit: {read.auditId}</p>
+          ) : null}
         </div>
       );
     }
@@ -898,11 +992,15 @@ function CalendarReadPanel({ read }: { read: GovernanceWorkspaceCalendarRead }) 
       >
         <p className="font-bold">Calendar read failed</p>
         <p className="mt-1">{read.errorMessage ?? 'Unknown error'}</p>
-        <p className="mt-2 text-xs text-red-800">
-          {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
-          {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
-        </p>
-        {read.auditId ? <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p> : null}
+        {showDiagnosticsChrome ? (
+          <p className="mt-2 text-xs text-red-800">
+            {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
+            {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
+          </p>
+        ) : null}
+        {read.auditId && showDiagnosticsChrome ? (
+          <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p>
+        ) : null}
         <WorkspaceMcpOAuth21Hint message={read.errorMessage} controlPlaneCode={read.controlPlaneCode} />
       </div>
     );
@@ -913,7 +1011,9 @@ function CalendarReadPanel({ read }: { read: GovernanceWorkspaceCalendarRead }) 
       <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 text-sm text-zinc-700">
         <p className="font-semibold text-zinc-900 mb-1">No calendars (empty)</p>
         <p>The MCP adapter returned an empty list. This is distinct from a load failure.</p>
-        {read.auditId ? <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
+        {read.auditId && showDiagnosticsChrome ? (
+          <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p>
+        ) : null}
       </div>
     );
   }
@@ -931,12 +1031,18 @@ function CalendarReadPanel({ read }: { read: GovernanceWorkspaceCalendarRead }) 
       <div className="border-t border-emerald-200/60 pt-3 space-y-3">
         <div>
           <p className="text-xs font-medium text-emerald-900">Events in a bounded window</p>
-          <p className="text-[11px] text-zinc-600 leading-relaxed mt-0.5">
-            Intent <span className="font-mono">workspace.calendar.events.list</span> → MCP{' '}
-            <span className="font-mono">get_events</span> with <span className="font-mono">time_min</span> /{' '}
-            <span className="font-mono">time_max</span>. Pick a calendar and period, then load. Click an event for
-            details (<span className="font-mono">workspace.calendar.get</span>, same calendar).
-          </p>
+          {showDiagnosticsChrome ? (
+            <p className="text-[11px] text-zinc-600 leading-relaxed mt-0.5">
+              Intent <span className="font-mono">workspace.calendar.events.list</span> → MCP{' '}
+              <span className="font-mono">get_events</span> with <span className="font-mono">time_min</span> /{' '}
+              <span className="font-mono">time_max</span>. Pick a calendar and period, then load. Click an event for
+              details (<span className="font-mono">workspace.calendar.get</span>, same calendar).
+            </p>
+          ) : (
+            <p className="text-[11px] text-zinc-600 leading-relaxed mt-0.5">
+              Choose a calendar and time range, then load events. Tap an event to see details.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 items-end">
@@ -983,7 +1089,9 @@ function CalendarReadPanel({ read }: { read: GovernanceWorkspaceCalendarRead }) 
         {eventsError ? (
           <p className="text-xs text-red-800" role="alert">
             {eventsError}
-            {eventsAuditId ? <span className="block mt-1 font-mono text-red-900/80">Audit: {eventsAuditId}</span> : null}
+            {eventsAuditId && showDiagnosticsChrome ? (
+              <span className="block mt-1 font-mono text-red-900/80">Audit: {eventsAuditId}</span>
+            ) : null}
           </p>
         ) : null}
 
@@ -998,23 +1106,30 @@ function CalendarReadPanel({ read }: { read: GovernanceWorkspaceCalendarRead }) 
                   className="w-full text-left rounded-md px-2 py-1.5 text-xs text-zinc-800 hover:bg-emerald-50 border border-transparent hover:border-emerald-200"
                 >
                   <span className="font-medium text-zinc-900">{row.summary}</span>
-                  <span className="block font-mono text-[10px] text-zinc-500 truncate">{row.id}</span>
+                  {showDiagnosticsChrome ? (
+                    <span className="block font-mono text-[10px] text-zinc-500 truncate">{row.id}</span>
+                  ) : null}
                 </button>
               </li>
             ))}
           </ul>
         ) : null}
 
-        {eventsRawText != null && eventRows.length === 0 ? (
+        {eventsRawText != null && eventRows.length === 0 && showDiagnosticsChrome ? (
           <pre className="text-[11px] bg-white border border-zinc-200 rounded-lg p-2 max-h-48 overflow-auto whitespace-pre-wrap text-zinc-700">
             {eventsRawText}
           </pre>
+        ) : null}
+        {eventsRawText != null && eventRows.length === 0 && !showDiagnosticsChrome ? (
+          <p className="text-[11px] text-zinc-600">We could not turn this response into a simple event list.</p>
         ) : null}
 
         {detailError ? (
           <p className="text-xs text-red-800" role="alert">
             {detailError}
-            {detailAuditId ? <span className="block mt-1 font-mono text-red-900/80">Audit: {detailAuditId}</span> : null}
+            {detailAuditId && showDiagnosticsChrome ? (
+              <span className="block mt-1 font-mono text-red-900/80">Audit: {detailAuditId}</span>
+            ) : null}
           </p>
         ) : null}
         {detailData != null ? (
@@ -1029,27 +1144,29 @@ function CalendarReadPanel({ read }: { read: GovernanceWorkspaceCalendarRead }) 
           </p>
         ) : null}
 
-        <details className="text-[11px] text-zinc-600">
-          <summary className="cursor-pointer font-medium text-zinc-700">Advanced: paste event id</summary>
-          <div className="mt-2 flex flex-wrap gap-2 items-center">
-            <input
-              type="text"
-              value={manualEventId}
-              onChange={(e) => setManualEventId(e.target.value)}
-              placeholder="Event id"
-              className="min-w-[12rem] flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs font-mono text-zinc-900"
-              aria-label="Calendar event id (manual)"
-            />
-            <button
-              type="button"
-              disabled={detailLoading}
-              onClick={() => loadManualEventId()}
-              className="rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-600 disabled:opacity-50"
-            >
-              Load
-            </button>
-          </div>
-        </details>
+        {showDiagnosticsChrome ? (
+          <details className="text-[11px] text-zinc-600">
+            <summary className="cursor-pointer font-medium text-zinc-700">Advanced: paste event id</summary>
+            <div className="mt-2 flex flex-wrap gap-2 items-center">
+              <input
+                type="text"
+                value={manualEventId}
+                onChange={(e) => setManualEventId(e.target.value)}
+                placeholder="Event id"
+                className="min-w-[12rem] flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs font-mono text-zinc-900"
+                aria-label="Calendar event id (manual)"
+              />
+              <button
+                type="button"
+                disabled={detailLoading}
+                onClick={() => loadManualEventId()}
+                className="rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-600 disabled:opacity-50"
+              >
+                Load
+              </button>
+            </div>
+          </details>
+        ) : null}
       </div>
     </div>
   );
@@ -1059,16 +1176,17 @@ function MailSearchPanel({
   read,
   onPickMessageId,
 }: {
-  read: GovernanceWorkspaceMailSearch;
+  read: WorkspaceMailSearch;
   onPickMessageId?: (messageId: string) => void;
 }) {
-  const gov = read.governanceSlice;
-  const governed = Boolean(gov);
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
+  const mr = read.mailReviewSlice;
+  const hasReviewSlice = Boolean(mr);
 
   if (read.loadState === 'not_configured') {
     return (
       <div className="space-y-3">
-        {gov ? <MailGovernanceOutcomeCard slice={gov} /> : null}
+        {mr ? <MailReviewOutcomeCard slice={mr} /> : null}
         <WorkspaceNotConfiguredCallout errorMessage={read.errorMessage} auditId={read.auditId} />
       </div>
     );
@@ -1078,32 +1196,38 @@ function MailSearchPanel({
     if (read.controlPlaneCode === 'auth_required') {
       return (
         <div className="space-y-3">
-          {gov ? <MailGovernanceOutcomeCard slice={gov} /> : null}
+          {mr ? <MailReviewOutcomeCard slice={mr} /> : null}
           <div
             role="alert"
             className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
           >
             <p className="font-bold">Google sign-in required</p>
             <p className="mt-1">{read.errorMessage ?? 'Sign in with Google first, then reload Mail.'}</p>
-            {read.auditId ? <p className="mt-2 text-xs text-amber-800">Audit: {read.auditId}</p> : null}
+            {read.auditId && showDiagnosticsChrome ? (
+              <p className="mt-2 text-xs text-amber-800">Audit: {read.auditId}</p>
+            ) : null}
           </div>
         </div>
       );
     }
     return (
       <div className="space-y-3">
-        {gov ? <MailGovernanceOutcomeCard slice={gov} /> : null}
+        {mr ? <MailReviewOutcomeCard slice={mr} /> : null}
         <div
           role="alert"
           className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950"
         >
           <p className="font-bold">Mail search failed</p>
           <p className="mt-1">{read.errorMessage ?? 'Unknown error'}</p>
-          <p className="mt-2 text-xs text-red-800">
-            {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
-            {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
-          </p>
-          {read.auditId ? <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p> : null}
+          {showDiagnosticsChrome ? (
+            <p className="mt-2 text-xs text-red-800">
+              {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
+              {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
+            </p>
+          ) : null}
+          {read.auditId && showDiagnosticsChrome ? (
+            <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p>
+          ) : null}
           <WorkspaceMcpOAuth21Hint message={read.errorMessage} controlPlaneCode={read.controlPlaneCode} />
         </div>
       </div>
@@ -1113,15 +1237,17 @@ function MailSearchPanel({
   if (read.loadState === 'empty') {
     return (
       <div className="space-y-3">
-        {gov ? <MailGovernanceOutcomeCard slice={gov} /> : null}
+        {mr ? <MailReviewOutcomeCard slice={mr} /> : null}
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 text-sm text-zinc-700">
           <p className="font-semibold text-zinc-900 mb-1">No messages (empty)</p>
           <p>
-            {governed
+            {hasReviewSlice
               ? 'No unread messages matched this scope in the last 7 days (or the adapter returned an empty list).'
               : 'The MCP adapter returned an empty result. This is distinct from a load failure.'}
           </p>
-          {read.auditId ? <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
+          {read.auditId && showDiagnosticsChrome ? (
+            <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p>
+          ) : null}
         </div>
       </div>
     );
@@ -1132,22 +1258,28 @@ function MailSearchPanel({
 
   const normalizedRows = normalizeMailSearchRows(read.data);
   const structuredPrimary =
-    governed && mailSearchRowsHaveClickTargets(normalizedRows) && normalizedRows.length > 0;
+    hasReviewSlice && mailSearchRowsHaveClickTargets(normalizedRows) && normalizedRows.length > 0;
 
   return (
     <div className="space-y-3">
-      {gov ? <MailGovernanceOutcomeCard slice={gov} /> : null}
+      {mr ? <MailReviewOutcomeCard slice={mr} /> : null}
       <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-4 text-sm text-zinc-800 space-y-3">
         <div>
           <p className="font-semibold text-emerald-900">
-            {governed ? 'Messages in scope' : 'Inbox search'}
+            {hasReviewSlice ? 'Messages in scope' : 'Inbox search'}
           </p>
           <p className="text-xs text-zinc-600 mt-0.5 leading-relaxed">
-            {governed
+            {hasReviewSlice
               ? structuredPrimary
-                ? 'Select a message to open it. Raw transport stays under Operator.'
-                : 'Structured rows were not detected; showing generic summary. Use Advanced to paste an id if needed.'
-              : 'Recent messages (default query). Tap an id below to load the full message.'}
+                ? showDiagnosticsChrome
+                  ? 'Select a message to open it. Raw transport stays under Operator.'
+                  : 'Select a message to open it.'
+                : showDiagnosticsChrome
+                  ? 'Structured rows were not detected; showing generic summary. Use Advanced to paste an id if needed.'
+                  : 'We could not show a formatted list. Try another search or open a message another way.'
+              : showDiagnosticsChrome
+                ? 'Recent messages (default query). Tap an id below to load the full message.'
+                : 'Recent messages from your search. Tap a result to open it.'}
           </p>
         </div>
         {structuredPrimary ? (
@@ -1156,10 +1288,10 @@ function MailSearchPanel({
         <WorkspaceMcpDataView
           data={read.data}
           auditId={read.auditId}
-          governed={governed}
+          hasReviewSlice={hasReviewSlice}
           omitRowList={structuredPrimary}
         />
-        {!structuredPrimary && quickIds.length > 0 && onPickMessageId ? (
+        {!structuredPrimary && quickIds.length > 0 && onPickMessageId && showDiagnosticsChrome ? (
           <div className="flex flex-wrap gap-2 pt-1">
             {quickIds.slice(0, 12).map((id) => (
               <button
@@ -1186,20 +1318,21 @@ function MailMailModePanels({
   onReadMail,
   onClearMailRead,
 }: {
-  mailSearch: GovernanceWorkspaceMailSearch;
-  mailRead?: GovernanceWorkspaceMailRead;
+  mailSearch: WorkspaceMailSearch;
+  mailRead?: WorkspaceMailRead;
   openMailMessageId?: string;
   onReadMail?: (messageId: string) => void;
   onClearMailRead?: () => void;
 }) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
   const [draftId, setDraftId] = useState('');
 
   return (
     <div className="space-y-4">
       {mailRead ? (
         <div className="space-y-3">
-          {mailSearch.governanceSlice ? (
-            <MailGovernanceOutcomeCard slice={mailSearch.governanceSlice} variant="compact" />
+          {mailSearch.mailReviewSlice ? (
+            <MailReviewOutcomeCard slice={mailSearch.mailReviewSlice} variant="compact" />
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
             {onClearMailRead ? (
@@ -1234,35 +1367,37 @@ function MailMailModePanels({
       </div>
 
       {!mailRead && onReadMail ? (
-        mailSearch.governanceSlice ? (
-          <details className="rounded-2xl border border-zinc-200 bg-zinc-50/60 text-sm text-zinc-700">
-            <summary className="cursor-pointer font-medium text-zinc-800 px-4 py-3 select-none">
-              Advanced: paste message id
-            </summary>
-            <div className="px-4 pb-4 pt-0 space-y-2 border-t border-zinc-100">
-              <p className="text-xs text-zinc-600 leading-relaxed">
-                Prefer shortcuts from the list above. Paste a Gmail message id only if you already have it.
-              </p>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <input
-                  type="text"
-                  value={draftId}
-                  onChange={(e) => setDraftId(e.target.value)}
-                  placeholder="Message id"
-                  className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
-                />
-                <button
-                  type="button"
-                  disabled={!draftId.trim()}
-                  onClick={() => onReadMail(draftId.trim())}
-                  className="shrink-0 rounded-xl bg-zinc-700 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-600 disabled:opacity-40"
-                >
-                  Load message
-                </button>
+        mailSearch.mailReviewSlice ? (
+          showDiagnosticsChrome ? (
+            <details className="rounded-2xl border border-zinc-200 bg-zinc-50/60 text-sm text-zinc-700">
+              <summary className="cursor-pointer font-medium text-zinc-800 px-4 py-3 select-none">
+                Advanced: paste message id
+              </summary>
+              <div className="px-4 pb-4 pt-0 space-y-2 border-t border-zinc-100">
+                <p className="text-xs text-zinc-600 leading-relaxed">
+                  Prefer shortcuts from the list above. Paste a Gmail message id only if you already have it.
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <input
+                    type="text"
+                    value={draftId}
+                    onChange={(e) => setDraftId(e.target.value)}
+                    placeholder="Message id"
+                    className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+                  />
+                  <button
+                    type="button"
+                    disabled={!draftId.trim()}
+                    onClick={() => onReadMail(draftId.trim())}
+                    className="shrink-0 rounded-xl bg-zinc-700 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-600 disabled:opacity-40"
+                  >
+                    Load message
+                  </button>
+                </div>
               </div>
-            </div>
-          </details>
-        ) : (
+            </details>
+          ) : null
+        ) : showDiagnosticsChrome ? (
           <div className="rounded-2xl border border-sky-200/80 bg-sky-50/40 p-4 space-y-2">
             <p className="text-sm font-medium text-zinc-900">Read one message</p>
             <p className="text-xs text-zinc-600 leading-relaxed">
@@ -1286,13 +1421,15 @@ function MailMailModePanels({
               </button>
             </div>
           </div>
-        )
+        ) : null
       ) : null}
     </div>
   );
 }
 
-function MailReadPanel({ read }: { read: GovernanceWorkspaceMailRead }) {
+function MailReadPanel({ read }: { read: WorkspaceMailRead }) {
+  const showDiagnosticsChrome = useDiagnosticsChromeEnabled();
+
   if (read.loadState === 'not_configured') {
     return <WorkspaceNotConfiguredCallout errorMessage={read.errorMessage} auditId={read.auditId} />;
   }
@@ -1306,7 +1443,9 @@ function MailReadPanel({ read }: { read: GovernanceWorkspaceMailRead }) {
         >
           <p className="font-bold">Google sign-in required</p>
           <p className="mt-1">{read.errorMessage ?? 'Sign in with Google first, then load the message again.'}</p>
-          {read.auditId ? <p className="mt-2 text-xs text-amber-800">Audit: {read.auditId}</p> : null}
+          {read.auditId && showDiagnosticsChrome ? (
+            <p className="mt-2 text-xs text-amber-800">Audit: {read.auditId}</p>
+          ) : null}
         </div>
       );
     }
@@ -1317,11 +1456,15 @@ function MailReadPanel({ read }: { read: GovernanceWorkspaceMailRead }) {
       >
         <p className="font-bold">Message read failed</p>
         <p className="mt-1">{read.errorMessage ?? 'Unknown error'}</p>
-        <p className="mt-2 text-xs text-red-800">
-          {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
-          {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
-        </p>
-        {read.auditId ? <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p> : null}
+        {showDiagnosticsChrome ? (
+          <p className="mt-2 text-xs text-red-800">
+            {read.controlPlaneCode ? `Control plane: ${read.controlPlaneCode}` : null}
+            {read.adapterCode ? ` · Adapter: ${read.adapterCode}` : null}
+          </p>
+        ) : null}
+        {read.auditId && showDiagnosticsChrome ? (
+          <p className="mt-2 text-xs font-mono text-red-900/80">Audit: {read.auditId}</p>
+        ) : null}
         <WorkspaceMcpOAuth21Hint message={read.errorMessage} controlPlaneCode={read.controlPlaneCode} />
       </div>
     );
@@ -1332,7 +1475,9 @@ function MailReadPanel({ read }: { read: GovernanceWorkspaceMailRead }) {
       <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 text-sm text-zinc-700">
         <p className="font-semibold text-zinc-900 mb-1">Empty message payload</p>
         <p>Adapter returned success but no readable body was detected (heuristic).</p>
-        {read.auditId ? <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p> : null}
+        {read.auditId && showDiagnosticsChrome ? (
+          <p className="mt-2 text-xs text-zinc-500">Audit: {read.auditId}</p>
+        ) : null}
       </div>
     );
   }

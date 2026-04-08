@@ -4,7 +4,7 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-import type { CanvasView } from '../governance/canvasTypes';
+import type { CanvasView } from '../shellCanvas/canvasTypes';
 import type { WorkspaceScopeClass } from './types';
 
 export type WorkspaceSurfaceMode = 'public' | 'founder' | 'operator' | 'customer';

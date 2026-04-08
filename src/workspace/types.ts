@@ -1,12 +1,12 @@
 /**
- * Google Workspace governed integration — routing types (AIOS-SPEC-007).
+ * Google Workspace integration — routing types (AIOS-SPEC-007).
  * Layer 2 intent → exactly one Layer 1 scope class (see scopeClasses.ts).
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
 import type { ExecutionScopeEnvelope } from '../scope/executionScopeTypes';
 
-/** Layer 1 — canonical governance scope classes (policy / risk). */
+/** Layer 1 — canonical policy scope classes (risk / capability). */
 export type WorkspaceScopeClass =
   | 'workspace.google.read'
   | 'workspace.google.write'

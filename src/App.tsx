@@ -8,6 +8,7 @@ import {
   useEffect,
   useRef,
   useMemo,
+  useCallback,
   FormEvent,
   type MutableRefObject,
   type PointerEvent,
@@ -16,11 +17,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Eye, 
   User,
-  LogIn,
-  UserPlus,
   Settings,
   Building2,
-  FileText,
   Table,
   Presentation,
   Calendar,
@@ -37,33 +35,40 @@ import {
   UserCheck
 } from 'lucide-react';
 import { GoogleGenAI, Modality } from "@google/genai";
-import { GovernanceDocumentListSurface } from './overlays/GovernanceDocumentListSurface';
-import {
-  DiscussDocumentsSurface,
-  GovernanceHubSurface,
-  PlanningAssistantSurface,
-  ResearchAssistantSurface,
-  ReviewDocsSurface,
-} from './overlays/GovernanceWorkSurfaces';
-import { DocumentViewerOverlay } from './overlays/DocumentViewer';
-import { ConflictScanOverlay } from './overlays/ConflictScan';
-import { ComplianceCheckOverlay } from './overlays/ComplianceCheck';
-import { LifecyclePanelOverlay } from './overlays/LifecyclePanel';
-import { AmendmentHubSurface } from './overlays/AmendmentHubSurface';
-import { AmendmentWorkflowSurface } from './overlays/AmendmentWorkflowSurface';
-import { ActionPlanReviewSurface } from './overlays/ActionPlanReviewSurface';
 import { WorkspaceHubSurface } from './overlays/WorkspaceHubSurface';
 import { WorkspaceOnboardingSurface } from './overlays/WorkspaceOnboardingSurface';
 import { ApiHealthOverlay } from './overlays/ApiHealthOverlay';
-import { stripIntentLineForDisplay } from './governance/intentParse';
-import { useGovernanceCanvas } from './governance/GovernanceCanvasContext';
+import { stripIntentLineForDisplay } from './shellCanvas/intentParse';
+import { logShellCanvasAudit } from './shellCanvas/shellCanvasAudit';
+import { useWorkspaceCanvas } from './shellCanvas/WorkspaceCanvasContext';
+import { deriveWorkspaceIntentForDisclosure } from './shellCanvas/deriveWorkspaceIntentForDisclosure';
+import { resolvedIntentRequiresLocalModel } from './core/policy/localInterpretationRequired';
 import { CommandRail, type CommandRailState } from './components/shell/CommandRail';
 import { ShellIdentityBar } from './components/shell/ShellIdentityBar';
+import { ShellVoiceIdlePanel } from './components/shell/ShellVoiceIdlePanel';
 import { fetchLocalModelReadiness } from './api/localModelClient';
 import type { LocalModelReadiness } from './local-llm/types';
 import { routeShellAgentText } from './shell/shellIntentRouter';
-import { resolveWorkspaceState, setWorkspaceUserConnected } from './shell/workspaceState';
+import { resolveWorkspaceState, setWorkspaceUserConnected, shouldShowWorkspaceHub } from './shell/workspaceState';
 import { ScopeMetricsDevHud } from './dev/ScopeMetricsDevHud';
+import { useShellState } from './shell/ShellStateContext';
+import {
+  tryParseShellStateCommand,
+  shellStateCommandAck,
+} from './shell/shellStateCommands';
+import { readInterimShellAuthority } from './shell/shellAuthority';
+import {
+  readSessionEntryClassification,
+  markSessionEntryEngaged,
+  type SessionEntryClassification,
+} from './shell/sessionEntryClassification';
+import {
+  applyShellNavigationAction,
+  getShellNavigationDenialMessage,
+  shellStateCommandToNavigationAction,
+  tryApplyShellNavigationAction,
+  type ShellApplyHandlers,
+} from './shell/shellNavigationApply';
 
 type SystemStatus =
   | "connected"
@@ -83,7 +88,7 @@ type AppMode =
   | "intent_settings"
   | "api_health";
 
-/** Governance uses canvas state (intent outputs), not AppMode — see govCanvas below. */
+/** Workspace canvas uses `workspaceCanvas` state (intent outputs), not AppMode. */
 
 interface Message {
   id: string;
@@ -651,17 +656,22 @@ const CrystalOverlay = ({ onClose }: { onClose: () => void }) => (
     <div className="mb-8 flex justify-center">
       <div className="w-16 h-1 bg-emerald-500/20 rounded-full" />
     </div>
-    <h2 className="text-4xl font-bold text-zinc-900 mb-6 tracking-tight">Welcome to AI OS</h2>
-    <p className="text-zinc-600 text-lg leading-relaxed mb-10 max-w-lg mx-auto">
-      AI OS is an intent-driven application that is primarily voice-driven. 
-      If you are unable to use your microphone, you can use this mode to display menu options, 
-      helper overlays, and visual content.
+    <h2 className="text-2xl md:text-3xl font-bold text-zinc-900 mb-4 tracking-tight">Visual mode</h2>
+    <p className="text-zinc-600 text-sm md:text-base leading-relaxed mb-4 max-w-lg mx-auto">
+      The shell is voice-first: speak or type here, use Menu for settings, and open Google Workspace only when you
+      need it — it stays subordinate to the shell.
+    </p>
+    <p className="text-zinc-500 text-sm leading-relaxed mb-8 max-w-lg mx-auto">
+      This screen is optional. Use it when you want a larger layout; most day-to-day use stays in the voice shell.
+      If your browser cannot use the microphone, switch to <strong className="text-zinc-700">Chat</strong> (bottom
+      left) to type instead.
     </p>
     <button 
+      type="button"
       onClick={onClose}
       className="px-10 py-4 bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl shadow-emerald-500/20"
     >
-      Get Started
+      Continue in voice
     </button>
   </motion.div>
 );
@@ -673,10 +683,9 @@ const MenuOverlay = ({
   onOpenApiHealth,
   onToggleVisual,
   onOpenWorkspaceGate,
-  onOpenGovernance,
   currentMode,
-  governanceCanvasOpen,
   workspaceSurfaceOpen,
+  showDiagnosticsChrome,
 }: { 
   onOpenVoiceSettings: () => void; 
   onOpenDISCSettings: () => void;
@@ -684,10 +693,9 @@ const MenuOverlay = ({
   onOpenApiHealth: () => void;
   onToggleVisual: () => void;
   onOpenWorkspaceGate: () => void;
-  onOpenGovernance: () => void;
   currentMode: string;
-  governanceCanvasOpen: boolean;
   workspaceSurfaceOpen: boolean;
+  showDiagnosticsChrome: boolean;
 }) => (
   <motion.div 
     initial={{ opacity: 0, y: 20 }}
@@ -700,13 +708,13 @@ const MenuOverlay = ({
         <Settings className="w-6 h-6 text-emerald-600" />
       </div>
       <div>
-        <h2 className="text-xl font-bold text-zinc-900 tracking-tight">System Options</h2>
-        <p className="text-zinc-500 text-sm">Manage your AI OS experience</p>
+        <h2 className="text-xl font-bold text-zinc-900 tracking-tight">Menu</h2>
+        <p className="text-zinc-500 text-sm">Shell settings and optional tools</p>
       </div>
     </div>
 
     <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <div 
           onClick={onToggleVisual}
           className={`p-4 rounded-2xl border transition-all cursor-pointer group ${currentMode === 'visual' ? 'bg-emerald-50 border-emerald-200' : 'bg-zinc-50 border-zinc-100 hover:bg-zinc-100'}`}
@@ -726,18 +734,7 @@ const MenuOverlay = ({
             <Building2 className={`w-4 h-4 ${workspaceSurfaceOpen ? 'text-emerald-600' : 'text-zinc-400 group-hover:text-emerald-600'}`} />
             <h3 className={`text-sm font-semibold transition-colors ${workspaceSurfaceOpen ? 'text-emerald-600' : 'text-zinc-900'}`}>Workspace</h3>
           </div>
-          <p className="text-[10px] text-zinc-500 leading-tight">Google Workspace (governed gate)</p>
-        </div>
-
-        <div 
-          onClick={onOpenGovernance}
-          className={`p-4 rounded-2xl border transition-all cursor-pointer group sm:col-span-1 col-span-2 ${governanceCanvasOpen ? 'bg-emerald-50 border-emerald-200' : 'bg-zinc-50 border-zinc-100 hover:bg-zinc-100'}`}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <FileText className={`w-4 h-4 ${governanceCanvasOpen ? 'text-emerald-600' : 'text-zinc-400 group-hover:text-emerald-600'}`} />
-            <h3 className={`text-sm font-semibold transition-colors ${governanceCanvasOpen ? 'text-emerald-600' : 'text-zinc-900'}`}>Governance</h3>
-          </div>
-          <p className="text-[10px] text-zinc-500 leading-tight">Intent surfaces — documents, compliance</p>
+          <p className="text-[10px] text-zinc-500 leading-tight">Google Workspace (read plane)</p>
         </div>
       </div>
 
@@ -765,27 +762,23 @@ const MenuOverlay = ({
         <p className="text-zinc-500 text-xs mt-1">Define identity and objectives</p>
       </div>
 
-      <div 
-        onClick={onOpenApiHealth}
-        className="p-4 rounded-2xl bg-zinc-50 border border-zinc-100 hover:bg-zinc-100 transition-all cursor-pointer group"
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <Activity className="w-4 h-4 text-zinc-400 group-hover:text-emerald-600" />
-          <h3 className="text-zinc-900 font-semibold group-hover:text-emerald-600 transition-colors">API health</h3>
+      {showDiagnosticsChrome ? (
+        <div 
+          onClick={onOpenApiHealth}
+          className="p-4 rounded-2xl bg-zinc-50 border border-zinc-100 hover:bg-zinc-100 transition-all cursor-pointer group"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <Activity className="w-4 h-4 text-zinc-400 group-hover:text-emerald-600" />
+            <h3 className="text-zinc-900 font-semibold group-hover:text-emerald-600 transition-colors">API health</h3>
+          </div>
+          <p className="text-zinc-500 text-xs mt-1">Test Gemini, OpenAI, DeepSeek</p>
         </div>
-        <p className="text-zinc-500 text-xs mt-1">Test Gemini, OpenAI, DeepSeek & Governance API</p>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-3 pt-6 mt-4 border-t border-zinc-100">
-        <button className="flex items-center justify-center gap-2 p-4 rounded-2xl bg-emerald-500 text-white font-bold hover:bg-emerald-400 transition-all hover:scale-[1.02] active:scale-[0.98]">
-          <LogIn className="w-4 h-4" />
-          Login
-        </button>
-        <button className="flex items-center justify-center gap-2 p-4 rounded-2xl bg-zinc-100 text-zinc-900 font-bold hover:bg-zinc-200 border border-zinc-200 transition-all hover:scale-[1.02] active:scale-[0.98]">
-          <UserPlus className="w-4 h-4" />
-          Join
-        </button>
-      </div>
+      ) : null}
+
+      <p className="pt-6 mt-4 border-t border-zinc-100 text-center text-[11px] text-zinc-500 leading-relaxed">
+        There is no separate AI OS account. For Google Workspace, sign in when you open Workspace from the options
+        above (your administrator configures access).
+      </p>
     </div>
   </motion.div>
 );
@@ -796,36 +789,88 @@ export default function App({
   speakTextRef: MutableRefObject<(text: string, overrideVoice?: string) => Promise<void>>;
 }) {
   const {
-    canvas: govCanvas,
+    canvas: workspaceCanvas,
     payload,
     dataPhase,
     dataError,
-    lifecycleBusy,
     loadData,
+    loadDataAfterWorkspaceConnect,
     retryLoadData,
-    applyAmendmentWorkflowRun,
-    refreshLifecycleSelection,
     closeCanvas,
     goBack,
     dismissBackdrop,
     applyAgentIntent,
-  } = useGovernanceCanvas();
+  } = useWorkspaceCanvas();
+
+  const { showOperatorShellChrome, showDeveloperHud, setSurfaceMode } = useShellState();
+  const showDiagnosticsChrome = showOperatorShellChrome;
 
   const [mode, setMode] = useState<AppMode>("voice");
+  const [sessionEntryClassification, setSessionEntryClassification] =
+    useState<SessionEntryClassification>(() => readSessionEntryClassification());
   const [status, setStatus] = useState<SystemStatus>("connected");
   const [isPTTActive, setIsPTTActive] = useState(false);
   const [transcription, setTranscription] = useState("");
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', role: 'agent', text: 'Welcome back. How can I help you today?', timestamp: new Date() }
+    {
+      id: '1',
+      role: 'agent',
+      text: 'Hi — I’m your AI OS shell. Speak or type; use Menu only when you need settings.',
+      timestamp: new Date(),
+    },
   ]);
   const [chatInput, setChatInput] = useState("");
   const [workspaceConnecting, setWorkspaceConnecting] = useState(false);
   const [localModelReadiness, setLocalModelReadiness] = useState<LocalModelReadiness | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const engageSessionEntry = useCallback(() => {
+    markSessionEntryEngaged();
+    setSessionEntryClassification('returning');
+  }, []);
+
+  const shellApplyHandlers = useMemo<ShellApplyHandlers>(
+    () => ({
+      setSurfaceMode,
+      setVoiceChatMode: (m) => {
+        if (m === 'chat') engageSessionEntry();
+        setMode(m === 'chat' ? 'chat' : 'voice');
+      },
+      setAppTargetMode: (m) => {
+        if (m === 'voice_settings') setMode('voice_settings');
+        else if (m === 'disc_settings') setMode('disc_settings');
+        else setMode('intent_settings');
+      },
+      openWorkspace: () => {
+        engageSessionEntry();
+        void loadData('workspace_hub', undefined, { transitionMode: 'intent' });
+      },
+    }),
+    [setSurfaceMode, loadData, engageSessionEntry],
+  );
+
+  const handleToggleVoiceChatFromShell = useCallback(() => {
+    const target: 'voice' | 'chat' = mode === 'chat' ? 'voice' : 'chat';
+    tryApplyShellNavigationAction(
+      { type: 'set_voice_chat_mode', mode: target === 'chat' ? 'chat' : 'voice' },
+      readInterimShellAuthority(),
+      shellApplyHandlers,
+    );
+  }, [mode, shellApplyHandlers]);
+
   const workspaceDisclosure = useMemo(
     () => resolveWorkspaceState({ isConnecting: workspaceConnecting }),
-    [workspaceConnecting, govCanvas, payload]
+    [workspaceConnecting, workspaceCanvas, payload]
+  );
+
+  const resolvedWorkspaceIntentForDisclosure = useMemo(
+    () => deriveWorkspaceIntentForDisclosure(workspaceCanvas, payload),
+    [workspaceCanvas, payload],
+  );
+
+  const requiresLocalModelForResolvedIntent = useMemo(
+    () => resolvedIntentRequiresLocalModel(resolvedWorkspaceIntentForDisclosure),
+    [resolvedWorkspaceIntentForDisclosure],
   );
 
   
@@ -853,13 +898,13 @@ export default function App({
 
   // Intent State
   const [agentIntent, setAgentIntent] = useState(
-    "You help manage AIOS governing documents. Be concise and voice-friendly. Open governance only via INTENT_JSON (never promise a raw dashboard). governance.documents.list opens the founder intent hub (work modes: Review Docs, Discuss, Planning, Research, Amendment Program, Action plan); the library appears inside those modes when needed. governance.amendment.workflow opens the amendment program (simulated peer review and plan; no automatic merge). governance.action_plan.review opens impact-report action planning; optional document_id = sources folder name."
+    'Be concise, helpful, and intent-driven. Follow the user’s stated goals. Use INTENT_JSON only as documented.'
   );
   const [userIntent, setUserIntent] = useState("Organize my digital life, manage my schedule, and help me stay focused on my core goals.");
   const [desiredOutcome, setDesiredOutcome] = useState("A successful interaction where the user's needs are met efficiently and the agent provides proactive value.");
-  const [agentName, setAgentName] = useState("AIOS Governance Agent");
-  const [agentCompany, setAgentCompany] = useState("Gateway Global");
-  const [agentRole, setAgentRole] = useState("Governance Document Authority");
+  const [agentName, setAgentName] = useState("AI OS Assistant");
+  const [agentCompany, setAgentCompany] = useState("");
+  const [agentRole, setAgentRole] = useState("Assistant");
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -952,18 +997,34 @@ export default function App({
     };
   }, []);
 
-  const runShellAndGovernancePipeline = (agentText: string) => {
-    const { action, delegateGovernance } = routeShellAgentText(agentText);
-    if (action.type !== 'none') {
+  const runShellIntentPipeline = (agentText: string) => {
+    const { action, delegateWorkspaceCanvas } = routeShellAgentText(agentText);
+    const auth = readInterimShellAuthority();
+    const denial = getShellNavigationDenialMessage(action, auth);
+    if (denial) {
+      logShellCanvasAudit('shell_authority_denied', {
+        subsystem: 'shell.shell_state',
+        path: 'agent_intent',
+        target: action.type === 'set_surface_mode' ? action.mode : undefined,
+      });
       window.setTimeout(() => {
-        if (action.type === 'set_mode') {
-          setMode(action.mode);
-        } else if (action.type === 'open_workspace') {
-          void loadData('workspace_hub', undefined, { transitionMode: 'intent' });
-        }
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: 'agent',
+            text: denial,
+            timestamp: new Date(),
+          },
+        ]);
       }, 400);
+      return;
     }
-    if (delegateGovernance) {
+
+    if (action.type !== 'none') {
+      window.setTimeout(() => applyShellNavigationAction(action, shellApplyHandlers), 400);
+    }
+    if (delegateWorkspaceCanvas) {
       window.setTimeout(() => applyAgentIntent(agentText), 1000);
     }
   };
@@ -1127,6 +1188,7 @@ export default function App({
       return;
     }
 
+    engageSessionEntry();
     setStatus("processing");
     
     try {
@@ -1137,34 +1199,78 @@ export default function App({
         timestamp: new Date()
       }]);
 
+      const shellCmd = tryParseShellStateCommand(finalTranscription);
+      if (shellCmd) {
+        const nav = shellStateCommandToNavigationAction(shellCmd);
+        const applied = tryApplyShellNavigationAction(
+          nav,
+          readInterimShellAuthority(),
+          shellApplyHandlers,
+        );
+        if (applied.ok === false) {
+          const denialText = applied.userMessage;
+          logShellCanvasAudit('shell_authority_denied', {
+            subsystem: 'shell.shell_state',
+            path: 'deterministic_voice',
+            target: shellCmd.type === 'surface' ? shellCmd.mode : undefined,
+          });
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: (Date.now() + 1).toString(),
+              role: 'agent',
+              text: denialText,
+              timestamp: new Date(),
+            },
+          ]);
+          setStatus('connected');
+          setTranscription('');
+          await speakText(denialText);
+          return;
+        }
+        const ack = shellStateCommandAck(shellCmd);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            role: 'agent',
+            text: ack,
+            timestamp: new Date(),
+          },
+        ]);
+        setStatus('connected');
+        setTranscription('');
+        return;
+      }
+
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: finalTranscription,
         config: {
-          systemInstruction: `You are ${agentName}, representing ${agentCompany} in your role as ${agentRole}. You are a helpful, concise, and intent-driven voice assistant. Keep responses brief and conversational. 
-          
-          AGENT IDENTITY: Name: ${agentName}, Company: ${agentCompany}, Role: ${agentRole}
+          systemInstruction: `You are ${agentName}. Role: ${agentRole}. ${agentCompany ? `Context: ${agentCompany}. ` : ''}Be helpful, concise, and intent-driven. Keep responses brief and conversational.
+
           AGENT INTENT: ${agentIntent}
           USER INTENT: ${userIntent}
           DESIRED OUTCOME: ${desiredOutcome}
           DISC PROFILE: D:${discProfile.dominance}, I:${discProfile.influence}, S:${discProfile.steadiness}, C:${discProfile.conscientiousness}
 
-          SHELL (app intents): After your spoken reply, add exactly one final line: INTENT_JSON:{...} with no markdown fence.
-          For voice preferences: INTENT_JSON:{"intent":"app.open.voice_settings"}
-          For DISC profile UI: INTENT_JSON:{"intent":"app.open.disc_settings"}
-          For identity / system configuration: INTENT_JSON:{"intent":"app.open.intent_settings"}
-          To open the governed Workspace gate: INTENT_JSON:{"intent":"app.open.workspace","target":"workspace.hub"}
+          SHELL (app intents): After your reply, add exactly one final line: INTENT_JSON:{...} with no markdown fence.
+          Voice settings: INTENT_JSON:{"intent":"app.open.voice_settings"}
+          DISC profile: INTENT_JSON:{"intent":"app.open.disc_settings"}
+          System configuration: INTENT_JSON:{"intent":"app.open.intent_settings"}
+          Open Workspace: INTENT_JSON:{"intent":"app.open.workspace","target":"workspace.hub"}
 
-          GOVERNANCE CANVAS (structured intent): Same INTENT_JSON line when opening governance/workspace surfaces:
-          INTENT_JSON:{"intent":"<id>","document_id":""}
-          intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.list | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
-          Use intent "none" when no governance or workspace surface should open.
-          governance.documents.list opens the governance intent hub (founder work modes — Review Docs, Discuss Documents, Planning Assistant, Research Assistant, Amendment Program, Action plan, Google Workspace), not the full document library by itself.
-          governance.amendment.workflow opens the amendment program workflow (demo: AMD-2026-004 template; no repo merge).
-          governance.action_plan.review opens action plan review; use document_id for sources folder name (e.g. AMD-2026-a10b9a).
-          Use governance.documents.open with document_id when the user names an id (e.g. AIOS-CORE-001). Omit document_id or use "" if unknown.
-          Workspace (AIOS-SPEC-007 Phase 1): workspace.* intents are governed — they route through the Integration Control Plane, not raw MCP. workspace.hub opens the Workspace hub; calendar list/get open the Calendar read-plane hub; other Phase 1 intents open the Workspace hub.`,
+          SHELL STATE (app.shell.* only — not workspace.*): For operator/diagnostics/developer/surface/chat/voice mode changes, end with one INTENT_JSON line using app.shell.* only:
+          Operator: INTENT_JSON:{"intent":"app.shell.enter_operator"} or exit: INTENT_JSON:{"intent":"app.shell.exit_operator"}
+          Developer: INTENT_JSON:{"intent":"app.shell.enter_developer"} or exit: INTENT_JSON:{"intent":"app.shell.exit_developer"}
+          Surface: INTENT_JSON:{"intent":"app.shell.surface_mode","surface":"primary"} or "developer" or "operator"
+          Chat vs voice: INTENT_JSON:{"intent":"app.shell.switch_to_chat"} or INTENT_JSON:{"intent":"app.shell.switch_to_voice"}
+
+          WORKSPACE (INTENT_JSON): When the user asks for Google Workspace (calendar, mail, drive, contacts, etc.), end with one line:
+          INTENT_JSON:{"intent":"<id>","document_id":"","query":"","resource_id":""}
+          Allowed: none | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.list | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.list | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
+          Use "none" when no Workspace surface should open. workspace.* routes through the Integration Control Plane. workspace.hub opens the Workspace hub; calendar intents open the Calendar hub; others open the matching Workspace surface.`,
         }
       });
 
@@ -1180,7 +1286,7 @@ export default function App({
 
       await speakText(displayText);
 
-      runShellAndGovernancePipeline(agentText);
+      runShellIntentPipeline(agentText);
 
     } catch (err) {
       console.error('Gemini API error:', err);
@@ -1202,6 +1308,7 @@ export default function App({
     e.preventDefault();
     if (!chatInput.trim()) return;
 
+    engageSessionEntry();
     const userText = chatInput;
     setChatInput("");
 
@@ -1216,34 +1323,75 @@ export default function App({
     setStatus("processing");
 
     try {
+      const shellCmd = tryParseShellStateCommand(userText);
+      if (shellCmd) {
+        const nav = shellStateCommandToNavigationAction(shellCmd);
+        const applied = tryApplyShellNavigationAction(
+          nav,
+          readInterimShellAuthority(),
+          shellApplyHandlers,
+        );
+        if (applied.ok === false) {
+          const denialText = applied.userMessage;
+          logShellCanvasAudit('shell_authority_denied', {
+            subsystem: 'shell.shell_state',
+            path: 'deterministic_chat',
+            target: shellCmd.type === 'surface' ? shellCmd.mode : undefined,
+          });
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: (Date.now() + 1).toString(),
+              role: 'agent',
+              text: denialText,
+              timestamp: new Date(),
+            },
+          ]);
+          setStatus('connected');
+          return;
+        }
+        const ack = shellStateCommandAck(shellCmd);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            role: 'agent',
+            text: ack,
+            timestamp: new Date(),
+          },
+        ]);
+        setStatus('connected');
+        return;
+      }
+
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: userText,
         config: {
-          systemInstruction: `You are ${agentName}, representing ${agentCompany} in your role as ${agentRole}. You are a helpful, concise, and intent-driven voice assistant. Keep responses brief and conversational. 
-          
-          AGENT IDENTITY: Name: ${agentName}, Company: ${agentCompany}, Role: ${agentRole}
+          systemInstruction: `You are ${agentName}. Role: ${agentRole}. ${agentCompany ? `Context: ${agentCompany}. ` : ''}Be helpful, concise, and intent-driven. Keep responses brief and conversational.
+
           AGENT INTENT: ${agentIntent}
           USER INTENT: ${userIntent}
           DESIRED OUTCOME: ${desiredOutcome}
           DISC PROFILE: D:${discProfile.dominance}, I:${discProfile.influence}, S:${discProfile.steadiness}, C:${discProfile.conscientiousness}
 
-          SHELL (app intents): After your spoken reply, add exactly one final line: INTENT_JSON:{...} with no markdown fence.
-          For voice preferences: INTENT_JSON:{"intent":"app.open.voice_settings"}
-          For DISC profile UI: INTENT_JSON:{"intent":"app.open.disc_settings"}
-          For identity / system configuration: INTENT_JSON:{"intent":"app.open.intent_settings"}
-          To open the governed Workspace gate: INTENT_JSON:{"intent":"app.open.workspace","target":"workspace.hub"}
+          SHELL (app intents): After your reply, add exactly one final line: INTENT_JSON:{...} with no markdown fence.
+          Voice settings: INTENT_JSON:{"intent":"app.open.voice_settings"}
+          DISC profile: INTENT_JSON:{"intent":"app.open.disc_settings"}
+          System configuration: INTENT_JSON:{"intent":"app.open.intent_settings"}
+          Open Workspace: INTENT_JSON:{"intent":"app.open.workspace","target":"workspace.hub"}
 
-          GOVERNANCE CANVAS (structured intent): Same INTENT_JSON line when opening governance/workspace surfaces:
-          INTENT_JSON:{"intent":"<id>","document_id":""}
-          intent must be exactly one of: none | governance.documents.list | governance.documents.open | governance.amendment.workflow | governance.action_plan.review | governance.conflicts.scan | governance.compliance.check | governance.lifecycle.status | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.list | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
-          Use intent "none" when no governance or workspace surface should open.
-          governance.documents.list opens the governance intent hub (founder work modes — Review Docs, Discuss Documents, Planning Assistant, Research Assistant, Amendment Program, Action plan, Google Workspace), not the full document library by itself.
-          governance.amendment.workflow opens the amendment program workflow (demo: AMD-2026-004 template; no repo merge).
-          governance.action_plan.review opens action plan review; use document_id for sources folder name (e.g. AMD-2026-a10b9a).
-          Use governance.documents.open with document_id when the user names an id (e.g. AIOS-CORE-001). Omit document_id or use "" if unknown.
-          Workspace (AIOS-SPEC-007 Phase 1): workspace.* intents are governed — they route through the Integration Control Plane, not raw MCP. workspace.hub opens the Workspace hub; calendar list/get open the Calendar read-plane hub; other Phase 1 intents open the Workspace hub.`,
+          SHELL STATE (app.shell.* only — not workspace.*): For operator/diagnostics/developer/surface/chat/voice mode changes, end with one INTENT_JSON line using app.shell.* only:
+          Operator: INTENT_JSON:{"intent":"app.shell.enter_operator"} or exit: INTENT_JSON:{"intent":"app.shell.exit_operator"}
+          Developer: INTENT_JSON:{"intent":"app.shell.enter_developer"} or exit: INTENT_JSON:{"intent":"app.shell.exit_developer"}
+          Surface: INTENT_JSON:{"intent":"app.shell.surface_mode","surface":"primary"} or "developer" or "operator"
+          Chat vs voice: INTENT_JSON:{"intent":"app.shell.switch_to_chat"} or INTENT_JSON:{"intent":"app.shell.switch_to_voice"}
+
+          WORKSPACE (INTENT_JSON): When the user asks for Google Workspace (calendar, mail, drive, contacts, etc.), end with one line:
+          INTENT_JSON:{"intent":"<id>","document_id":"","query":"","resource_id":""}
+          Allowed: none | workspace.hub | workspace.calendar.list | workspace.calendar.get | workspace.mail.search | workspace.mail.read | workspace.drive.list | workspace.drive.search | workspace.drive.read | workspace.docs.read | workspace.docs.export | workspace.contacts.list | workspace.contacts.search | workspace.tasks.list | workspace.tasks.get
+          Use "none" when no Workspace surface should open. workspace.* routes through the Integration Control Plane. workspace.hub opens the Workspace hub; calendar intents open the Calendar hub; others open the matching Workspace surface.`,
         }
       });
 
@@ -1258,7 +1406,7 @@ export default function App({
       
       await speakText(displayText);
 
-      runShellAndGovernancePipeline(agentText);
+      runShellIntentPipeline(agentText);
       
     } catch (err) {
       console.error('Gemini API error:', err);
@@ -1268,13 +1416,13 @@ export default function App({
   };
 
   const workspaceSurfaceOpen =
-    govCanvas?.view === 'workspace_hub' ||
-    govCanvas?.view === 'workspace_onboarding' ||
-    govCanvas?.view === 'workspace_calendar_hub' ||
-    govCanvas?.view === 'workspace_mail_hub' ||
-    govCanvas?.view === 'workspace_drive_hub' ||
-    govCanvas?.view === 'workspace_contacts_hub' ||
-    govCanvas?.view === 'workspace_search_hub';
+    workspaceCanvas?.view === 'workspace_hub' ||
+    workspaceCanvas?.view === 'workspace_onboarding' ||
+    workspaceCanvas?.view === 'workspace_calendar_hub' ||
+    workspaceCanvas?.view === 'workspace_mail_hub' ||
+    workspaceCanvas?.view === 'workspace_drive_hub' ||
+    workspaceCanvas?.view === 'workspace_contacts_hub' ||
+    workspaceCanvas?.view === 'workspace_search_hub';
 
   const commandRail: CommandRailState = {
     mode: mode === 'chat' ? 'chat' : 'voice',
@@ -1287,13 +1435,46 @@ export default function App({
           : status === 'speaking'
             ? 'speaking'
             : 'idle',
-    intent: govCanvas?.view ? `canvas:${govCanvas.view}` : undefined,
+    intent: workspaceCanvas?.view ? `canvas:${workspaceCanvas.view}` : undefined,
   };
 
   const statusDisplay =
     status === 'connected' ? 'ready' : status === 'offline' ? 'offline' : status;
   const statusTone: 'ok' | 'error' | 'muted' =
     status === 'error' ? 'error' : status === 'offline' ? 'muted' : 'ok';
+
+  const displayStatusDetail = useMemo(() => {
+    if (showDiagnosticsChrome) return undefined;
+    if (mode === 'chat') return 'Type below to send';
+    if (!workspaceCanvas && mode === 'voice' && status === 'connected') {
+      return undefined;
+    }
+    switch (status) {
+      case 'offline':
+        return 'Speech not available — use Chat';
+      case 'connected':
+        return 'Hold to speak';
+      case 'listening':
+        return 'Release when finished';
+      case 'processing':
+        return 'Assistant is working';
+      case 'speaking':
+        return 'Playing reply';
+      case 'error':
+        return 'Try again or use Chat';
+      default:
+        return undefined;
+    }
+  }, [mode, status, showDiagnosticsChrome, workspaceCanvas]);
+
+  const showVoiceIdleOrientation =
+    mode === 'voice' &&
+    !workspaceCanvas &&
+    !showDiagnosticsChrome &&
+    status !== 'processing' &&
+    status !== 'speaking' &&
+    !(isPTTActive && status === 'listening') &&
+    !transcription.trim();
 
   return (
     <div className="fixed inset-0 bg-white text-zinc-900 font-sans overflow-hidden selection:bg-emerald-500/30">
@@ -1307,12 +1488,16 @@ export default function App({
       />
 
       <ShellIdentityBar
-        actorLabel="Founder"
+        sessionLabel="This browser"
         shellInteractionMode={mode === 'chat' ? 'chat' : 'voice'}
-        actorModeLabel="Admin"
+        sessionContextLabel="This tab"
         workspaceState={workspaceDisclosure}
-        intentSummary={govCanvas?.view ? `canvas:${govCanvas.view}` : undefined}
+        canvasView={workspaceCanvas?.view ?? null}
+        voiceInputAvailable={status !== 'offline'}
+        intentSummary={workspaceCanvas?.view ? `canvas:${workspaceCanvas.view}` : undefined}
         localModelReadiness={localModelReadiness}
+        resolvedIntentRequiresLocalModel={requiresLocalModelForResolvedIntent}
+        showDiagnosticsChrome={showDiagnosticsChrome}
       />
       
       {/* Main Content Area */}
@@ -1331,6 +1516,17 @@ export default function App({
                 (isPTTActive && status === 'listening')) && (
                 <OrbitalVisualizer isActive status={status} />
               )}
+
+              {showVoiceIdleOrientation ? (
+                <ShellVoiceIdlePanel
+                  workspaceState={workspaceDisclosure}
+                  sessionEntry={sessionEntryClassification}
+                  onOpenMenu={() => {
+                    engageSessionEntry();
+                    setMode('menu');
+                  }}
+                />
+              ) : null}
               
               {/* Transcription Display */}
               <div className="absolute bottom-40 w-full max-w-xl px-6 text-center">
@@ -1413,13 +1609,9 @@ export default function App({
                     setMode('voice');
                     void loadData('workspace_hub', undefined, { transitionMode: 'intent' });
                   }}
-                  onOpenGovernance={() => {
-                    setMode('voice');
-                    void loadData('governance_hub');
-                  }}
                   currentMode={mode}
-                  governanceCanvasOpen={govCanvas !== null}
                   workspaceSurfaceOpen={workspaceSurfaceOpen}
+                  showDiagnosticsChrome={showDiagnosticsChrome}
                 />
               </div>
             </motion.div>
@@ -1507,34 +1699,17 @@ export default function App({
             </motion.div>
           )}
 
-          {govCanvas && (
+          {workspaceCanvas && (
             <motion.div
-              key={`gov-${govCanvas.view}`}
+              key={`ws-canvas-${workspaceCanvas.view}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 flex items-start sm:items-center justify-center bg-zinc-900/[0.05] backdrop-blur-[2px] overflow-y-auto pt-[calc(var(--shell-header-height)+0.75rem)] pb-[var(--shell-footer-height)] z-[var(--z-shell-governance-canvas)] min-h-0"
+              className="absolute inset-0 flex items-start sm:items-center justify-center bg-zinc-900/[0.05] backdrop-blur-[2px] overflow-y-auto pt-[calc(var(--shell-header-height)+0.75rem)] pb-[var(--shell-footer-height)] z-[var(--z-shell-workspace-canvas)] min-h-0"
               onClick={dismissBackdrop}
             >
               <div onClick={(e) => e.stopPropagation()} className="w-full flex justify-center px-2">
-                {govCanvas.view === 'governance_hub' && (
-                  <GovernanceHubSurface
-                    actorLabel={
-                      payload?.view === 'governance_hub' ? payload.actorLabel : 'Founder'
-                    }
-                    dataPhase={dataPhase}
-                    onClose={closeCanvas}
-                    onSelectMode={(view) =>
-                      void loadData(
-                        view,
-                        view === 'action_plan_review'
-                          ? { actionPlanSource: 'AMD-2026-a10b9a' }
-                          : undefined
-                      )
-                    }
-                  />
-                )}
-                {govCanvas.view === 'workspace_onboarding' &&
+                {workspaceCanvas.view === 'workspace_onboarding' &&
                   payload?.view === 'workspace_onboarding' && (
                     <WorkspaceOnboardingSurface
                       workspaceState={payload.workspaceState}
@@ -1543,7 +1718,7 @@ export default function App({
                         setWorkspaceConnecting(true);
                         try {
                           setWorkspaceUserConnected(true);
-                          await loadData('workspace_hub', undefined, { transitionMode: 'ui' });
+                          await loadDataAfterWorkspaceConnect();
                         } finally {
                           setWorkspaceConnecting(false);
                         }
@@ -1552,9 +1727,9 @@ export default function App({
                       onClose={closeCanvas}
                     />
                   )}
-                {govCanvas.view === 'workspace_hub' && payload?.view === 'workspace_hub' && (
+                {workspaceCanvas.view === 'workspace_hub' && payload?.view === 'workspace_hub' && (
                   <WorkspaceHubSurface
-                    connected={payload.workspaceState === 'connected'}
+                    connected={shouldShowWorkspaceHub(payload.workspaceState)}
                     mode="hub"
                     dataPhase={dataPhase}
                     onClose={closeCanvas}
@@ -1566,7 +1741,7 @@ export default function App({
                     onWorkspaceGoogleAuthChange={() => void loadData('workspace_hub')}
                   />
                 )}
-                {govCanvas.view === 'workspace_calendar_hub' && payload?.view === 'workspace_calendar_hub' && (
+                {workspaceCanvas.view === 'workspace_calendar_hub' && payload?.view === 'workspace_calendar_hub' && (
                   <WorkspaceHubSurface
                     connected
                     mode="calendar"
@@ -1578,7 +1753,7 @@ export default function App({
                     onWorkspaceGoogleAuthChange={() => void loadData('workspace_calendar_hub')}
                   />
                 )}
-                {govCanvas.view === 'workspace_mail_hub' && payload?.view === 'workspace_mail_hub' && (
+                {workspaceCanvas.view === 'workspace_mail_hub' && payload?.view === 'workspace_mail_hub' && (
                   <WorkspaceHubSurface
                     connected
                     mode="mail"
@@ -1594,7 +1769,7 @@ export default function App({
                     onWorkspaceGoogleAuthChange={() => void loadData('workspace_mail_hub')}
                   />
                 )}
-                {govCanvas.view === 'workspace_drive_hub' && payload?.view === 'workspace_drive_hub' && (
+                {workspaceCanvas.view === 'workspace_drive_hub' && payload?.view === 'workspace_drive_hub' && (
                   <WorkspaceHubSurface
                     connected
                     mode="drive"
@@ -1606,7 +1781,7 @@ export default function App({
                     onWorkspaceGoogleAuthChange={() => void loadData('workspace_drive_hub')}
                   />
                 )}
-                {govCanvas.view === 'workspace_contacts_hub' && payload?.view === 'workspace_contacts_hub' && (
+                {workspaceCanvas.view === 'workspace_contacts_hub' && payload?.view === 'workspace_contacts_hub' && (
                   <WorkspaceHubSurface
                     connected
                     mode="contacts"
@@ -1618,7 +1793,7 @@ export default function App({
                     onWorkspaceGoogleAuthChange={() => void loadData('workspace_contacts_hub')}
                   />
                 )}
-                {govCanvas.view === 'workspace_search_hub' && payload?.view === 'workspace_search_hub' && (
+                {workspaceCanvas.view === 'workspace_search_hub' && payload?.view === 'workspace_search_hub' && (
                   <WorkspaceHubSurface
                     connected
                     mode="search"
@@ -1628,181 +1803,6 @@ export default function App({
                     onClose={closeCanvas}
                     onBackToHub={() => void loadData('workspace_hub')}
                     onWorkspaceGoogleAuthChange={() => void loadData('workspace_search_hub')}
-                  />
-                )}
-                {govCanvas.view === 'review_docs' && (
-                  <ReviewDocsSurface
-                    pinned={payload?.view === 'review_docs' ? payload.pinned : []}
-                    registryCount={payload?.view === 'review_docs' ? payload.registryCount : 0}
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    onRetry={() => void retryLoadData()}
-                    onBack={goBack}
-                    onOpenRegistry={() =>
-                      void loadData('document_list', {
-                        returnAfterList: 'review_docs',
-                        listMode: 'review',
-                      })
-                    }
-                    onOpenDocument={(documentId) =>
-                      void loadData('document_view', { documentId })
-                    }
-                  />
-                )}
-                {govCanvas.view === 'discuss_documents' && (
-                  <DiscussDocumentsSurface dataPhase={dataPhase} onBack={goBack} />
-                )}
-                {govCanvas.view === 'planning_assistant' && (
-                  <PlanningAssistantSurface
-                    documents={payload?.view === 'planning_assistant' ? payload.documents : []}
-                    recommendedNextSteps={
-                      payload?.view === 'planning_assistant' ? payload.recommendedNextSteps : []
-                    }
-                    progressSummary={
-                      payload?.view === 'planning_assistant'
-                        ? payload.progressSummary
-                        : ''
-                    }
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    onRetry={() => void retryLoadData()}
-                    onBack={goBack}
-                    onOpenDocument={(documentId) =>
-                      void loadData('document_view', { documentId })
-                    }
-                    onOpenRegistry={() =>
-                      void loadData('document_list', {
-                        returnAfterList: 'planning_assistant',
-                        listMode: 'full',
-                      })
-                    }
-                    onOpenLifecycle={() => void loadData('lifecycle_status')}
-                  />
-                )}
-                {govCanvas.view === 'research_assistant' && (
-                  <ResearchAssistantSurface
-                    library={payload?.view === 'research_assistant' ? payload.library : []}
-                    registryCount={
-                      payload?.view === 'research_assistant' ? payload.registryCount : 0
-                    }
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    onRetry={() => void retryLoadData()}
-                    onBack={goBack}
-                    onOpenDocument={(documentId) =>
-                      void loadData('document_view', { documentId })
-                    }
-                    onOpenFullLibrary={() =>
-                      void loadData('document_list', {
-                        returnAfterList: 'research_assistant',
-                        listMode: 'full',
-                      })
-                    }
-                  />
-                )}
-                {govCanvas.view === 'amendment_hub' && (
-                  <AmendmentHubSurface
-                    hub={payload?.view === 'amendment_hub' ? payload : null}
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    onRetry={() => void retryLoadData()}
-                    onBack={goBack}
-                    onOpenWorkflow={(runId, mode) =>
-                      void loadData('amendment_workflow', {
-                        workflowRunId: runId,
-                        amendmentWorkflowMode: mode,
-                      })
-                    }
-                  />
-                )}
-                {govCanvas.view === 'amendment_workflow' && (
-                  <AmendmentWorkflowSurface
-                    run={payload?.view === 'amendment_workflow' ? payload.run : null}
-                    workflowMode={
-                      payload?.view === 'amendment_workflow' ? payload.mode : 'edit'
-                    }
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    onBack={goBack}
-                    onRunUpdated={applyAmendmentWorkflowRun}
-                  />
-                )}
-                {govCanvas.view === 'action_plan_review' && (
-                  <ActionPlanReviewSurface
-                    sourceName={
-                      govCanvas.actionPlanSource ??
-                      (payload?.view === 'action_plan_review' ? payload.sourceName : 'AMD-2026-a10b9a')
-                    }
-                    bundle={payload?.view === 'action_plan_review' ? payload.bundle : null}
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    onBack={goBack}
-                    onRefresh={() => void retryLoadData()}
-                  />
-                )}
-                {govCanvas.view === 'document_list' && (
-                  <GovernanceDocumentListSurface
-                    documents={payload?.view === 'document_list' ? payload.documents : []}
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    onRetry={() => void retryLoadData()}
-                    onClose={goBack}
-                    onNavigate={(view, meta) =>
-                      void loadData(view, { documentId: meta?.documentId })
-                    }
-                  />
-                )}
-                {govCanvas.view === 'document_view' && govCanvas.documentId && (
-                  <DocumentViewerOverlay
-                    documentId={govCanvas.documentId}
-                    doc={
-                      payload?.view === 'document_view' &&
-                      payload.documentId === govCanvas.documentId
-                        ? payload.document
-                        : null
-                    }
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    onRetry={() => void retryLoadData()}
-                    onClose={goBack}
-                    onReadAloud={(t) => {
-                      void speakText(t.slice(0, 800));
-                    }}
-                  />
-                )}
-                {govCanvas.view === 'conflict_results' && (
-                  <ConflictScanOverlay
-                    scan={payload?.view === 'conflict_results' ? payload.scan : null}
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    onRetry={() => void retryLoadData()}
-                    onClose={goBack}
-                  />
-                )}
-                {govCanvas.view === 'compliance_check' && (
-                  <ComplianceCheckOverlay
-                    primitiveNames={
-                      payload?.view === 'compliance_check'
-                        ? payload.primitiveNames
-                        : ['NodeContract', 'PolicyRecord']
-                    }
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    onRetry={() => void retryLoadData()}
-                    onClose={goBack}
-                  />
-                )}
-                {govCanvas.view === 'lifecycle_status' && (
-                  <LifecyclePanelOverlay
-                    documents={payload?.view === 'lifecycle_status' ? payload.documents : []}
-                    selectedId={payload?.view === 'lifecycle_status' ? payload.selectedId : ''}
-                    versions={payload?.view === 'lifecycle_status' ? payload.versions : []}
-                    dataPhase={dataPhase}
-                    dataError={dataError}
-                    lifecycleBusy={lifecycleBusy}
-                    onRetry={() => void retryLoadData()}
-                    onSelectDocumentId={(id) => void refreshLifecycleSelection(id)}
-                    onClose={goBack}
                   />
                 )}
               </div>
@@ -1818,16 +1818,21 @@ export default function App({
         chatInput={chatInput}
         onChatInputChange={setChatInput}
         onChatSubmit={handleChatSubmit}
-        onToggleVoiceChat={() => setMode(mode === 'chat' ? 'voice' : 'chat')}
-        onMenuClick={() => setMode(mode === 'menu' ? 'voice' : 'menu')}
+        onToggleVoiceChat={handleToggleVoiceChatFromShell}
+        onMenuClick={() => {
+          if (mode !== 'menu') engageSessionEntry();
+          setMode(mode === 'menu' ? 'voice' : 'menu');
+        }}
         isPTTActive={isPTTActive}
         onPTTDown={(e) => void handlePTTDown(e)}
         onPTTUp={(e) => void handlePTTUp(e)}
         displayStatus={statusDisplay}
+        displayStatusDetail={displayStatusDetail}
         statusTone={statusTone}
+        showDiagnosticsChrome={showDiagnosticsChrome}
       />
 
-      <ScopeMetricsDevHud />
+      {showDeveloperHud ? <ScopeMetricsDevHud /> : null}
 
       {/* Powered By Branding */}
       <div className="fixed bottom-[calc(var(--shell-footer-height)+0.5rem)] left-6 md:left-12 flex items-center gap-2 pointer-events-none z-[var(--z-shell-chrome)]">

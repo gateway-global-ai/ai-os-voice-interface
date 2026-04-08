@@ -3,7 +3,7 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-import type { GovernanceCanvasState } from '../governance/canvasTypes';
+import type { WorkspaceCanvasState } from '../shellCanvas/canvasTypes';
 import { isPhase1WorkspaceIntent } from './intentRegistry';
 import { resolveScopeClass } from './scopeClasses';
 
@@ -13,6 +13,16 @@ export type ParsedWorkspaceIntent = {
   query?: string;
   resource_id?: string;
 };
+
+/**
+ * Gmail **message** id for `loadWorkspacePayload` / `workspace.mail.read` only.
+ * Do not use for `workspace.mail.thread.read` (thread id) or `workspace.mail.search` (uses `query`).
+ */
+export function workspaceMailReadMessageIdFromIntent(parsed: ParsedWorkspaceIntent): string | undefined {
+  if (parsed.intent !== 'workspace.mail.read') return undefined;
+  const t = parsed.resource_id?.trim();
+  return t || undefined;
+}
 
 const WORKSPACE_INTENT_RE = /^workspace\.[a-z]+\.[a-z0-9_]+$/;
 
@@ -25,7 +35,7 @@ export function isValidWorkspaceIntentShape(intent: string): boolean {
  * Map intent → governed canvas surface (Phase 1).
  * Calendar / mail read-plane intents get dedicated hubs; others open the main workspace hub.
  */
-export function workspaceIntentToCanvasView(parsed: ParsedWorkspaceIntent): GovernanceCanvasState {
+export function workspaceIntentToCanvasView(parsed: ParsedWorkspaceIntent): WorkspaceCanvasState {
   const { intent } = parsed;
   if (!isPhase1WorkspaceIntent(intent)) {
     return { view: 'workspace_hub' };
@@ -42,7 +52,11 @@ export function workspaceIntentToCanvasView(parsed: ParsedWorkspaceIntent): Gove
   ) {
     return { view: 'workspace_mail_hub' };
   }
-  if (intent === 'workspace.drive.search' || intent === 'workspace.drive.read') {
+  if (
+    intent === 'workspace.drive.list' ||
+    intent === 'workspace.drive.search' ||
+    intent === 'workspace.drive.read'
+  ) {
     return { view: 'workspace_drive_hub' };
   }
   if (intent === 'workspace.contacts.list' || intent === 'workspace.contacts.search') {
@@ -55,7 +69,7 @@ export function workspaceIntentToCanvasView(parsed: ParsedWorkspaceIntent): Gove
 }
 
 export function routeWorkspaceIntent(parsed: ParsedWorkspaceIntent): {
-  canvas: GovernanceCanvasState;
+  canvas: WorkspaceCanvasState;
   scopeClass: ReturnType<typeof resolveScopeClass>;
 } {
   const scopeClass = resolveScopeClass(parsed.intent);

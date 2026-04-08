@@ -34,7 +34,7 @@ export type CodingToolId =
   | 'run_tests'
   | 'run_build'
   | 'run_lint'
-  | 'read_governance_doc'
+  | 'read_policy_doc'
   | 'list_routes_or_owners';
 
 /** Planner proposes scope; it must not edit product code. */

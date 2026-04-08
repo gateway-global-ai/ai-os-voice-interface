@@ -32,26 +32,26 @@ Pull requests that touch Workspace integration **should** reference this documen
 
 ## Track B — Structured intent for governed navigation
 
-**Blocker** for routing that affects mode, canvas, workspace, or governance UI.
+**Blocker** for routing that affects mode, canvas, workspace, or shell overlays.
 
 | Item | Pass / fail |
 |------|-------------|
 | **`src/App.tsx`** — voice / DISC / system overlays | **Pass:** `AppMode` / overlay transitions driven by **`INTENT_JSON`** (or a single shared parser), not by substring checks on free agent text. **Fail:** Production routing depends on `agentText.includes("…")` for those transitions. |
-| **`src/governance/intentParse.ts`** | Extend with **`app.*`** (or equivalent) intents using the same `INTENT_JSON:` mechanism; align `legacyPhraseParse` with policy (remove, dev-only gate, or document). |
+| **`src/shellCanvas/intentParse.ts`** | Extend with **`app.*`** (or equivalent) intents using the same `INTENT_JSON:` mechanism; align `legacyPhraseParse` with policy (remove, dev-only gate, or document). |
 | **Audit** | When fallback or legacy parse is used, emit **`intent_fallback_used`** (or equivalent) so behavior is observable. |
 
 **Grep / assert (literal pass/fail):**
 
-- **Pass:** No production routing path for **governed UI** (voice options, DISC, system config, governance/workspace navigation) depends on `agentText.includes(` for **mode or overlay selection**.
+- **Pass:** No production routing path for **shell UI** (voice options, DISC, system config, workspace canvas navigation) depends on `agentText.includes(` for **mode or overlay selection**.
 - **Fail:** Any such `includes(` remains the sole trigger for those transitions in production code paths.
 
 Suggested verification:
 
 ```bash
-rg 'agentText\.includes\(' src/App.tsx src/governance/
+rg 'agentText\.includes\(' src/App.tsx src/shellCanvas/
 ```
 
-— review each hit; governed transitions must be keyed off structured intent, not phrase matching. **Note:** `src/governance/intentParse.ts` `legacyPhraseParse` retains phrase `includes` for **development** demo/fallback only (`import.meta.env.PROD` short-circuits to `null`); production builds do not use phrase matching for governance intents. Production paths for mode, workspace, and governance **canvas** navigation still go through **`INTENT_JSON`** (with `intent_fallback_used` audit when legacy is used in dev).
+— review each hit; shell transitions must be keyed off structured intent, not phrase matching. **Note:** `src/shellCanvas/intentParse.ts` `legacyPhraseParse` retains phrase `includes` for **development** demo/fallback only (`import.meta.env.PROD` short-circuits to `null`); production builds do not use phrase matching for those legacy paths. Production paths for mode, workspace, and **workspace canvas** navigation still go through **`INTENT_JSON`** (with `intent_fallback_used` audit when legacy is used in dev).
 
 ---
 

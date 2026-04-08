@@ -1,5 +1,5 @@
 /**
- * Single governed entry for Workspace operations (AIOS-SPEC-007 §2.1).
+ * Single governed entry for Workspace operations (AIOS-SPEC-007 §2 *Normative routing model*, item 1 — Intent Router → ICP → MCP Adapter).
  *
  * **Intent vs MCP tool:** Policy and audits use **`envelope.intent`** (`workspace.mail.search`, …).
  * **`resolveWorkspaceMcpToolCall`** maps to the server’s tool names (`search_gmail_messages`, …);

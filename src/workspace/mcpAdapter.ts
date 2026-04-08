@@ -3,7 +3,7 @@
  * Streamable HTTP (FastMCP): **initialize** → **`Mcp-Session-Id`** header → **`tools/call`** with that header.
  * Response bodies may be JSON or SSE (`data: {jsonrpc…}`); we parse both before **`extractMcpToolData`**.
  *
- * **Governance `session_id` on the envelope** is audit correlation only, not MCP transport.
+ * **`session_id` on the envelope** is audit correlation only, not MCP transport.
  *
  * @license SPDX-License-Identifier: Apache-2.0
  */
@@ -150,6 +150,92 @@ function readMcpSessionIdFromHeaders(res: Response): string | null {
   return null;
 }
 
+/** Dev-only hint when MCP URL is cross-origin (browser cannot read custom response headers without Access-Control-Expose-Headers). */
+function workspaceMcpCrossOriginDevHint(base: string): string {
+  if (typeof window === 'undefined' || !import.meta.env.DEV) return '';
+  try {
+    const resolved = new URL(base, window.location.href);
+    if (resolved.origin !== window.location.origin) {
+      return ' Quick fix (local dev): set `VITE_WORKSPACE_MCP_URL=/__workspace_mcp` in `.env.development.local` and restart `npm run dev` so requests are same-origin via the Vite proxy (see `.env.example`).';
+    }
+  } catch {
+    /* ignore */
+  }
+  return '';
+}
+
+/**
+ * Parse initialize SSE/JSON body when `Mcp-Session-Id` is not readable (e.g. CORS hides the header).
+ * Best-effort only — upstream should still expose the header or use same-origin proxy.
+ */
+function extractMcpSessionIdFromInitializeBody(text: string): string | null {
+  const trimmed = text.trim();
+  const fromRaw =
+    /["']?mcp-session-id["']?\s*[:=]\s*["']([a-zA-Z0-9._-]+)["']/i.exec(trimmed) ??
+    /Mcp-Session-Id:\s*([^\s\r\n]+)/i.exec(trimmed);
+  if (fromRaw?.[1]?.trim()) return fromRaw[1].trim();
+
+  let parsed: unknown = null;
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      parsed = JSON.parse(trimmed) as unknown;
+    } catch {
+      /* try SSE */
+    }
+  }
+  if (parsed == null) {
+    for (const line of trimmed.split(/\r?\n/)) {
+      const m = /^\s*data:\s*(.+)\s*$/.exec(line);
+      if (!m) continue;
+      const payload = m[1].trim();
+      if (payload === '[DONE]') continue;
+      try {
+        parsed = JSON.parse(payload) as unknown;
+        break;
+      } catch {
+        continue;
+      }
+    }
+  }
+  if (parsed == null) return null;
+
+  const walk = (v: unknown, depth: number): string | null => {
+    if (depth > 14 || v == null) return null;
+    if (typeof v !== 'object') return null;
+    if (Array.isArray(v)) {
+      for (const x of v) {
+        const w = walk(x, depth + 1);
+        if (w) return w;
+      }
+      return null;
+    }
+    const o = v as Record<string, unknown>;
+    for (const [k, val] of Object.entries(o)) {
+      const kl = k.toLowerCase();
+      if (
+        (kl === 'mcp-session-id' ||
+          kl === 'mcp_session_id' ||
+          kl === 'mcpsessionid' ||
+          kl === 'session_id' ||
+          kl === 'sessionid') &&
+        typeof val === 'string' &&
+        val.trim().length >= 8
+      ) {
+        return val.trim();
+      }
+    }
+    for (const key of ['_meta', 'result', 'params']) {
+      if (key in o) {
+        const w = walk(o[key], depth + 1);
+        if (w) return w;
+      }
+    }
+    return null;
+  };
+
+  return walk(parsed, 0);
+}
+
 /**
  * Ensure streamable HTTP transport session: JSON-RPC **initialize**, then cache **`Mcp-Session-Id`**.
  * Sends **`Authorization: Bearer`** on initialize when `bearerToken` is set (required for external OAuth 2.1 provider mode: all MCP requests authenticated).
@@ -206,22 +292,29 @@ async function ensureMcpTransportSession(
       return null;
     }
 
-    const sid = readMcpSessionIdFromHeaders(res);
-
+    const sidHeader = readMcpSessionIdFromHeaders(res);
+    let text: string;
     try {
-      await res.body?.cancel();
+      text = await res.text();
     } catch {
-      /* */
+      return null;
     }
 
     if (!res.ok) {
       return null;
     }
 
-    if (sid) {
-      mcpTransportSessionId = sid;
+    if (sidHeader) {
+      mcpTransportSessionId = sidHeader;
       mcpSessionBearerKey = key;
-      return sid;
+      return sidHeader;
+    }
+
+    const sidBody = extractMcpSessionIdFromInitializeBody(text);
+    if (sidBody) {
+      mcpTransportSessionId = sidBody;
+      mcpSessionBearerKey = key;
+      return sidBody;
     }
 
     return null;
@@ -237,7 +330,8 @@ async function ensureMcpTransportSession(
     return {
       ok: false,
       message:
-        'MCP initialize did not return Mcp-Session-Id. For browser calls, add Access-Control-Expose-Headers: mcp-session-id (and Authorization if needed) on the MCP vhost, or use the Vite /__workspace_mcp dev proxy (same-origin). See WORKSPACE.md.',
+        'MCP initialize did not return Mcp-Session-Id. For browser calls, add Access-Control-Expose-Headers: mcp-session-id (and Authorization if needed) on the MCP vhost, or use the Vite /__workspace_mcp dev proxy (same-origin). See WORKSPACE.md.' +
+        workspaceMcpCrossOriginDevHint(base),
     };
   } finally {
     initInFlightByKey.delete(key);

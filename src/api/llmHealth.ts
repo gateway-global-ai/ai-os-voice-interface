@@ -6,7 +6,7 @@
 import { GoogleGenAI } from '@google/genai';
 
 export type ProviderCheck = {
-  id: 'gemini' | 'openai' | 'deepseek' | 'governance_api' | 'local_llm';
+  id: 'gemini' | 'openai' | 'deepseek' | 'documents_proxy' | 'local_llm';
   label: string;
   ok: boolean;
   detail: string;
@@ -157,8 +157,8 @@ export async function checkLocalModel(): Promise<ProviderCheck> {
   }
 }
 
-/** Proxied governance API (Vite → localhost:8100). Optional if server not running. */
-export async function checkGovernanceApi(): Promise<ProviderCheck> {
+/** Optional local documents proxy (Vite → localhost:8100). Dev-only convenience; not required for the shell. */
+export async function checkOptionalDocumentsProxy(): Promise<ProviderCheck> {
   try {
     const { ms } = await timed(async () => {
       const res = await fetch('/api/documents?limit=1');
@@ -168,8 +168,8 @@ export async function checkGovernanceApi(): Promise<ProviderCheck> {
       }
     });
     return {
-      id: 'governance_api',
-      label: 'Governance API',
+      id: 'documents_proxy',
+      label: 'Documents proxy (optional)',
       ok: true,
       detail: 'GET /api/documents OK (proxy → :8100)',
       ms,
@@ -177,11 +177,11 @@ export async function checkGovernanceApi(): Promise<ProviderCheck> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return {
-      id: 'governance_api',
-      label: 'Governance API',
+      id: 'documents_proxy',
+      label: 'Documents proxy (optional)',
       ok: false,
       detail: msg.includes('Failed to fetch')
-        ? 'Not reachable — start: py C:\\Apps\\governing_docs\\scripts\\governance_api.py'
+        ? 'Not reachable — optional local docs server (see app dev docs)'
         : msg,
       ms: 0,
     };
@@ -194,7 +194,7 @@ export async function runAllProviderChecks(): Promise<ProviderCheck[]> {
     checkOpenAI(),
     checkDeepSeek(),
     checkLocalModel(),
-    checkGovernanceApi(),
+    checkOptionalDocumentsProxy(),
   ]);
   return [gemini, openai, deepseek, local, gov];
 }
