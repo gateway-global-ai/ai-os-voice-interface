@@ -20,12 +20,61 @@ import type { ShellSurfaceMode } from './shellSurfaceMode';
 export const INTERIM_SHELL_OPERATOR_UNLOCK_KEY = 'aios.shell.interim.operator_unlock';
 export const INTERIM_SHELL_DEVELOPER_UNLOCK_KEY = 'aios.shell.interim.developer_unlock';
 
+/**
+ * Protected shell chrome zones are shell-owned composition surfaces.
+ * Agents may request state through governed records, but they do not own
+ * placement or structural composition of these surfaces.
+ */
+export type ProtectedShellMenuZone =
+  | 'header_system'
+  | 'footer_user'
+  | 'voice_control'
+  | 'voice_box'
+  | 'appearance'
+  | 'agent_identity';
+
+export type ProtectedShellMenuPermissionClass =
+  | 'shell_system'
+  | 'user_surface'
+  | 'voice_route_control'
+  | 'voice_profile_management'
+  | 'appearance_customization'
+  | 'agent_identity_management'
+  | 'agent_read_only'
+  | 'agent_content_only';
+
 export type InterimShellAuthority = {
   /** True when operator / diagnostics surface may be entered (stronger than primary-only). */
   operatorEligible: boolean;
   /** True when developer surface may be entered (diagnostic/developer/operator allowance). */
   developerEligible: boolean;
 };
+
+export function protectedShellMenuZoneAllowsPermission(
+  zone: ProtectedShellMenuZone,
+  permissionClass: ProtectedShellMenuPermissionClass,
+): boolean {
+  switch (zone) {
+    case 'header_system':
+      return permissionClass === 'shell_system';
+    case 'footer_user':
+      return permissionClass === 'user_surface';
+    case 'voice_control':
+      return permissionClass === 'shell_system' || permissionClass === 'voice_route_control';
+    case 'voice_box':
+      return permissionClass === 'shell_system' || permissionClass === 'voice_profile_management';
+    case 'appearance':
+      return (
+        permissionClass === 'shell_system' ||
+        permissionClass === 'user_surface' ||
+        permissionClass === 'appearance_customization'
+      );
+    case 'agent_identity':
+      return permissionClass === 'shell_system' || permissionClass === 'agent_identity_management';
+    default:
+      return false;
+  }
+}
 
 function readStorageOnOff(key: string): boolean {
   if (typeof window === 'undefined') return false;

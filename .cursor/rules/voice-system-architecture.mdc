@@ -1,0 +1,70 @@
+---
+description: AI OS voice system architecture — TTS routing contract, VoiceRouteId enum, single-dispatch rule
+globs: src/core/io/**,src/config/voiceRoutePreference.ts,src/App.tsx
+alwaysApply: false
+---
+
+# Voice System Architecture
+
+## VoiceRouteId — governed values only
+
+```ts
+// src/config/voiceRoutePreference.ts
+export type VoiceRouteId = 'voicebox' | 'browser' | 'gemini';
+//  voicebox = Voicebox local TTS (runs on device hardware)
+//  browser  = Web Speech API / browser built-in TTS
+//  gemini   = Gemini 2.5 TTS via @google/genai
+```
+
+**No other values.** Do not add new TTS routes without updating this type AND adding a corresponding engine implementation.
+
+## Single-dispatch rule
+
+All TTS routing flows through the `speak()` function in `App.tsx`. Never call a TTS engine directly from a component.
+
+```ts
+// ✅ CORRECT — route via speak() in App.tsx
+const speak = async (text: string, overrideVoice?: string) => {
+  const route = getVoiceRoute(); // reads from voiceRoutePreference.ts
+  if (route === 'gemini') await geminiVoiceEngine.speak(text, overrideVoice);
+  else if (route === 'voicebox') await sovereignEngine.speak(text, overrideVoice);
+  else await browserEngine.speak(text, overrideVoice);
+};
+
+// ❌ WRONG — component calling TTS engine directly
+function SomeComponent() {
+  const engine = new BrowserVoiceEngine();
+  await engine.speak('hello'); // bypasses routing
+}
+```
+
+## VoiceEngine interface contract
+
+Every TTS engine MUST implement `IVoiceEngine` from `src/core/io/VoiceEngine.ts`:
+
+```ts
+interface IVoiceEngine {
+  startListening(): Promise<void>;
+  stopListening(): Promise<void>;
+  submitText(text: string): Promise<void>;
+  speak(text: string, overrideVoice?: string): Promise<void>;
+  onStatusChange?: (status: SystemStatus, detail?: string) => void;
+  onTranscription?: (text: string, isFinal: boolean) => void;
+  onAgentResponse?: (text: string) => void;
+}
+```
+
+## voiceRoutePreference.ts — single source of truth
+
+- `getVoiceRoute()` — reads `localStorage` key `aios_voice_route`, returns `VoiceRouteId`
+- `setVoiceRoute(route)` — writes to `localStorage`
+- Default route: `'gemini'` (falls back to `'gemini'` if no value stored)
+- Do NOT read/write `aios_voice_route` from any other file
+
+## Adding a new TTS engine
+
+1. Create `src/core/io/YourVoiceEngine.ts` implementing `IVoiceEngine`
+2. Add the route value to `VoiceRouteId` in `voiceRoutePreference.ts`
+3. Add the dispatch case to `speak()` in `App.tsx`
+4. Add a tile to `VoiceControlPanel.tsx` Model section
+5. Update `AIOS-VOICE-TTS-ARCHITECTURE-STANDARD-001.md` in the governing docs

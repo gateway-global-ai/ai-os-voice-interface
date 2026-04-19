@@ -21,7 +21,7 @@ const baseLocal: LocalModelReadiness = {
 
 test('secondary line includes workspace and voice notes', () => {
   const line = buildPrimarySecondaryDisclosureLine({
-    workspaceState: 'unknown',
+    workspaceState: 'not_configured',
     voiceInputAvailable: false,
     shellInteractionMode: 'voice',
   });

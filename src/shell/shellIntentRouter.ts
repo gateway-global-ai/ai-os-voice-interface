@@ -7,9 +7,11 @@
 import { extractIntentJsonObject } from '../shellCanvas/intentParse';
 import { logShellCanvasAudit } from '../shellCanvas/shellCanvasAudit';
 import type { ShellSurfaceMode } from './shellSurfaceMode';
+import type { ShellMenuId } from './shellMenuContract';
 
 export type ShellNavigationAction =
   | { type: 'none' }
+  | { type: 'set_menu_state'; menuId: ShellMenuId; open: boolean }
   | { type: 'set_mode'; mode: ShellTargetMode }
   | { type: 'open_workspace' }
   | { type: 'set_surface_mode'; mode: ShellSurfaceMode }
@@ -57,6 +59,14 @@ function mapShellIntent(raw: Record<string, unknown>): ShellNavigationAction {
       return { type: 'set_surface_mode', mode: 'developer' };
     case 'app.shell.exit_developer':
       return { type: 'set_surface_mode', mode: 'primary' };
+    case 'app.shell.open_system_menu':
+      return { type: 'set_menu_state', menuId: 'shell-header-system', open: true };
+    case 'app.shell.close_system_menu':
+      return { type: 'set_menu_state', menuId: 'shell-header-system', open: false };
+    case 'app.shell.open_user_menu':
+      return { type: 'set_menu_state', menuId: 'shell-footer-user', open: true };
+    case 'app.shell.close_user_menu':
+      return { type: 'set_menu_state', menuId: 'shell-footer-user', open: false };
     default:
       return { type: 'none' };
   }

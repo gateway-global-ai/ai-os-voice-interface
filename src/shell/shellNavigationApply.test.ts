@@ -54,6 +54,9 @@ describe('tryApplyShellNavigationAction', () => {
         setSurfaceMode: () => {
           throw new Error('unexpected surface');
         },
+        setMenuState: () => {
+          throw new Error('unexpected menu');
+        },
         setVoiceChatMode: (m) => {
           seen = m;
         },
@@ -78,6 +81,9 @@ describe('tryApplyShellNavigationAction', () => {
         setSurfaceMode: () => {
           surfaceCalls += 1;
         },
+        setMenuState: () => {
+          throw new Error('unexpected');
+        },
         setVoiceChatMode: () => {
           throw new Error('unexpected');
         },
@@ -95,12 +101,40 @@ describe('tryApplyShellNavigationAction', () => {
 });
 
 describe('applyShellNavigationAction', () => {
+  it('routes set_menu_state to setMenuState', () => {
+    let seen: { menuId: string; open: boolean } | null = null;
+    applyShellNavigationAction(
+      { type: 'set_menu_state', menuId: 'shell-header-system', open: true },
+      {
+        setSurfaceMode: () => {
+          throw new Error('unexpected');
+        },
+        setMenuState: (menuId, open) => {
+          seen = { menuId, open };
+        },
+        setVoiceChatMode: () => {
+          throw new Error('unexpected');
+        },
+        setAppTargetMode: () => {
+          throw new Error('unexpected');
+        },
+        openWorkspace: () => {
+          throw new Error('unexpected');
+        },
+      },
+    );
+    assert.deepEqual(seen, { menuId: 'shell-header-system', open: true });
+  });
+
   it('routes set_mode to setAppTargetMode', () => {
     let target: string | null = null;
     applyShellNavigationAction(
       { type: 'set_mode', mode: 'voice_settings' },
       {
         setSurfaceMode: () => {
+          throw new Error('unexpected');
+        },
+        setMenuState: () => {
           throw new Error('unexpected');
         },
         setVoiceChatMode: () => {

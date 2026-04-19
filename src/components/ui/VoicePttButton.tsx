@@ -1,7 +1,6 @@
 /**
- * Shadcn-inspired primary control: rectangular PTT with ring + animated glow.
- * Sizing: control is 40% of footer width × 50% of --shell-footer-height; “AI OS COMMAND CENTER” sits below.
- * @license SPDX-License-Identifier: Apache-2.0
+ * Primary voice control — compact pill with ambient glow.
+ * Sizing: 40% of footer width × 50% of --shell-footer-height.
  */
 
 import type { PointerEvent } from 'react';
@@ -17,70 +16,88 @@ type Props = {
   onPointerUp: (e: PointerEvent<HTMLButtonElement>) => void;
 };
 
-const railActivity = (s: CommandRailState['systemStatus']) =>
+const isActive = (s: CommandRailState['systemStatus']) =>
   s === 'listening' || s === 'processing' || s === 'speaking';
 
-export function VoicePttButton({
-  rail,
-  isPTTActive,
-  onPointerDown,
-  onPointerUp,
-}: Props) {
-  const busy = railActivity(rail.systemStatus);
+export function VoicePttButton({ rail, isPTTActive, onPointerDown, onPointerUp }: Props) {
+  const busy    = isActive(rail.systemStatus);
   const glowKey = isPTTActive ? 'press' : busy ? 'busy' : 'idle';
 
   return (
-    <div className="pointer-events-auto flex w-[40%] min-w-[9rem] max-w-[28rem] shrink-0 flex-col items-center gap-3 pb-1">
+    <div className="pointer-events-auto flex w-[40%] min-w-[9rem] max-w-[26rem] shrink-0 flex-col items-center gap-1.5">
       <motion.button
         type="button"
-        aria-label="Push to talk — AI OS Command Center. Hold to speak."
+        aria-label="Push to talk. Hold to speak."
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onLostPointerCapture={onPointerUp}
         className={cn(
-          'flex h-[calc(var(--shell-footer-height)*0.5)] w-full items-center justify-center overflow-hidden rounded-xl border px-4 text-white transition-colors sm:px-5',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white/90',
+          'flex h-[calc(var(--shell-footer-height)*0.52)] w-full items-center justify-center gap-2 overflow-hidden rounded-xl border px-4 text-white transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
           isPTTActive
             ? 'border-emerald-300/80 bg-emerald-400'
-            : 'border-emerald-700/25 bg-emerald-600 hover:bg-emerald-500',
+            : 'border-emerald-700/30 bg-emerald-600 hover:bg-emerald-500',
         )}
         animate={
           glowKey === 'press'
-            ? {
-                boxShadow:
-                  '0 0 0 1px rgba(52, 211, 153, 0.5), 0 0 32px 4px rgba(52, 211, 153, 0.55), 0 0 64px 8px rgba(16, 185, 129, 0.35)',
-              }
+            ? { boxShadow: '0 0 0 1px rgba(52,211,153,0.5), 0 0 32px 4px rgba(52,211,153,0.55), 0 0 64px 8px rgba(16,185,129,0.35)' }
             : glowKey === 'busy'
-              ? {
-                  boxShadow:
-                    '0 0 0 1px rgba(16, 185, 129, 0.35), 0 0 24px 2px rgba(16, 185, 129, 0.4)',
-                }
-              : {
-                  boxShadow: [
-                    '0 0 0 1px rgba(16, 185, 129, 0.2), 0 0 18px 0 rgba(16, 185, 129, 0.25)',
-                    '0 0 0 1px rgba(52, 211, 153, 0.35), 0 0 28px 4px rgba(52, 211, 153, 0.35)',
-                    '0 0 0 1px rgba(16, 185, 129, 0.2), 0 0 18px 0 rgba(16, 185, 129, 0.25)',
-                  ],
-                }
+              ? { boxShadow: '0 0 0 1px rgba(16,185,129,0.35), 0 0 24px 2px rgba(16,185,129,0.4)' }
+              : { boxShadow: [
+                    '0 0 0 1px rgba(16,185,129,0.2), 0 0 18px 0 rgba(16,185,129,0.25)',
+                    '0 0 0 1px rgba(52,211,153,0.35), 0 0 28px 4px rgba(52,211,153,0.35)',
+                    '0 0 0 1px rgba(16,185,129,0.2), 0 0 18px 0 rgba(16,185,129,0.25)',
+                  ] }
         }
         transition={
           glowKey === 'idle'
             ? { duration: 2.4, repeat: Infinity, ease: 'easeInOut' }
             : { duration: 0.25, ease: 'easeOut' }
         }
-        whileTap={{ scale: 0.98 }}
+        whileTap={{ scale: 0.97 }}
       >
         <Mic
-          className={cn(
-            'h-6 w-6 shrink-0 sm:h-8 sm:w-8',
-            (isPTTActive || busy) && 'animate-pulse',
-          )}
+          className={cn('h-5 w-5 shrink-0 sm:h-6 sm:w-6', (isPTTActive || busy) && 'animate-pulse')}
           aria-hidden
         />
+        <span className="text-[10px] font-black uppercase tracking-[0.12em] opacity-80">
+          {isPTTActive ? 'Listening…' : busy ? rail.systemStatus : 'Hold to speak'}
+        </span>
       </motion.button>
-      <p className="pointer-events-none m-0 mt-0.5 w-full whitespace-nowrap text-center text-[8px] font-black uppercase leading-snug tracking-[0.12em] text-zinc-500 sm:text-[9px] sm:tracking-[0.14em]">
-        AI OS COMMAND CENTER
-      </p>
+
+      <div className="pointer-events-none mt-1 flex items-center gap-1.5 opacity-75">
+        <span
+          style={{ color: 'var(--panel-text-muted)' }}
+          className="text-[7px] font-semibold uppercase tracking-[0.18em]"
+        >
+          Powered by
+        </span>
+        <div className="flex items-center gap-1">
+          <span
+            style={{ color: 'var(--panel-text-muted)' }}
+            className="text-[10px] font-bold"
+          >
+            CLEAR
+          </span>
+          <span
+            style={{ color: 'var(--panel-accent-text)' }}
+            className="text-[10px] font-bold"
+          >
+            VOICE
+          </span>
+          <div
+            style={{
+              background: 'var(--panel-accent-bg)',
+              color: 'var(--panel-accent-text)',
+              border: '1px solid var(--panel-accent-border)',
+            }}
+            className="rounded px-0.5 py-[1px] text-[7px] font-bold"
+          >
+            AI
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

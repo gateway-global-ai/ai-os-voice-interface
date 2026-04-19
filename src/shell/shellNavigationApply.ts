@@ -7,11 +7,13 @@
 import type { InterimShellAuthority } from './shellAuthority';
 import { allowShellSurfaceTransition } from './shellAuthority';
 import type { ShellNavigationAction, ShellTargetMode } from './shellIntentRouter';
+import type { ShellMenuId } from './shellMenuContract';
 import type { ShellSurfaceMode } from './shellSurfaceMode';
 import type { ShellStateCommand } from './shellStateCommands';
 
 export type ShellApplyHandlers = {
   setSurfaceMode: (mode: ShellSurfaceMode) => void;
+  setMenuState: (menuId: ShellMenuId, open: boolean) => void;
   setVoiceChatMode: (mode: 'voice' | 'chat') => void;
   setAppTargetMode: (mode: ShellTargetMode) => void;
   openWorkspace: () => void;
@@ -47,6 +49,9 @@ export function getShellNavigationDenialMessage(
 export function applyShellNavigationAction(action: ShellNavigationAction, h: ShellApplyHandlers): void {
   switch (action.type) {
     case 'none':
+      return;
+    case 'set_menu_state':
+      h.setMenuState(action.menuId, action.open);
       return;
     case 'set_surface_mode':
       h.setSurfaceMode(action.mode);

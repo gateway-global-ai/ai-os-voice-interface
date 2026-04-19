@@ -1,0 +1,63 @@
+---
+description: AI OS overlay positioning rules — prevents stacking context trap from motion.div transforms
+globs: src/components/**/*.tsx,src/onboarding/**/*.tsx,src/overlays/**/*.tsx
+alwaysApply: false
+---
+
+# Overlay Positioning Rules
+
+## The stacking context trap — NEVER do this
+
+`position: fixed` inside a CSS-transformed ancestor is positioned relative to that ancestor, NOT the viewport. Framer Motion's `motion.div` applies `transform` which creates a new stacking context.
+
+```tsx
+// ❌ WRONG — ScreenDemoLibrary was broken this way for months
+// ShellIdentityBar renders a <motion.div> with transform
+// ShellSystemControls is a child of ShellIdentityBar
+// ScreenDemoLibrary with fixed inset-0 gets TRAPPED in the header
+function ShellSystemControls() {
+  const [showLibrary, setShowLibrary] = useState(false);
+  return (
+    <>
+      <button onClick={() => setShowLibrary(true)}>Open</button>
+      {showLibrary && <ScreenDemoLibrary />} {/* fixed inset-0 TRAPPED in header */}
+    </>
+  );
+}
+```
+
+## REQUIRED — all full-viewport overlays render from App.tsx root
+
+```tsx
+// ✅ CORRECT — overlay renders at root level, outside all transforms
+// In App.tsx:
+{mode === 'demo_library' && (
+  <motion.div className="fixed inset-0 z-[var(--z-shell-system-controls)] ...">
+    <ScreenDemoLibrary onClose={() => setMode('voice')} />
+  </motion.div>
+)}
+
+// In ShellSystemControls — fire a prop callback, never mount overlays directly:
+function ShellSystemControls({ onOpenDemoLibrary }: { onOpenDemoLibrary?: () => void }) {
+  return <button onClick={onOpenDemoLibrary}>AI Library</button>;
+}
+```
+
+## Centered overlay pattern (not dropdown)
+
+```tsx
+// ✅ CORRECT — centered OS overlay
+className="fixed inset-0 flex items-center justify-center bg-black/55 backdrop-blur-[2px] z-[var(--z-shell-modal-backdrop)]"
+
+// ❌ WRONG — dropdown from corner (not an OS-style overlay)
+className="fixed right-3 top-[calc(var(--shell-header-height)+0.5rem)] w-[26rem]"
+```
+
+## Components that MUST NOT mount full-viewport overlays
+
+- `ShellSystemControls` — fires prop callbacks instead
+- `ShellIdentityBar` — fires prop callbacks instead  
+- `CommandRail` — fires prop callbacks instead
+- Any component inside a `motion.div` with animation transforms
+
+All `fixed inset-0` overlays must be direct children of the root `<div>` in `App.tsx` or `main.tsx`.

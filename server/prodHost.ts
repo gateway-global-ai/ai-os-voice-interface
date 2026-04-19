@@ -15,6 +15,14 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv } from 'vite';
 import { serveLocalModelChat, serveLocalModelReadiness } from '../src/local-llm/localModelServe';
+import {
+  serveGeminiGenerate,
+  serveGeminiHealth,
+  serveGeminiReadiness,
+  serveGeminiTts,
+  streamGeminiTts,
+} from './geminiServe';
+import { createPodcastEpisode, listPodcastEpisodes } from './podcastLibraryServe';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -26,7 +34,7 @@ const port = Number(process.env.PORT) || 5173;
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 app.get('/api/local-model/readiness', async (_req, res) => {
   try {
@@ -43,6 +51,53 @@ app.post('/api/local-model/chat', async (req, res) => {
   res.status(r.status).json(r.body);
 });
 
+app.get('/api/gemini/readiness', (_req, res) => {
+  const r = serveGeminiReadiness(env);
+  res.status(r.status).json(r.body);
+});
+
+app.get('/api/gemini/health', async (_req, res) => {
+  const r = await serveGeminiHealth(env);
+  res.status(r.status).json(r.body);
+});
+
+app.post('/api/gemini/generate', async (req, res) => {
+  const r = await serveGeminiGenerate(env, req.body);
+  res.status(r.status).json(r.body);
+});
+
+app.post('/api/gemini/tts', async (req, res) => {
+  const r = await serveGeminiTts(env, req.body);
+  res.status(r.status).json(r.body);
+});
+
+app.post('/api/gemini/tts/stream', async (req, res) => {
+  await streamGeminiTts(env, req.body, res, (handler) => {
+    req.on('close', handler);
+    res.on('close', handler);
+  });
+});
+
+app.get('/__podcast_library_api/episodes', async (_req, res) => {
+  try {
+    const episodes = await listPodcastEpisodes();
+    res.status(200).json(episodes);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+app.post('/__podcast_library_api/episodes', async (req, res) => {
+  try {
+    const episode = await createPodcastEpisode(req.body);
+    res.status(201).json(episode);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
 /** Other /api/* routes are not implemented on this host — avoid SPA fallback masking API 404s. */
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/')) {
@@ -52,6 +107,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(express.static(resolve(root, 'public'), { index: false }));
 app.use(express.static(resolve(root, 'dist'), { index: false }));
 
 app.get('*', (req, res) => {

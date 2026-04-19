@@ -22,7 +22,8 @@ export { primarySurfaceSystemStateDisclosureNeeded } from '../core/compliance/sp
  */
 export function buildPrimarySecondaryDisclosureLine(i: PrimaryDisclosureInput): string {
   const parts: string[] = [];
-  parts.push(workspacePrimaryLine(i.workspaceState));
+  const wsLine = workspacePrimaryLine(i.workspaceState);
+  if (wsLine) parts.push(wsLine);
   if (i.shellInteractionMode === 'voice' && !i.voiceInputAvailable) {
     parts.push('Voice input unavailable — use Chat.');
   }

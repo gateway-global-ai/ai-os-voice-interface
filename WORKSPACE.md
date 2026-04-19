@@ -2,6 +2,22 @@
 
 This app implements **AIOS-SPEC-007** (`governing_docs/specifications/GoogleWorkspaceIntegrationGovernance.md`): intents route through the **Workspace Intent Router → Integration Control Plane → MCP Adapter**; the voice/agent layer does **not** call Google Workspace MCP tools directly.
 
+## Shell audio control surface
+
+The shell now treats `ShellIdentityBar` as the operator-facing audio authority for narrated onboarding and reply playback:
+
+- All spoken shell events still route through `App.tsx` `speakText`, but the shell also maintains a bounded cue model (`current cue` plus `queued cues`) so playback is inspectable instead of invisible.
+- The disclosure/player bar exposes play/stop, mic on/off, speaker on/off, and a cue drawer that can surface pending audio plus the voice-route switch.
+- First-run onboarding is visually pinned while onboarding narration is active. Intro slide playback must not hide the center-stage surface just because global voice status moves to `speaking`.
+
+Architecture note: **[docs/architecture/AIOS_SHELL_AUDIO_CONTROL_SURFACE.md](docs/architecture/AIOS_SHELL_AUDIO_CONTROL_SURFACE.md)**.
+
+## Voice Box profile runtime
+
+The deeper Voice Box surface now supports local `.voicebox.zip` profile installation plus ongoing sample recording so an operator voice can be reused for shell narration, lessons, and podcast rendering when the `voicebox` route is active.
+
+Architecture note: **[docs/architecture/AIOS_VOICEBOX_PROFILE_IMPORT_AND_RUNTIME.md](docs/architecture/AIOS_VOICEBOX_PROFILE_IMPORT_AND_RUNTIME.md)**.
+
 ## MCP adapter (HTTP)
 
 The browser calls **`runWorkspaceControlPlane` → `callWorkspaceMcpAdapter`** only. The adapter performs streamable **initialize** → **`Mcp-Session-Id`** → **`tools/call`** to `{VITE_WORKSPACE_MCP_URL}{VITE_WORKSPACE_MCP_JSONRPC_PATH}` with **`Accept: application/json, text/event-stream`**. Governed **intent** ids are mapped to **server tool names** in **`src/workspace/mcpIntentToolMap.ts`** (not raw `workspace.*` strings).
@@ -102,6 +118,10 @@ This file is **informative**; normative rules are in **[AMD-2026-009](governing_
 | `VITE_GOOGLE_OAUTH_ACCESS_TOKEN` | Optional alias for **`VITE_WORKSPACE_MCP_BEARER_TOKEN`**. |
 | `VITE_WORKSPACE_MCP_INCLUDE_USER_EMAIL` | If **`true`**, send **`user_google_email`** in tool args (legacy single-user MCP). Default: omit (OAuth 2.1). |
 | `VITE_AIOS_GOOGLE_USER_EMAIL` | Used only when **`VITE_WORKSPACE_MCP_INCLUDE_USER_EMAIL=true`**. |
+| `VITE_CHECKME_VERIFICATION_ENTRY_URL` | Optional. Full URL opened for **returning-user** 123CheckMe verification (default **`https://123checkme.com/demo`**). OTP/SMS stay on that host; see **`src/config/identityVerification.ts`** and [identity-verification-mcp-gateway-gobal-ai](https://github.com/gateway-global-ai/identity-verification-mcp-gateway-gobal-ai). |
+| `VITE_123CHECKME_KEY` | Optional. **Platform API key** for in-app **`createClient`** (`src/core/io/checkmeClient.ts`): `verification.send` → `send-sms-verification`, `verify` → `verify-code` on Supabase. **Exposed in the browser bundle** — use a proxy or scoped key in production. |
+| `VITE_CHECKME_API_KEY` | Optional alias for **`VITE_123CHECKME_KEY`**. |
+| `VITE_CHECKME_SUPABASE_URL` | Optional. Supabase project origin for edge functions (default matches the Gateway MCP server). |
 
 In **this repo**, define **`VITE_*`** in **`.env.local`** (see **`.env.example`**). The MCP server’s **`GOOGLE_OAUTH_*`** and other host secrets belong only on the server’s **`.env`**, not in the voice app.
 

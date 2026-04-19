@@ -34,43 +34,72 @@ export function WorkspaceOnboardingSurface({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="relative z-20 w-full max-w-4xl mx-2 md:mx-4 max-h-[calc(100dvh-var(--shell-footer-height,6rem)-2rem)] min-h-0 flex flex-col rounded-3xl bg-white/90 backdrop-blur-2xl border border-sky-200/80 shadow-2xl overflow-hidden"
+      className="relative z-20 mx-2 flex max-h-[calc(100dvh-var(--shell-footer-height,6rem)-2rem)] min-h-0 w-full max-w-4xl flex-col overflow-hidden rounded-3xl shadow-2xl md:mx-4"
+      style={{
+        background: 'var(--panel-bg)',
+        border: '1px solid var(--panel-border)',
+        backdropFilter: 'blur(22px)',
+      }}
     >
-      <div className="p-6 md:p-8 border-b border-zinc-100 shrink-0">
+      <div className="shrink-0 border-b p-6 md:p-8" style={{ borderColor: 'var(--panel-border)' }}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-sky-500/10 rounded-2xl">
-              <Building2 className="w-7 h-7 text-sky-600" />
+            <div
+              className="rounded-2xl p-3"
+              style={{
+                background: 'var(--panel-accent-bg)',
+                border: '1px solid var(--panel-accent-border)',
+                color: 'var(--panel-accent-text)',
+              }}
+            >
+              <Building2 className="h-7 w-7" />
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">Google Workspace</p>
-              <h2 className="text-2xl md:text-3xl font-bold text-zinc-900 tracking-tight">
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--panel-text-muted)' }}>
+                Google Workspace
+              </p>
+              <h2 className="text-2xl font-bold tracking-tight md:text-3xl" style={{ color: 'var(--panel-heading)' }}>
                 Connect your workspace
               </h2>
-              <p className="text-zinc-500 text-sm mt-1 max-w-xl">
+              <p className="mt-1 max-w-xl text-sm" style={{ color: 'var(--panel-text-muted)' }}>
                 Link Google Workspace through the governed MCP path to unlock calendar and future read
                 surfaces — all traffic routes through the Integration Control Plane (AIOS-SPEC-007), not
                 raw browser calls.
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-sky-700 text-xs font-bold">
+          <div className="flex items-center gap-2 text-xs font-bold" style={{ color: 'var(--panel-accent-text)' }}>
             <Shield className="w-4 h-4" />
             <span>Gate</span>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-6 md:p-8 space-y-4">
-        <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4 text-sm text-zinc-700 space-y-2">
-          <p className="font-semibold text-zinc-900">Why connect</p>
+      <div className="flex-1 min-h-0 space-y-4 overflow-y-auto p-6 md:p-8">
+        <div
+          className="space-y-2 rounded-2xl p-4 text-sm"
+          style={{
+            background: 'var(--panel-surface)',
+            border: '1px solid var(--panel-border)',
+            color: 'var(--panel-text-muted)',
+          }}
+        >
+          <p className="font-semibold" style={{ color: 'var(--panel-heading)' }}>
+            Why connect
+          </p>
           <ul className="list-disc pl-5 space-y-1">
             <li>Calendar and Workspace tools use the same audited integration control plane.</li>
             <li>Your session stays on the AI OS shell — no parallel &quot;app folder&quot; shortcuts.</li>
             {showDiagnosticsChrome ? (
               <li>
                 Operators configure{' '}
-                <code className="text-xs bg-zinc-200/60 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> for the MCP server.
+                <code
+                  className="rounded px-1 text-xs"
+                  style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--panel-text)' }}
+                >
+                  VITE_WORKSPACE_MCP_URL
+                </code>{' '}
+                for the MCP server.
               </li>
             ) : null}
             <li>
@@ -85,11 +114,16 @@ export function WorkspaceOnboardingSurface({
         {showEnvHint ? (
           <div
             role="status"
-            className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+            className="rounded-2xl px-4 py-3 text-sm"
+            style={{
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              color: '#fcd34d',
+            }}
           >
             <p className="font-bold">MCP URL not configured</p>
             <p className="mt-1">
-              Set <code className="text-xs bg-amber-100 px-1 rounded">VITE_WORKSPACE_MCP_URL</code> in your
+              Set <code className="rounded px-1 text-xs" style={{ background: 'rgba(2,6,23,0.28)' }}>VITE_WORKSPACE_MCP_URL</code> in your
               environment and restart the dev server. You can close this panel and return later.
             </p>
           </div>
@@ -100,7 +134,12 @@ export function WorkspaceOnboardingSurface({
             type="button"
             disabled={!canConnect || connecting}
             onClick={onConnect}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-600 text-white font-semibold px-6 py-3 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            style={{
+              background: 'var(--panel-accent-bg)',
+              border: '1px solid var(--panel-accent-border)',
+              color: 'var(--panel-accent-text)',
+            }}
           >
             {connecting ? (
               <>
@@ -118,18 +157,28 @@ export function WorkspaceOnboardingSurface({
             type="button"
             title="Skip Workspace connection for now"
             onClick={onContinueWithout}
-            className="inline-flex items-center justify-center rounded-2xl border border-zinc-200 bg-white px-6 py-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+            className="inline-flex items-center justify-center rounded-2xl px-6 py-3 text-sm font-medium"
+            style={{
+              background: 'var(--panel-surface)',
+              border: '1px solid var(--panel-border)',
+              color: 'var(--panel-text)',
+            }}
           >
             Skip for now
           </button>
         </div>
       </div>
 
-      <div className="p-4 border-t border-zinc-100 flex justify-end shrink-0">
+      <div className="flex shrink-0 justify-end border-t p-4" style={{ borderColor: 'var(--panel-border)' }}>
         <button
           type="button"
           onClick={onClose}
-          className="px-4 py-2 rounded-xl text-sm font-medium bg-zinc-900 text-white hover:bg-zinc-800"
+          className="rounded-xl px-4 py-2 text-sm font-medium"
+          style={{
+            background: 'var(--panel-surface)',
+            border: '1px solid var(--panel-border)',
+            color: 'var(--panel-text)',
+          }}
         >
           Close
         </button>

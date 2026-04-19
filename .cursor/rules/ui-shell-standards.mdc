@@ -1,0 +1,73 @@
+---
+description: AI OS voice shell UI standards — CSS custom properties, dark glass theme, no hardcoded opacity utilities
+alwaysApply: true
+---
+
+# AI OS Shell UI Standards
+
+## CSS custom properties are the ONLY theming mechanism
+
+The shell theme is driven by `src/index.css` `--panel-*` custom properties stamped by `useShellTheme → themeToCssVars()`. All components inherit passively from these tokens.
+
+### Required token usage
+
+| Purpose | Token |
+|---------|-------|
+| Panel/card background | `var(--panel-bg)` |
+| Secondary surface | `var(--panel-surface)` |
+| Hover state | `var(--panel-bg-hover)` |
+| Border | `var(--panel-border)` |
+| Input background | `var(--panel-input-bg)` |
+| Input border | `var(--panel-input-border)` |
+| Body text | `var(--panel-text)` |
+| Muted/secondary text | `var(--panel-text-muted)` |
+| Heading text | `var(--panel-heading)` |
+| Accent background | `var(--panel-accent-bg)` |
+| Accent border | `var(--panel-accent-border)` |
+| Accent text | `var(--panel-accent-text)` |
+
+### Correct pattern
+
+```tsx
+// ✅ CORRECT — CSS custom properties via style=
+<div style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)' }}>
+  <p style={{ color: 'var(--panel-text)' }}>Content</p>
+  <span style={{ color: 'var(--panel-text-muted)' }}>Secondary</span>
+</div>
+
+// ✅ CORRECT — use tileButtonClass() helper for interactive tiles
+import { tileButtonClass } from './tileButtonHelpers';
+<button className={tileButtonClass(isActive)}>Tile</button>
+```
+
+### PROHIBITED patterns — never use these
+
+```tsx
+// ❌ WRONG — hardcoded Tailwind opacity utilities break the theme
+<div className="bg-white/[0.03] border-white/10 bg-slate-950/95">
+<p className="text-zinc-400 text-zinc-500 text-zinc-600">
+<div className="bg-white/[0.05] border border-white/15">
+
+// ❌ WRONG — hardcoded dark colors
+<div className="bg-slate-900 bg-zinc-950 bg-black/40">
+```
+
+## Layout tokens
+
+- Header height: `var(--shell-header-height)` = `2.75rem`
+- Footer height: `var(--shell-footer-height)` = `6rem`
+- Content top padding: `pt-[calc(var(--shell-header-height)+2.5rem)]`
+- Content bottom padding: `pb-[calc(var(--shell-footer-height)+1.25rem)]`
+
+## Z-index layers (do not use raw numbers)
+
+```
+--z-shell-base: 0
+--z-shell-main: 10
+--z-shell-chrome: 40
+--z-shell-workspace-canvas: 60
+--z-shell-header: 70
+--z-shell-footer: 70
+--z-shell-modal-backdrop: 65
+--z-shell-system-controls: 75
+```
