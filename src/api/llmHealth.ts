@@ -1,9 +1,8 @@
 /**
- * Lightweight connectivity checks for LLM keys (injected at build via vite.config define).
- * Keys are present in the client bundle — same model as GEMINI_API_KEY for this app.
+ * Lightweight connectivity checks for LLM providers and the same-origin Gemini gateway.
  */
 
-import { GoogleGenAI } from '@google/genai';
+import { fetchGeminiGatewayHealth, fetchGeminiGatewayReadiness } from './geminiGateway';
 
 export type ProviderCheck = {
   id: 'gemini' | 'openai' | 'deepseek' | 'documents_proxy' | 'local_llm';
@@ -20,26 +19,26 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ ms: number; result: T }
 }
 
 export async function checkGemini(): Promise<ProviderCheck> {
-  const key = process.env.GEMINI_API_KEY?.trim();
-  if (!key) {
+  try {
+    const readiness = await fetchGeminiGatewayReadiness();
+    if (!readiness.configured) {
+      return {
+        id: 'gemini',
+        label: 'Gemini',
+        ok: false,
+        detail: readiness.detail,
+        ms: 0,
+      };
+    }
+
+    const { ms, result } = await timed(async () => fetchGeminiGatewayHealth());
     return {
       id: 'gemini',
       label: 'Gemini',
-      ok: false,
-      detail: 'GEMINI_API_KEY missing (add to .env.local in ai-os-voice-interface)',
-      ms: 0,
+      ok: result.ok,
+      detail: result.detail,
+      ms,
     };
-  }
-  try {
-    const { ms, result } = await timed(async () => {
-      const ai = new GoogleGenAI({ apiKey: key });
-      await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: 'ping',
-      });
-      return true;
-    });
-    return { id: 'gemini', label: 'Gemini', ok: true, detail: 'generateContent OK', ms };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { id: 'gemini', label: 'Gemini', ok: false, detail: msg, ms: 0 };
@@ -157,7 +156,7 @@ export async function checkLocalModel(): Promise<ProviderCheck> {
   }
 }
 
-/** Optional local documents proxy (Vite → localhost:8100). Dev-only convenience; not required for the shell. */
+/** Optional GET /api/documents (Vite proxy: Governance :8100 with /v1 rewrite, or main API if configured). Dev-only. */
 export async function checkOptionalDocumentsProxy(): Promise<ProviderCheck> {
   try {
     const { ms } = await timed(async () => {
@@ -171,7 +170,7 @@ export async function checkOptionalDocumentsProxy(): Promise<ProviderCheck> {
       id: 'documents_proxy',
       label: 'Documents proxy (optional)',
       ok: true,
-      detail: 'GET /api/documents OK (proxy → :8100)',
+      detail: 'GET /api/documents OK (Vite proxy per env)',
       ms,
     };
   } catch (e) {

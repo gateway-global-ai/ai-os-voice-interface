@@ -1,76 +1,90 @@
 /**
  * Governed footer — single primary action: PTT (voice) or send (chat).
- * @license SPDX-License-Identifier: Apache-2.0
+ * Left nav cluster removed per plan — mode toggle is inline.
+ * Passively inherits all surface/text from CSS custom properties.
  */
 
-import type { FormEvent, PointerEvent } from 'react';
-import { MessageSquare, Home, Menu as MenuIcon, Send, Circle } from 'lucide-react';
+import type { FormEvent, PointerEvent, ReactNode } from 'react';
+import { MessageSquare, Home, Send, Mic, Circle, UserRound } from 'lucide-react';
 import { motion } from 'motion/react';
 import { VoicePttButton } from '../ui/VoicePttButton';
 import type { CommandRailState } from './commandRailTypes';
+import type { ShellMenuRecord } from '../../shell/shellMenuContract';
 
 export type { CommandRailState };
 
 type Props = {
   rail: CommandRailState;
   mode: 'voice' | 'chat';
-  menuOpen: boolean;
+  /** @deprecated kept for backward compatibility — no longer renders menu button */
+  menuOpen?: boolean;
   chatInput: string;
   onChatInputChange: (v: string) => void;
   onChatSubmit: (e: FormEvent) => void;
+  onChatMicPress: () => void;
+  onChatMicRelease: () => void;
   onToggleVoiceChat: () => void;
-  onMenuClick: () => void;
+  /** @deprecated kept for backward compatibility — no longer renders menu button */
+  onMenuClick?: () => void;
   isPTTActive: boolean;
   onPTTDown: (e: PointerEvent<HTMLButtonElement>) => void;
   onPTTUp: (e: PointerEvent<HTMLButtonElement>) => void;
   displayStatus: string;
-  /** Secondary line under status (e.g. hold to speak) — primary users only. */
   displayStatusDetail?: string;
+  loyaltySummary?: string;
   statusTone: 'ok' | 'error' | 'muted';
-  /** When false, hide canvas intent + activity sub-state (mono debug lines). */
   showDiagnosticsChrome: boolean;
+  footerMenuRecord?: ShellMenuRecord;
+  footerMenuOpen?: boolean;
+  onToggleFooterMenu?: () => void;
+  /** When set, profile control calls this (e.g. sign-in vs footer menu). Takes precedence over `onToggleFooterMenu`. */
+  onProfilePress?: () => void;
 };
 
-/** Activity sub-state for the rail debug line (not overall health — use `statusTone` for that). */
-function mapAppStatus(s: CommandRailState['systemStatus']): string {
+function mapRailStatus(s: CommandRailState['systemStatus']): string {
   switch (s) {
-    case 'listening':
-      return 'listening';
-    case 'processing':
-      return 'processing';
-    case 'speaking':
-      return 'speaking';
-    default:
-      return 'idle';
+    case 'listening':  return 'listening';
+    case 'processing': return 'processing';
+    case 'speaking':   return 'speaking';
+    default:           return 'idle';
   }
 }
 
+const statusColor = (tone: Props['statusTone']) =>
+  tone === 'error' ? '#ef4444' : tone === 'muted' ? 'var(--panel-text-muted)' : '#34d399';
+
 export function CommandRail({
-  rail,
-  mode,
-  menuOpen,
-  chatInput,
-  onChatInputChange,
-  onChatSubmit,
+  rail, mode,
+  chatInput, onChatInputChange, onChatSubmit,
+  onChatMicPress, onChatMicRelease,
   onToggleVoiceChat,
-  onMenuClick,
-  isPTTActive,
-  onPTTDown,
-  onPTTUp,
-  displayStatus,
-  displayStatusDetail,
-  statusTone,
-  showDiagnosticsChrome,
+  isPTTActive, onPTTDown, onPTTUp,
+  displayStatus, displayStatusDetail,
+  loyaltySummary,
+  statusTone, showDiagnosticsChrome,
+  footerMenuRecord,
+  footerMenuOpen = false,
+  onToggleFooterMenu,
+  onProfilePress,
 }: Props) {
   const voicePrimary = rail.mode === 'voice' && rail.primaryAction === 'ptt';
-  const chatPrimary = rail.mode === 'chat' && rail.primaryAction === 'send';
-  const railLabel = mapAppStatus(rail.systemStatus);
-  const pulseStatusDot =
-    statusTone === 'ok' && rail.systemStatus === 'idle';
+  const chatPrimary  = rail.mode === 'chat'  && rail.primaryAction === 'send';
+  const railLabel    = mapRailStatus(rail.systemStatus);
+  const pulseStatusDot = statusTone === 'ok' && rail.systemStatus === 'idle';
+  const dotColor = statusColor(statusTone);
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-[var(--z-shell-footer)] min-h-[var(--shell-footer-height)] border-t border-zinc-200 bg-white/90 backdrop-blur-xl">
-      {voicePrimary ? (
+    <footer
+      style={{
+        background: 'var(--panel-bg)',
+        borderTop: '1px solid var(--panel-border)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+      }}
+      className="fixed bottom-0 left-0 right-0 z-[var(--z-shell-footer)] min-h-[var(--shell-footer-height)]"
+    >
+      {/* PTT button floats centered above the rail row */}
+      {voicePrimary && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           <VoicePttButton
             rail={rail}
@@ -79,119 +93,184 @@ export function CommandRail({
             onPointerUp={onPTTUp}
           />
         </div>
-      ) : null}
+      )}
 
-      <div className="relative z-10 flex min-h-[var(--shell-footer-height)] items-center justify-between gap-2 px-3 py-2 md:px-6 md:py-2">
-        <div className="flex shrink-0 items-center gap-3 md:gap-4">
-          {mode === 'chat' ? (
-            <button
-              type="button"
-              onClick={onToggleVoiceChat}
-              className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 text-zinc-500 transition-colors hover:text-emerald-600"
-            >
-              <Home className="h-9 w-9" aria-hidden />
-              <span className="text-[9px] font-bold uppercase tracking-widest">Home</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onToggleVoiceChat}
-              className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 text-zinc-500 transition-colors hover:text-emerald-600"
-            >
-              <MessageSquare className="h-9 w-9" aria-hidden />
-              <span className="text-[9px] font-bold uppercase tracking-widest">Chat</span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onMenuClick}
-            className={`flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 transition-colors ${menuOpen ? 'text-emerald-600' : 'text-zinc-500 hover:text-zinc-900'}`}
-          >
-            <MenuIcon className="h-9 w-9" aria-hidden />
-            <span className="text-[9px] font-bold uppercase tracking-widest">Menu</span>
-          </button>
+      <div className="relative z-10 flex min-h-[var(--shell-footer-height)] items-center justify-between gap-2 px-4 py-2 md:px-6">
+
+        {/* ── Left: voice↔chat toggle ───────────────────────────────── */}
+        <div className="flex shrink-0 items-center">
+          <ModeToggleButton
+            mode={mode}
+            onClick={onToggleVoiceChat}
+          />
         </div>
 
+        {/* ── Centre: chat input or PTT spacer ─────────────────────── */}
         <div className="min-w-0 flex-1 px-2">
-          {chatPrimary ? (
-            <form
-              onSubmit={onChatSubmit}
-              className="mx-auto flex w-full max-w-xl items-center gap-2"
-            >
+          {chatPrimary && (
+            <form onSubmit={onChatSubmit} className="mx-auto flex w-full max-w-xl items-center gap-2">
               <input
                 type="text"
                 value={chatInput}
                 onChange={(e) => onChatInputChange(e.target.value)}
                 placeholder="Type a message…"
-                className="min-w-0 flex-1 rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none"
+                style={{
+                  background: 'var(--panel-input-bg)',
+                  border: '1px solid var(--panel-input-border)',
+                  color: 'var(--panel-text)',
+                }}
+                className="min-w-0 flex-1 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:opacity-40"
               />
               <button
+                type="button"
+                onMouseDown={onChatMicPress}
+                onMouseUp={onChatMicRelease}
+                onMouseLeave={onChatMicRelease}
+                onTouchStart={onChatMicPress}
+                onTouchEnd={onChatMicRelease}
+                onTouchCancel={onChatMicRelease}
+                style={isPTTActive || rail.systemStatus === 'listening' ? {
+                  background: 'var(--panel-accent-bg)',
+                  border: '1px solid var(--panel-accent-border)',
+                  color: 'var(--panel-accent-text)',
+                } : {
+                  background: 'var(--panel-surface)',
+                  border: '1px solid var(--panel-border)',
+                  color: 'var(--panel-text-muted)',
+                }}
+                className="shrink-0 rounded-xl p-2.5 transition hover:opacity-80"
+                aria-label="Hold to talk"
+              >
+                <Mic size={18} />
+              </button>
+              <button
                 type="submit"
-                className="shrink-0 rounded-2xl bg-emerald-500 p-3 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400"
+                className="shrink-0 rounded-xl bg-emerald-500 p-2.5 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 transition"
                 aria-label="Send"
               >
-                <Send className="h-8 w-8 text-white" aria-hidden />
+                <Send size={18} className="text-white" />
               </button>
             </form>
-          ) : null}
+          )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 md:gap-4">
-          <div className="hidden items-center gap-2 border-l border-zinc-200 pl-3 sm:flex md:pl-6">
+        {/* ── Right: knowledge + status readout ───────────────────── */}
+        <div className="flex shrink-0 items-center gap-2">
+          {onProfilePress || (footerMenuRecord && onToggleFooterMenu) ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (onProfilePress) {
+                  onProfilePress();
+                  return;
+                }
+                onToggleFooterMenu?.();
+              }}
+              className="flex h-10 w-10 items-center justify-center rounded-xl transition hover:opacity-80"
+              style={{
+                background: footerMenuOpen ? 'var(--panel-accent-bg)' : 'var(--panel-surface)',
+                border: `1px solid ${footerMenuOpen ? 'var(--panel-accent-border)' : 'var(--panel-border)'}`,
+                color: footerMenuOpen ? 'var(--panel-accent-text)' : 'var(--panel-text-muted)',
+              }}
+              aria-label={onProfilePress && !footerMenuRecord ? 'Sign in' : 'Open user surface menu'}
+              title={onProfilePress && !footerMenuRecord ? 'Sign in' : 'Open user surface menu'}
+            >
+              <UserRound size={17} />
+            </button>
+          ) : null}
+
+          <div
+            style={{ borderLeft: '1px solid var(--panel-border)' }}
+            className="hidden items-center gap-2 pl-3 sm:flex"
+          >
             <div className="flex flex-col items-end gap-0.5">
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-300">
+              <span style={{ color: 'var(--panel-text-muted)' }}
+                    className="text-[9px] font-black uppercase tracking-widest">
                 Status
               </span>
-              <span
-                className={`text-[10px] font-bold uppercase tracking-widest ${
-                  statusTone === 'error'
-                    ? 'text-red-500'
-                    : statusTone === 'muted'
-                      ? 'text-zinc-400'
-                      : 'text-emerald-600'
-                }`}
-              >
+              <span style={{ color: dotColor }}
+                    className="text-[9px] font-bold uppercase tracking-widest">
                 {displayStatus}
               </span>
-              {displayStatusDetail ? (
-                <span className="max-w-[10rem] text-right text-[9px] font-medium leading-snug text-zinc-400">
-                  {displayStatusDetail}
+              {loyaltySummary ? (
+                <span
+                  style={{ color: 'var(--panel-text-muted)' }}
+                  className="max-w-[10rem] text-right text-[8px] font-bold uppercase tracking-[0.16em] leading-snug"
+                >
+                  {loyaltySummary}
                 </span>
               ) : null}
+              {displayStatusDetail && (
+                <span style={{ color: 'var(--panel-text-muted)' }}
+                      className="max-w-[10rem] text-right text-[8px] font-medium leading-snug">
+                  {displayStatusDetail}
+                </span>
+              )}
             </div>
             <motion.div
               animate={pulseStatusDot ? { opacity: [0.4, 1, 0.4] } : { opacity: 1 }}
-              transition={
-                pulseStatusDot ? { duration: 2, repeat: Infinity } : { duration: 0.2 }
-              }
+              transition={pulseStatusDot ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
             >
-              <Circle
-                className={`h-2.5 w-2.5 fill-current ${
-                  statusTone === 'error'
-                    ? 'text-red-500'
-                    : statusTone === 'muted'
-                      ? 'text-zinc-400'
-                      : 'text-emerald-600'
-                }`}
-              />
+              <Circle className="h-2 w-2 fill-current" style={{ color: dotColor }} />
             </motion.div>
-            {showDiagnosticsChrome && rail.intent ? (
-              <span
-                className="max-w-[100px] truncate font-mono text-[9px] text-zinc-400"
-                title={rail.intent}
-              >
+            {showDiagnosticsChrome && rail.intent && (
+              <span style={{ color: 'var(--panel-text-muted)' }}
+                    className="max-w-[80px] truncate font-mono text-[8px]"
+                    title={rail.intent}>
                 {rail.intent}
               </span>
-            ) : null}
-            {showDiagnosticsChrome ? (
-              <span className="hidden font-mono text-[9px] text-zinc-300 lg:inline">
+            )}
+            {showDiagnosticsChrome && (
+              <span style={{ color: 'var(--panel-text-muted)' }}
+                    className="hidden font-mono text-[8px] lg:inline">
                 {railLabel}
               </span>
-            ) : null}
+            )}
           </div>
         </div>
+
       </div>
     </footer>
   );
 }
 
+/* ── Mode toggle button ────────────────────────────────────────────────── */
+function ModeToggleButton({ mode, onClick }: { mode: 'voice' | 'chat'; onClick: () => void }) {
+  const isChatMode = mode === 'chat';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={isChatMode ? 'Switch to Voice' : 'Switch to Chat'}
+      className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1 rounded-xl px-2 transition hover:opacity-80"
+      style={{ color: 'var(--panel-text-muted)' }}
+    >
+      {isChatMode ? <Home size={18} /> : <MessageSquare size={18} />}
+      <span className="text-[8px] font-bold uppercase tracking-widest">
+        {isChatMode ? 'Voice' : 'Chat'}
+      </span>
+    </button>
+  );
+}
+
+/* ── Unused NavButton kept for external import compatibility ──────────── */
+export function NavButton({
+  icon, label, active, onClick,
+}: { icon: ReactNode; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={active ? {
+        color: 'var(--panel-accent-text)',
+        background: 'var(--panel-accent-bg)',
+      } : {
+        color: 'var(--panel-text-muted)',
+      }}
+      className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1 rounded-xl px-2 transition hover:opacity-80"
+    >
+      {icon}
+      <span className="text-[8px] font-bold uppercase tracking-widest">{label}</span>
+    </button>
+  );
+}

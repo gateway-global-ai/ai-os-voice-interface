@@ -1,0 +1,70 @@
+<svg width="1400" height="1400" viewBox="0 0 1400 1400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="180" y1="120" x2="1210" y2="1280" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1220"/>
+      <stop offset="0.52" stop-color="#111827"/>
+      <stop offset="1" stop-color="#050816"/>
+    </linearGradient>
+    <radialGradient id="glowTop" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(708 350) rotate(90) scale(620)">
+      <stop stop-color="#22D3EE" stop-opacity="0.34"/>
+      <stop offset="0.45" stop-color="#2563EB" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#0B1220" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBottom" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(700 1070) rotate(90) scale(420)">
+      <stop stop-color="#10B981" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#0B1220" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ringStroke" x1="447" y1="370" x2="986" y2="990" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="0.52" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <linearGradient id="waveStroke" x1="378" y1="846" x2="1015" y2="846" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="0.5" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <filter id="softBlur" x="190" y="190" width="1020" height="1020" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="36"/>
+    </filter>
+    <filter id="glass" x="248" y="222" width="904" height="956" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+  </defs>
+
+  <rect width="1400" height="1400" rx="84" fill="url(#bg)"/>
+  <rect width="1400" height="1400" rx="84" fill="url(#glowTop)"/>
+  <rect width="1400" height="1400" rx="84" fill="url(#glowBottom)"/>
+
+  <g opacity="0.32" filter="url(#softBlur)">
+    <circle cx="702" cy="684" r="298" stroke="#38BDF8" stroke-width="36"/>
+    <circle cx="702" cy="684" r="214" stroke="#2563EB" stroke-width="20"/>
+  </g>
+
+  <g filter="url(#glass)">
+    <rect x="292" y="266" width="816" height="868" rx="42" fill="white" fill-opacity="0.03"/>
+    <rect x="292.75" y="266.75" width="814.5" height="866.5" rx="41.25" stroke="white" stroke-opacity="0.12" stroke-width="1.5"/>
+  </g>
+
+  <path d="M459 466C524 399 611 361 704 361C899 361 1057 519 1057 714C1057 806 1022 890 959 955" stroke="url(#ringStroke)" stroke-width="26" stroke-linecap="round"/>
+  <path d="M946 522C976 574 992 634 992 698C992 774 970 846 931 907" stroke="#67E8F9" stroke-opacity="0.54" stroke-width="8" stroke-linecap="round" stroke-dasharray="1 22"/>
+  <path d="M876 418L1039 418" stroke="#67E8F9" stroke-opacity="0.8" stroke-width="6" stroke-linecap="round"/>
+  <path d="M999 380L1039 418L999 456" stroke="#67E8F9" stroke-opacity="0.8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <path d="M382 847C426 847 426 770 470 770C514 770 514 924 558 924C602 924 602 675 646 675C690 675 690 1014 734 1014C778 1014 778 710 822 710C866 710 866 891 910 891C954 891 954 812 998 812" stroke="url(#waveStroke)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="470" cy="770" r="11" fill="#67E8F9"/>
+  <circle cx="646" cy="675" r="11" fill="#60A5FA"/>
+  <circle cx="734" cy="1014" r="11" fill="#34D399"/>
+  <circle cx="910" cy="891" r="11" fill="#67E8F9"/>
+
+  <path d="M428 981C506 1045 604 1082 710 1082C804 1082 892 1052 964 999" stroke="#34D399" stroke-opacity="0.48" stroke-width="8" stroke-linecap="round" stroke-dasharray="1 20"/>
+
+  <text x="382" y="404" fill="#A5B4FC" fill-opacity="0.72" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="0.34em">AI OS RESEARCH AUDIO</text>
+  <text x="382" y="506" fill="#F8FAFC" font-family="Inter, Arial, sans-serif" font-size="96" font-weight="800">The Fatal Cost of</text>
+  <text x="382" y="612" fill="#F8FAFC" font-family="Inter, Arial, sans-serif" font-size="96" font-weight="800">AI Engagement Loops</text>
+
+  <text x="382" y="700" fill="#94A3B8" font-family="Inter, Arial, sans-serif" font-size="38" font-weight="500">Mapping the trap where motion replaces progress.</text>
+
+  <text x="382" y="1166" fill="#67E8F9" fill-opacity="0.92" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="0.24em">LABYRINTH · WAVEFORM · GOVERNANCE SIGNAL</text>
+</svg>

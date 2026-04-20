@@ -3,11 +3,11 @@ import { createRoot } from 'react-dom/client';
 import { WorkspaceCanvasProvider } from './shellCanvas/WorkspaceCanvasContext';
 import { ShellStateProvider } from './shell/ShellStateContext';
 import App from './App.tsx';
+import { KernelErrorBoundary } from './KernelErrorBoundary';
 import './index.css';
-
-/** Workspace canvas provider — must wrap the same React tree as `App`. */
 function Root() {
   const speakTextRef = useRef<(text: string, overrideVoice?: string) => Promise<void>>(async () => {});
+
   return (
     <WorkspaceCanvasProvider
       onPolicyDenied={(payload) =>
@@ -23,6 +23,8 @@ function Root() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Root />
+    <KernelErrorBoundary>
+      <Root />
+    </KernelErrorBoundary>
   </StrictMode>,
 );

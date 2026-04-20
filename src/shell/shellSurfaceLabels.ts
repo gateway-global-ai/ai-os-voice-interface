@@ -28,7 +28,7 @@ export function workspacePrimaryLine(ws: WorkspaceState): string {
     case 'connected':
       return 'Google Workspace connected';
     case 'auth_required':
-      return 'Google Workspace — sign in required for Mail, Calendar, and Drive';
+      return '';
     case 'not_configured':
       return 'Google Workspace not set up in this app';
     case 'connecting':
@@ -36,9 +36,9 @@ export function workspacePrimaryLine(ws: WorkspaceState): string {
     case 'error':
       return 'Google Workspace connection issue';
     case 'unknown':
-      return 'Google Workspace not connected yet';
+      return '';
     default:
-      return 'Google Workspace status unknown';
+      return '';
   }
 }
 

@@ -1,46 +1,163 @@
 /**
- * Minimal orientation when the voice shell is idle (no canvas overlay).
- * **AMD-2026-012 §5** — copy differs for **new** vs **returning** (less scaffolding when returning).
+ * AI OS welcome canvas.
+ *
+ * Shown before the first session starts. Keeps the center stage sparse:
+ * ambient video, one primary power button, and lightweight topic actions.
+ *
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
+import { motion } from 'motion/react';
+import { Power } from 'lucide-react';
 import type { SessionEntryClassification } from '../../shell/sessionEntryClassification';
 import type { WorkspaceState } from '../../shell/workspaceState';
-import { workspaceNextStepHint } from '../../shell/shellSurfaceLabels';
+
+export type VibeTopicId = 'university' | 'community' | 'coding_platform';
 
 type Props = {
   workspaceState: WorkspaceState;
-  /** First classification step at Shell entry (§5.1 / §5.2). */
   sessionEntry: SessionEntryClassification;
+  /** Kept for API compatibility. */
   onOpenMenu: () => void;
+  onSelectMode: (mode: 'voice' | 'chat') => void;
+  /** Called when the user clicks the Start button. */
+  onStart?: () => void;
+  /** Sends a voice-AI explanation request for the tapped Vibe topic. */
+  onExplainVibeTopic?: (topic: VibeTopicId) => void;
 };
 
-export function ShellVoiceIdlePanel({ workspaceState, sessionEntry, onOpenMenu }: Props) {
-  const extra = workspaceNextStepHint(workspaceState);
-  const title =
-    sessionEntry === 'new' ? 'You’re in AI OS' : 'Welcome back';
-  const body =
-    sessionEntry === 'new'
-      ? 'This is the voice-first shell: speak with the assistant, or open Menu for settings and Google Workspace (calendar, mail, and more) when connected.'
-      : 'Speak to continue, or open Menu for settings and Google Workspace when connected.';
+const VIBE_TOPIC_BUBBLES: { id: VibeTopicId; label: string }[] = [
+  { id: 'university', label: 'University' },
+  { id: 'community', label: 'Community' },
+  { id: 'coding_platform', label: 'Coding Platform' },
+];
+
+export function ShellVoiceIdlePanel({ onStart, onSelectMode, onExplainVibeTopic }: Props) {
+  const handleStart = () => {
+    if (onStart) {
+      onStart();
+    } else {
+      onSelectMode('voice');
+    }
+  };
 
   return (
-    <div className="max-w-md px-6 text-center space-y-4">
-      <div className="space-y-2">
-        <p className="text-sm font-semibold text-zinc-900">{title}</p>
-        <p className="text-xs text-zinc-600 leading-relaxed">{body}</p>
-        {extra ? <p className="text-xs text-zinc-500 leading-relaxed">{extra}</p> : null}
-      </div>
-      <div className="flex flex-col items-center gap-2">
-        <button
-          type="button"
-          onClick={onOpenMenu}
-          className="w-full max-w-xs rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white shadow-md transition hover:bg-zinc-800"
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
+      className="absolute inset-0 overflow-hidden text-center"
+    >
+      <video
+        className="absolute inset-0 h-full w-full object-cover"
+        src="/videos/vibe_coder_video_bg.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+      />
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(circle at center, rgba(15,23,42,0.2) 0%, rgba(2,6,23,0.62) 58%, rgba(2,6,23,0.88) 100%)',
+        }}
+      />
+
+      <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 py-10 md:px-10">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.28, duration: 0.5 }}
+          className="mx-auto flex w-full max-w-xl flex-col items-center gap-5"
         >
-          Open Menu
-        </button>
-        <p className="text-[10px] text-zinc-400">Or hold the microphone button below to speak.</p>
+          <motion.p
+            initial={{ opacity: 0, letterSpacing: '0.1em' }}
+            animate={{ opacity: 1, letterSpacing: '0.32em' }}
+            transition={{ delay: 0.1, duration: 0.6 }}
+            className="text-[9px] font-black uppercase tracking-[0.32em]"
+            style={{ color: 'var(--panel-text-muted)' }}
+          >
+            AI Operating System
+          </motion.p>
+
+          <h1
+            className="text-3xl font-black tracking-tight md:text-5xl"
+            style={{ color: 'var(--panel-heading)', textShadow: '0 0 28px rgba(15,23,42,0.32)' }}
+          >
+            The Vibe Coding University.
+          </h1>
+
+          <motion.button
+            type="button"
+            onClick={handleStart}
+            className="flex h-28 w-28 items-center justify-center rounded-full text-white"
+            style={{
+              background: 'linear-gradient(135deg, rgba(15,118,110,0.9) 0%, rgba(8,145,178,0.92) 48%, rgba(37,99,235,0.92) 100%)',
+              border: '1px solid rgba(125,211,252,0.28)',
+              boxShadow: '0 0 36px rgba(34,211,238,0.24), 0 0 84px rgba(37,99,235,0.15)',
+            }}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            aria-label="Enter AI OS"
+          >
+            <Power size={34} />
+          </motion.button>
+
+          <p
+            className="text-[11px] font-bold uppercase tracking-[0.28em]"
+            style={{ color: 'var(--panel-heading)' }}
+          >
+            Press to enter
+          </p>
+
+          {onExplainVibeTopic ? (
+            <div
+              className="flex flex-wrap items-center justify-center gap-3"
+              role="group"
+              aria-label="Vibe topics"
+            >
+              {VIBE_TOPIC_BUBBLES.map((item) => (
+                <TopicBubble
+                  key={item.id}
+                  label={item.label}
+                  onClick={() => onExplainVibeTopic(item.id)}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          <div
+            className="flex items-center gap-1.5 pt-1 text-[9px] font-bold uppercase tracking-widest"
+            style={{ color: 'var(--panel-text-muted)' }}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full animate-pulse"
+              style={{ background: 'var(--panel-accent-text)' }}
+            />
+            Sovereign Kernel Ready
+          </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
+  );
+}
+
+function TopicBubble({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      className="rounded-full px-4 py-2 text-[14px] font-semibold uppercase tracking-[0.18em]"
+      style={{
+        background: 'color-mix(in srgb, var(--panel-surface) 72%, transparent)',
+        border: '1px solid var(--panel-border)',
+        color: 'var(--panel-text-muted)',
+      }}
+      whileHover={{ y: -1 }}
+      whileTap={{ scale: 0.98 }}
+    >
+      {label}
+    </motion.button>
   );
 }
