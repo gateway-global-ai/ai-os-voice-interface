@@ -72,6 +72,18 @@ fn run_migrations(connection: &Connection) -> AiosResult<()> {
         user_version = 3;
     }
 
+    if user_version < 4 {
+        migrate_to_v4(connection)?;
+        write_user_version(connection, 4)?;
+        user_version = 4;
+    }
+
+    if user_version < 5 {
+        migrate_to_v5(connection)?;
+        write_user_version(connection, 5)?;
+        user_version = 5;
+    }
+
     if user_version != CURRENT_SCHEMA_VERSION {
         return Err(AiosStateError::InvalidData(format!(
             "unsupported schema version after migrations: {user_version}"
@@ -213,6 +225,50 @@ CREATE INDEX IF NOT EXISTS idx_ch_ts
     ON conversation_history(timestamp_ms);
 "#,
     )?;
+    Ok(())
+}
+
+fn migrate_to_v4(_connection: &Connection) -> AiosResult<()> {
+    // Shell menu snapshot + normalized rows are seeded in
+    // `intent_loop::initialize_intent_loop_schema` once `user_version >= 4`, because
+    // `shell_menus` / `shell_menu_levels` / `shell_menu_items` are created there.
+    Ok(())
+}
+
+fn migrate_to_v5(connection: &Connection) -> AiosResult<()> {
+    connection.execute_batch(
+        r#"
+CREATE TABLE IF NOT EXISTS coding_agent_projects (
+    id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    root_path TEXT NOT NULL UNIQUE,
+    created_at_ms INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coding_agent_projects_updated
+    ON coding_agent_projects(updated_at_ms);
+"#,
+    )?;
+
+    // Refresh shell menu JSON blob so existing installs pick up new header items (e.g. Coding agent)
+    // without resetting the database. `resolve_intent_menu` reads this blob.
+    let blob_table: Option<String> = connection
+        .query_row(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='shell_menu_registry_blob'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| AiosStateError::InvalidData(e.to_string()))?;
+    if blob_table.is_some() {
+        const SHELL_MENU_REGISTRY_JSON: &str = include_str!("../../resources/shell_menu_registry.json");
+        connection.execute(
+            "INSERT OR REPLACE INTO shell_menu_registry_blob (id, json) VALUES (1, ?1)",
+            params![SHELL_MENU_REGISTRY_JSON],
+        )?;
+    }
+
     Ok(())
 }
 

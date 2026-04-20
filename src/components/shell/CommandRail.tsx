@@ -37,6 +37,8 @@ type Props = {
   footerMenuRecord?: ShellMenuRecord;
   footerMenuOpen?: boolean;
   onToggleFooterMenu?: () => void;
+  /** When set, profile control calls this (e.g. sign-in vs footer menu). Takes precedence over `onToggleFooterMenu`. */
+  onProfilePress?: () => void;
 };
 
 function mapRailStatus(s: CommandRailState['systemStatus']): string {
@@ -63,6 +65,7 @@ export function CommandRail({
   footerMenuRecord,
   footerMenuOpen = false,
   onToggleFooterMenu,
+  onProfilePress,
 }: Props) {
   const voicePrimary = rail.mode === 'voice' && rail.primaryAction === 'ptt';
   const chatPrimary  = rail.mode === 'chat'  && rail.primaryAction === 'send';
@@ -153,18 +156,24 @@ export function CommandRail({
 
         {/* ── Right: knowledge + status readout ───────────────────── */}
         <div className="flex shrink-0 items-center gap-2">
-          {footerMenuRecord && onToggleFooterMenu ? (
+          {onProfilePress || (footerMenuRecord && onToggleFooterMenu) ? (
             <button
               type="button"
-              onClick={onToggleFooterMenu}
+              onClick={() => {
+                if (onProfilePress) {
+                  onProfilePress();
+                  return;
+                }
+                onToggleFooterMenu?.();
+              }}
               className="flex h-10 w-10 items-center justify-center rounded-xl transition hover:opacity-80"
               style={{
                 background: footerMenuOpen ? 'var(--panel-accent-bg)' : 'var(--panel-surface)',
                 border: `1px solid ${footerMenuOpen ? 'var(--panel-accent-border)' : 'var(--panel-border)'}`,
                 color: footerMenuOpen ? 'var(--panel-accent-text)' : 'var(--panel-text-muted)',
               }}
-              aria-label="Open user surface menu"
-              title="Open user surface menu"
+              aria-label={onProfilePress && !footerMenuRecord ? 'Sign in' : 'Open user surface menu'}
+              title={onProfilePress && !footerMenuRecord ? 'Sign in' : 'Open user surface menu'}
             >
               <UserRound size={17} />
             </button>

@@ -8,6 +8,8 @@
   "permissions": [
     "core:default",
     "shell:allow-execute",
-    "shell:default"
+    "shell:default",
+    "mcp-bridge:default",
+    "mcp-bridge:allow-capture-native-screenshot"
   ]
 }

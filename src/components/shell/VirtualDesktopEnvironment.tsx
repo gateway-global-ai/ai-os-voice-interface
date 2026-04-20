@@ -333,6 +333,7 @@ export const VirtualDesktopEnvironment: React.FC<{ authStatus: 'guest' | 'authen
             </span>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button 
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); toggleMaximize(win.id); }}
                 style={{
                   background: 'transparent',
@@ -353,6 +354,7 @@ export const VirtualDesktopEnvironment: React.FC<{ authStatus: 'guest' | 'authen
                 {win.isMaximized ? '❐' : '□'}
               </button>
               <button 
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); closeWindow(win.id); }}
                 style={{
                   background: 'transparent',

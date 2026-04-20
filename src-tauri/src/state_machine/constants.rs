@@ -3,7 +3,7 @@ pub const DEFAULT_INTENT: &str = "idle";
 pub const DEFAULT_STATUS: &str = "idle";
 pub const DEFAULT_CONTEXT_POINTER: &str = "root";
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 3;
+pub const CURRENT_SCHEMA_VERSION: i32 = 5;
 
 pub const MIN_CONTEXT_RATIO: f32 = 0.05;
 pub const VICTORY_SCORE_TIME_SCALE_MS: f32 = 1_000.0;

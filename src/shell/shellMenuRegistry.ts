@@ -1,5 +1,83 @@
 import type { ShellMenuId } from './shellMenuContract';
 import type { ShellMenuRegistryEntry } from './shellMenuStoreTypes';
+import { DesktopSubPath } from './intentManager';
+
+/**
+ * Actions that require an authenticated (OTP-verified) session.
+ *
+ * Organized by Desktop Sub-Path:
+ *   SYSTEM_SETTINGS  — voice runtime, scripts editor, DISC, appearance, agent identity
+ *   ACCESS_ACCOUNT   — profile, logout
+ *   CODING           — coding agent
+ * LEARNING and KNOWLEDGE_BASE items are partially visible to guests
+ * (podcasts are public; knowledge requires auth).
+ */
+export const AUTHENTICATED_ONLY_SHELL_ACTION_IDS: ReadonlySet<string> = new Set([
+  // SYSTEM_SETTINGS sub-path
+  'open_menu_voice_control',
+  'open_system_scripts',
+  'open_disc_settings',
+  'open_menu_agent_identity',
+  'agent_identity_edit_name',
+  'agent_identity_edit_company',
+  'agent_identity_edit_role',
+  'agent_identity_edit_agent_intent',
+  'agent_identity_edit_user_intent',
+  'agent_identity_edit_desired_outcome',
+  'open_arch_protocol_reference',
+  // ACCESS_ACCOUNT sub-path
+  'open_system_profile',
+  'system_logout',
+  // CODING sub-path
+  'open_coding_agent',
+  // KNOWLEDGE_BASE sub-path (requires auth)
+  'open_knowledge',
+  'open_user_storage',
+  'open_workspace',
+]);
+
+/**
+ * Maps each registered menu to its governing Desktop Sub-Path.
+ * Used for display filtering and intent-aware surface routing.
+ */
+export const SHELL_MENU_DESKTOP_SUB_PATH: Readonly<Record<ShellMenuId, DesktopSubPath | null>> = {
+  'shell-header-system': null,            // top-level launcher — sub-path depends on item selected
+  'shell-footer-user': DesktopSubPath.KNOWLEDGE_BASE,
+  'system-controls': DesktopSubPath.ACCESS_ACCOUNT,
+  'voice-control': DesktopSubPath.SYSTEM_SETTINGS,
+  'voice-box': DesktopSubPath.SYSTEM_SETTINGS,
+  appearance: DesktopSubPath.SYSTEM_SETTINGS,
+  'agent-identity': DesktopSubPath.SYSTEM_SETTINGS,
+};
+
+export function filterShellMenuRegistryForAuth(
+  registry: Record<ShellMenuId, ShellMenuRegistryEntry>,
+  auth: 'guest' | 'authenticated',
+): Record<ShellMenuId, ShellMenuRegistryEntry> {
+  if (auth === 'authenticated') {
+    return registry;
+  }
+  const next: Record<ShellMenuId, ShellMenuRegistryEntry> = { ...registry };
+  for (const id of Object.keys(next) as ShellMenuId[]) {
+    const entry = next[id];
+    if (!entry?.record?.levels) continue;
+    next[id] = {
+      ...entry,
+      record: {
+        ...entry.record,
+        levels: entry.record.levels
+          .map((level) => ({
+            ...level,
+            items: level.items.filter(
+              (item) => !AUTHENTICATED_ONLY_SHELL_ACTION_IDS.has(item.action_id),
+            ),
+          }))
+          .filter((level) => level.items.length > 0),
+      },
+    };
+  }
+  return next;
+}
 
 export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
   menu_id: 'shell-header-system',
@@ -20,6 +98,7 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
         level_label: 'Shell control plane',
         items: [
           {
+            // SYSTEM_SETTINGS sub-path — auth required
             item_id: 'shell-open-voice-control',
             label: 'Voice control',
             description: 'Route speech and open governed voice profile management.',
@@ -27,19 +106,28 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
             icon: 'voice',
           },
           {
+            // SYSTEM_SETTINGS sub-path — auth required
             item_id: 'shell-open-appearance',
             label: 'Appearance',
             description: 'Adjust shell appearance through the governed shell menu.',
             action_id: 'open_menu_appearance',
             icon: 'appearance',
-            detail_surface: 'appearance.settings.v1',
           },
           {
+            // LEARNING sub-path — publicly accessible
             item_id: 'shell-open-podcasts',
             label: 'Podcasts',
             description: 'Open the narrated research library from the shell-owned route.',
             action_id: 'open_podcasts',
             icon: 'podcasts',
+          },
+          {
+            // CODING sub-path — auth required
+            item_id: 'shell-open-coding-agent',
+            label: 'Coding agent',
+            description: 'Create and manage Rust MCP projects, then open the MCP Inspector.',
+            action_id: 'open_coding_agent',
+            icon: 'disc',
           },
         ],
       },
@@ -48,14 +136,15 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
         level_label: 'Governed Configuration',
         items: [
           {
+            // SYSTEM_SETTINGS sub-path — auth required
             item_id: 'shell-open-agent-identity',
             label: 'Agent Identity',
             description: 'Adjust core agent identity, intent, and desired outcome through the governed shell menu.',
             action_id: 'open_menu_agent_identity',
             icon: 'system',
-            detail_surface: 'agent.identity.settings.v1',
           },
           {
+            // KNOWLEDGE_BASE sub-path — auth required
             item_id: 'shell-open-transparency',
             label: 'Transparency',
             description: 'Review current route, prompts, and disclosure state.',
@@ -63,6 +152,7 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
             icon: 'transparency',
           },
           {
+            // KNOWLEDGE_BASE sub-path — auth required
             item_id: 'shell-open-api-health',
             label: 'API health',
             description: 'Inspect provider and runtime status.',
@@ -81,20 +171,6 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
       'shell_owned',
       'deterministic_levels',
       'intent_first',
-    ],
-    detail_surfaces: [
-      {
-        surface_id: 'appearance.settings.v1',
-        title: 'Appearance',
-        description: 'Adjust shell appearance.',
-        render_mode: 'level_2_detail',
-      },
-      {
-        surface_id: 'agent.identity.settings.v1',
-        title: 'Agent Identity',
-        description: 'Adjust core agent identity.',
-        render_mode: 'level_2_detail',
-      },
     ],
   },
 };
@@ -118,6 +194,7 @@ export const SHELL_FOOTER_USER_MENU: ShellMenuRegistryEntry = {
         level_label: 'Storage and identity',
         items: [
           {
+            // KNOWLEDGE_BASE sub-path — auth required
             item_id: 'user-storage',
             label: 'My storage',
             description: 'Open the user-owned local and connected storage surface.',
@@ -125,6 +202,7 @@ export const SHELL_FOOTER_USER_MENU: ShellMenuRegistryEntry = {
             icon: 'storage',
           },
           {
+            // KNOWLEDGE_BASE sub-path — auth required
             item_id: 'workspace-hub',
             label: 'Google Workspace',
             description: 'Open the governed Workspace hub from the footer-owned user lane.',
@@ -138,6 +216,7 @@ export const SHELL_FOOTER_USER_MENU: ShellMenuRegistryEntry = {
         level_label: 'Context and disclosure',
         items: [
           {
+            // KNOWLEDGE_BASE sub-path — auth required
             item_id: 'knowledge-library',
             label: 'Knowledge',
             description: 'Open session knowledge inputs and governed context artifacts.',
@@ -145,6 +224,7 @@ export const SHELL_FOOTER_USER_MENU: ShellMenuRegistryEntry = {
             icon: 'knowledge',
           },
           {
+            // KNOWLEDGE_BASE sub-path — auth required
             item_id: 'transparency',
             label: 'Transparency',
             description: 'Review current route, prompts, and disclosure state.',
@@ -181,6 +261,7 @@ export const SYSTEM_CONTROLS_MENU: ShellMenuRegistryEntry = {
         level_label: 'Runtime and identity',
         items: [
           {
+            // SYSTEM_SETTINGS sub-path — auth required
             item_id: 'system-controls-voice-runtime',
             label: 'Voice runtime',
             description: 'Review the active voice route and open governed voice controls.',
@@ -188,6 +269,7 @@ export const SYSTEM_CONTROLS_MENU: ShellMenuRegistryEntry = {
             icon: 'voice',
           },
           {
+            // ACCESS_ACCOUNT sub-path — auth required
             item_id: 'system-controls-profile',
             label: 'Profile',
             description: 'Edit the signed-in account profile inside the shell menu pane.',
@@ -196,6 +278,7 @@ export const SYSTEM_CONTROLS_MENU: ShellMenuRegistryEntry = {
             detail_surface: 'system.profile.v1',
           },
           {
+            // SYSTEM_SETTINGS sub-path — auth required
             item_id: 'system-controls-scripts',
             label: 'Scripts',
             description: 'Edit narration and voice script overrides inside the shell menu pane.',
@@ -210,6 +293,7 @@ export const SYSTEM_CONTROLS_MENU: ShellMenuRegistryEntry = {
         level_label: 'Session actions',
         items: [
           {
+            // ACCESS_ACCOUNT sub-path — auth required
             item_id: 'system-controls-logout',
             label: 'Log out',
             description: 'End the signed-in session when account access is available.',
@@ -217,6 +301,7 @@ export const SYSTEM_CONTROLS_MENU: ShellMenuRegistryEntry = {
             icon: 'system',
           },
           {
+            // SYSTEM_SETTINGS sub-path
             item_id: 'system-controls-quit',
             label: 'Quit app',
             description: 'Close the current AI OS shell window.',
@@ -519,7 +604,7 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
   menu_id: 'agent-identity',
   menu_zone: 'agent_identity',
   permission_class: 'agent_identity_management',
-  data_source_ref: 'shell.menu.agent_identity.v1',
+  data_source_ref: 'shell.menu.agent_identity.v2',
   parent_menu_id: 'shell-header-system',
   launched_from_action_id: 'open_menu_agent_identity',
   launch_mode: 'push_child',
@@ -527,8 +612,28 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
     menu_id: 'agent-identity',
     menu_zone: 'agent_identity',
     content_type: 'settings',
-    level_count: 4,
+    level_count: 5,
     levels: [
+      {
+        level_id: 'agent-identity-communication',
+        level_label: 'Communication & behavior',
+        items: [
+          {
+            item_id: 'agent-open-disc-settings',
+            label: 'DISC profile',
+            description: 'Adjust behavioral personality traits used in governed responses.',
+            action_id: 'open_disc_settings',
+            icon: 'disc',
+          },
+          {
+            item_id: 'agent-open-arch-reference',
+            label: 'ARCH protocol',
+            description: 'Acknowledge, Reflect, Context, Handoff — reference for governed communication.',
+            action_id: 'open_arch_protocol_reference',
+            icon: 'system',
+          },
+        ],
+      },
       {
         level_id: 'agent-identity-core',
         level_label: 'Agent Identity',
@@ -539,6 +644,7 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
             description: 'Set the governed agent name.',
             action_id: 'agent_identity_edit_name',
             icon: 'system',
+            detail_surface: 'agent.identity.name.v1',
           },
           {
             item_id: 'agent-identity-company',
@@ -546,6 +652,7 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
             description: 'Set the organization or company context.',
             action_id: 'agent_identity_edit_company',
             icon: 'system',
+            detail_surface: 'agent.identity.company.v1',
           },
           {
             item_id: 'agent-identity-role',
@@ -553,6 +660,7 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
             description: 'Set the current governed agent role.',
             action_id: 'agent_identity_edit_role',
             icon: 'system',
+            detail_surface: 'agent.identity.role.v1',
           },
         ],
       },
@@ -566,6 +674,7 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
             description: 'Define the primary goal the agent should pursue.',
             action_id: 'agent_identity_edit_agent_intent',
             icon: 'system',
+            detail_surface: 'agent.identity.agent_intent.v1',
           },
         ],
       },
@@ -579,6 +688,7 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
             description: 'Capture what the user is trying to achieve.',
             action_id: 'agent_identity_edit_user_intent',
             icon: 'system',
+            detail_surface: 'agent.identity.user_intent.v1',
           },
         ],
       },
@@ -592,13 +702,14 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
             description: 'Define the success condition for the current session.',
             action_id: 'agent_identity_edit_desired_outcome',
             icon: 'system',
+            detail_surface: 'agent.identity.desired_outcome.v1',
           },
         ],
       },
     ],
     template_family: 'list',
     permission_class: 'agent_identity_management',
-    data_source_ref: 'shell.menu.agent_identity.v1',
+    data_source_ref: 'shell.menu.agent_identity.v2',
     selection_behavior: 'open_surface',
     disclosure_requirements: [
       'shell_owned',
@@ -606,6 +717,44 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
       'intent_first',
       'top_aligned',
       'governed_configuration',
+    ],
+    detail_surfaces: [
+      {
+        surface_id: 'agent.identity.name.v1',
+        title: 'Agent name',
+        description: 'Displayed name for the governed shell agent.',
+        render_mode: 'level_2_detail',
+      },
+      {
+        surface_id: 'agent.identity.company.v1',
+        title: 'Agent company',
+        description: 'Organization or company context.',
+        render_mode: 'level_2_detail',
+      },
+      {
+        surface_id: 'agent.identity.role.v1',
+        title: 'Agent role',
+        description: 'Current governed role label.',
+        render_mode: 'level_2_detail',
+      },
+      {
+        surface_id: 'agent.identity.agent_intent.v1',
+        title: 'Agent intent',
+        description: 'Primary goal the agent should pursue.',
+        render_mode: 'level_2_detail',
+      },
+      {
+        surface_id: 'agent.identity.user_intent.v1',
+        title: 'User intent',
+        description: 'What the user is trying to achieve.',
+        render_mode: 'level_2_detail',
+      },
+      {
+        surface_id: 'agent.identity.desired_outcome.v1',
+        title: 'Desired outcome',
+        description: 'Success condition for this session.',
+        render_mode: 'level_2_detail',
+      },
     ],
   },
 };

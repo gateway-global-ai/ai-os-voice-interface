@@ -43,7 +43,8 @@ export interface ShellMenuContextState {
     | 'knowledge'
     | 'transparency'
     | 'api_health'
-    | 'create_account';
+    | 'create_account'
+    | 'coding_agent';
 }
 
 export interface ShellMenuUIState {

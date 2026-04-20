@@ -30,8 +30,12 @@ export type ShellMenuDetailSurfaceId =
   | 'voicebox.record.capture.v1'
   | 'system.profile.v1'
   | 'system.scripts.v1'
-  | 'appearance.settings.v1'
-  | 'agent.identity.settings.v1';
+  | 'agent.identity.name.v1'
+  | 'agent.identity.company.v1'
+  | 'agent.identity.role.v1'
+  | 'agent.identity.agent_intent.v1'
+  | 'agent.identity.user_intent.v1'
+  | 'agent.identity.desired_outcome.v1';
 
 export type ShellMenuIcon =
   | 'workspace'

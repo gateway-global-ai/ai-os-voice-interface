@@ -12,6 +12,7 @@ import {
   Settings,
   User,
   UserRound,
+  X,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import {
@@ -24,6 +25,7 @@ import {
 type Props = {
   record: ShellMenuRecord;
   onSelect: (actionId: string) => void;
+  onClose?: () => void;
   className?: string;
   variant?: 'popover' | 'shell-layer';
   activeLevelId?: string;
@@ -178,6 +180,7 @@ function menuZoneLabel(record: ShellMenuRecord) {
 export function ShellMenuController({
   record,
   onSelect,
+  onClose,
   className,
   variant = 'popover',
   activeLevelId: controlledActiveLevelId,
@@ -237,17 +240,36 @@ export function ShellMenuController({
       data-template-family={record.template_family}
     >
       <div className="border-b px-4 py-3 flex justify-between items-center" style={{ borderColor: 'var(--panel-border)' }}>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--panel-text-muted)' }}>
-            {menuZoneLabel(record)}
-          </p>
-          <p className="mt-1 text-xs" style={{ color: 'var(--panel-text-muted)' }}>
-            Source: {record.data_source_ref}
-          </p>
+        <div className="flex items-center gap-3">
+          {onBackMenu && (
+            <button
+              type="button"
+              onClick={onBackMenu}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition hover:opacity-80"
+              style={{ background: 'var(--panel-surface)', border: '1px solid var(--panel-border)', color: 'var(--panel-text-muted)' }}
+              aria-label="Back"
+            >
+              ←
+            </button>
+          )}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--panel-text-muted)' }}>
+              {menuZoneLabel(record)}
+            </p>
+            <p className="mt-1 text-xs" style={{ color: 'var(--panel-text-muted)' }}>
+              Source: {record.data_source_ref}
+            </p>
+          </div>
         </div>
-        {onBackMenu && (
-          <button onClick={onBackMenu} style={{ background: 'transparent', border: 'none', color: 'var(--panel-text-muted)', cursor: 'pointer', fontSize: '0.875rem' }}>
-            &larr; Back
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition hover:opacity-80"
+            style={{ background: 'var(--panel-surface)', border: '1px solid var(--panel-border)', color: 'var(--panel-text-muted)' }}
+            aria-label="Close menu"
+          >
+            <X size={16} />
           </button>
         )}
       </div>

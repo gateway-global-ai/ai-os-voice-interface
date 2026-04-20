@@ -65,6 +65,9 @@ const LazyPodcastLibraryPanel = lazy(() =>
 const LazyUserStoragePanel = lazy(() =>
   import('./components/shell/UserStoragePanel').then((module) => ({ default: module.UserStoragePanel })),
 );
+const LazyCodingAgentPanel = lazy(() =>
+  import('./components/shell/CodingAgentPanel').then((module) => ({ default: module.CodingAgentPanel })),
+);
 const LazyPublicPodcastPage = lazy(() =>
   import('./components/shell/PublicPodcastPage').then((module) => ({ default: module.PublicPodcastPage })),
 );
@@ -110,9 +113,8 @@ import { ShellIdentityBar } from './components/shell/ShellIdentityBar';
 import { VirtualDesktopEnvironment } from './components/shell/VirtualDesktopEnvironment';
 import { ShellMenuController } from './components/shell/ShellMenuController';
 import { UserProfilePanel } from './components/shell/UserProfilePanel';
-import { AppearancePanel } from './components/shell/AppearancePanel';
-import { AgentIdentityPanel } from './components/shell/AgentIdentityPanel';
 import { AdminPanel } from './components/shell/AdminPanel';
+import { SHADCN_BACKGROUND_ITEMS } from './components/background/shadcnBackgroundCatalog';
 import type { PowerChromeState } from './components/shell/ShellSystemControls';
 import { getVoiceRoute, setVoiceRoute, voiceRouteLabel, type VoiceRouteId } from './config/voiceRoutePreference';
 import { CommandRail, type CommandRailState } from './components/shell/CommandRail';
@@ -149,14 +151,22 @@ import {
   tryApplyShellNavigationAction,
   type ShellApplyHandlers,
 } from './shell/shellNavigationApply';
-import { readOnboardingProfile, resetOnboarding } from './onboarding/onboardingState';
+import {
+  readOnboardingProfile,
+  resetOnboarding,
+  isOtpVerified,
+  markOtpVerified,
+  writeOnboardingProfile,
+} from './onboarding/onboardingState';
 import { buildShellPromptContract } from './shell/shellPromptContract';
 import type { ShellMenuId } from './shell/shellMenuContract';
-import { CENTRAL_SHELL_MENU_REGISTRY } from './shell/shellMenuRegistry';
+import { CENTRAL_SHELL_MENU_REGISTRY, filterShellMenuRegistryForAuth } from './shell/shellMenuRegistry';
 import type { ShellMenuRegistryEntry, ShellMenuStoreState } from './shell/shellMenuStoreTypes';
 import { VOICEBOX_SAMPLE_PROMPTS, VOICEBOX_SAMPLE_TARGET, voiceboxPromptForCount } from './shell/voiceBoxRecordConfig';
 import { VoiceBoxRecordDetailSurface } from './components/shell/VoiceBoxRecordDetailSurface';
 import { RealityCheckReport } from './components/shell/RealityCheckReport';
+import { OnboardingGate } from './components/onboarding/OnboardingGate';
+import { AuthPanel } from './components/shell/AuthPanel';
 import { intentIngestionController } from './shell/IntentIngestionController';
 import { heuristicShortcutScanner } from './shell/HeuristicShortcutScanner';
 import { knowledgeRetrievalService } from './knowledge/KnowledgeRetrievalService';
@@ -216,7 +226,8 @@ type AppMode =
   | "user_storage"
   | "transparency"
   | "podcasts"
-  | "create_account";
+  | "create_account"
+  | "coding_agent";
 
 /** Workspace canvas uses `workspaceCanvas` state (intent outputs), not AppMode. */
 const LOCAL_STT_PLACEHOLDER = '__LOCAL_STT_PLACEHOLDER__';
@@ -1348,6 +1359,11 @@ export default function App({
   const [knowledgePanelInitialTab, setKnowledgePanelInitialTab] = useState<'library' | 'upload'>('library');
   const [sessionEntryClassification, setSessionEntryClassification] =
     useState<SessionEntryClassification>(() => readSessionEntryClassification());
+  /** Phone OTP session — gates shell chrome until verified (persisted via onboardingState). */
+  const [authSessionActive, setAuthSessionActive] = useState(() => isOtpVerified());
+  const [authPanelOpen, setAuthPanelOpen] = useState(false);
+  const [gateVoiceIntroActive, setGateVoiceIntroActive] = useState(false);
+  const postAuthOpenProjectBuilderRef = useRef(false);
   const [status, setStatus] = useState<SystemStatus>("connected");
   const [shellMenuStore, setShellMenuStore] = useState<ShellMenuStoreState>(() => ({
     registry_by_id: CENTRAL_SHELL_MENU_REGISTRY,
@@ -1647,7 +1663,29 @@ export default function App({
   const latestFrameRef = useRef<string | null>(null);
   const handleLogout = useCallback(() => {
     resetOnboarding();
+    setAuthSessionActive(false);
     window.location.reload();
+  }, []);
+
+  const handleAuthVerified = useCallback((phone: string) => {
+    markOtpVerified();
+    setAuthSessionActive(true);
+    setAuthPanelOpen(false);
+    setGateVoiceIntroActive(false);
+    const existing = readOnboardingProfile();
+    const openProjectBuilder = postAuthOpenProjectBuilderRef.current;
+    postAuthOpenProjectBuilderRef.current = false;
+    writeOnboardingProfile({
+      commander_name: existing?.commander_name?.trim() || 'Operator',
+      interface_mode: existing?.interface_mode ?? 'voice',
+      arrival_type: openProjectBuilder ? 'new' : 'returning',
+      enrolled_at: existing?.enrolled_at ?? Date.now(),
+      phone_number: phone,
+    });
+    setShellSessionStarted(true);
+    if (openProjectBuilder) {
+      queueMicrotask(() => setMode('coding_agent'));
+    }
   }, []);
 
   const engageSessionEntry = useCallback(() => {
@@ -1700,6 +1738,21 @@ export default function App({
   useEffect(() => {
     captureFrame();
   }, [workspaceCanvas?.view, captureFrame]);
+
+  useEffect(() => {
+    if (!isTauri) return undefined;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      unlisten = await listen('open_coding_agent', () => {
+        if (!cancelled) setMode('coding_agent');
+      });
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   const shellApplyHandlers = useMemo<ShellApplyHandlers>(
     () => ({
@@ -1763,10 +1816,11 @@ export default function App({
   const powerChromeState = useMemo((): PowerChromeState => {
     const disconnected = status === 'offline' || workspaceDisclosure === 'error';
     if (disconnected) return 'disconnected';
+    if (authSessionActive) return 'signed_in';
     const name = onboardingProfile?.commander_name?.trim();
     if (name) return 'signed_in';
     return 'idle';
-  }, [status, workspaceDisclosure, onboardingProfile?.commander_name]);
+  }, [status, workspaceDisclosure, onboardingProfile?.commander_name, authSessionActive]);
 
   const commanderName = onboardingProfile?.commander_name?.trim() || null;
   const promptContract = useMemo(
@@ -1839,6 +1893,11 @@ export default function App({
     steadiness: 6,
     conscientiousness: 8
   });
+
+  /** Focused appearance controls (multi-level menu actions; not full-page dump forms). */
+  const [appearanceTune, setAppearanceTune] = useState<
+    null | 'overlay_color' | 'overlay_opacity' | 'overlay_width' | 'canvas_padding'
+  >(null);
 
   // Intent State
   const [agentIntent, setAgentIntent] = useState("");
@@ -3219,14 +3278,14 @@ export default function App({
       .catch((err) => {
         console.warn('Failed to resolve intent menu from backend, falling back to central registry:', err);
       });
-  }, [shellMenuStore.context.auth_status]); // Re-resolve when auth status changes
+  }, [authSessionActive]); // Re-resolve when OTP session changes
 
   const shellMenuRegistry = useMemo<Record<ShellMenuId, ShellMenuRegistryEntry>>(() => {
     const headerSystemMenu = dynamicMenuRegistry['shell-header-system'];
     const footerUserMenu = dynamicMenuRegistry['shell-footer-user'];
     const systemControlsMenu = dynamicMenuRegistry['system-controls'];
 
-    return {
+    const merged = {
       ...dynamicMenuRegistry,
       'shell-header-system': headerSystemMenu ? {
         ...headerSystemMenu,
@@ -3281,7 +3340,9 @@ export default function App({
         },
       } : undefined,
     } as Record<ShellMenuId, ShellMenuRegistryEntry>;
-  }, [dynamicMenuRegistry, activeVoiceLabel, powerChromeState, showDiagnosticsChrome, workspaceSurfaceOpen]);
+
+    return filterShellMenuRegistryForAuth(merged, authSessionActive ? 'authenticated' : 'guest');
+  }, [dynamicMenuRegistry, activeVoiceLabel, powerChromeState, showDiagnosticsChrome, workspaceSurfaceOpen, authSessionActive]);
 
   useEffect(() => {
     setShellMenuStore((prev) => ({
@@ -3314,12 +3375,15 @@ export default function App({
                           ? 'api_health'
                           : mode === 'create_account'
                             ? 'create_account'
-                            : 'voice';
+                            : mode === 'coding_agent'
+                              ? 'coding_agent'
+                              : 'voice';
 
     setShellMenuStore((prev) => ({
       ...prev,
       context: {
         ...prev.context,
+        auth_status: authSessionActive ? 'authenticated' : 'guest',
         active_voice_route: voiceRoute,
         active_voice_profile_id: voice || null,
         voicebox_ready: voiceRoute !== 'voicebox' || Boolean(voice),
@@ -3348,6 +3412,7 @@ export default function App({
     agentIntent,
     agentName,
     agentRole,
+    authSessionActive,
     desiredOutcome,
     mode,
     showDiagnosticsChrome,
@@ -3477,6 +3542,18 @@ export default function App({
         case 'open_podcasts':
           handleOpenPodcasts();
           return;
+        case 'open_menu_appearance':
+          setMode('voice');
+          openShellMenuById('appearance');
+          return;
+        case 'open_menu_agent_identity':
+          setMode('voice');
+          openShellMenuById('agent-identity');
+          return;
+        case 'open_arch_protocol_reference':
+          closeShellMenus();
+          setMode('intent_settings');
+          return;
         case 'open_disc_settings':
           closeShellMenus();
           setMode('disc_settings');
@@ -3493,6 +3570,10 @@ export default function App({
         case 'open_transparency':
           closeShellMenus();
           setMode('transparency');
+          return;
+        case 'open_coding_agent':
+          closeShellMenus();
+          setMode('coding_agent');
           return;
         case 'system_logout':
           if (powerChromeState === 'signed_in') {
@@ -3524,6 +3605,55 @@ export default function App({
         case 'appearance_set_background_live_effects':
           setTheme({ backgroundType: 'canvas', customBgKind: null, customBgPath: null });
           return;
+        case 'appearance_open_overlay_color':
+          setAppearanceTune('overlay_color');
+          return;
+        case 'appearance_open_overlay_opacity':
+          setAppearanceTune('overlay_opacity');
+          return;
+        case 'appearance_open_overlay_width':
+          setAppearanceTune('overlay_width');
+          return;
+        case 'appearance_open_canvas_padding':
+          setAppearanceTune('canvas_padding');
+          return;
+        case 'appearance_open_custom_background': {
+          if (!isTauri) return;
+          const result = await invoke<[string, string] | null>('pick_file');
+          if (!result?.[0]) return;
+          const path = result[0];
+          const ext = path.split('.').pop()?.toLowerCase() ?? '';
+          const video = ['mp4', 'webm', 'mov', 'avi'].includes(ext);
+          setTheme({
+            backgroundType: 'custom',
+            customBgPath: path,
+            customBgKind: video ? 'video' : 'image',
+          });
+          return;
+        }
+        case 'appearance_open_background_library': {
+          const idx = SHADCN_BACKGROUND_ITEMS.findIndex((i) => i.id === theme.canvasBackgroundId);
+          const next = SHADCN_BACKGROUND_ITEMS[(Math.max(0, idx) + 1) % SHADCN_BACKGROUND_ITEMS.length];
+          setTheme({
+            backgroundType: 'canvas',
+            customBgKind: null,
+            customBgPath: null,
+            canvasBackgroundId: next.id,
+          });
+          return;
+        }
+        case 'open_voicebox_profiles': {
+          await refreshVoiceboxRecordingState();
+          setMode('voice');
+          openShellMenuById('voice-box');
+          return;
+        }
+        case 'open_voicebox_create': {
+          await refreshVoiceboxRecordingState();
+          setMode('voice');
+          openShellMenuById('voice-box');
+          return;
+        }
         case 'open_voicebox_upload': {
           const archivePath = await VoiceboxClient.pickArchivePath();
           if (!archivePath) return;
@@ -3567,6 +3697,7 @@ export default function App({
       powerChromeState,
       resetTheme,
       refreshVoiceboxRecordingState,
+      setAppearanceTune,
       selectVoiceboxRecordingProfile,
       setTheme,
       setShellMenuRecordingState,
@@ -3574,6 +3705,7 @@ export default function App({
       showDiagnosticsChrome,
       theme,
       userIntent,
+      isTauri,
     ],
   );
   const renderShellMenuDetailSurface = useCallback(
@@ -3631,27 +3763,140 @@ export default function App({
               onCreateAccount={() => { closeShellMenus(); setMode('create_account'); }}
             />
           );
-        case 'appearance.settings.v1':
-          return <AppearancePanel onBack={() => clearShellMenuSelectedAction('shell-header-system')} />;
-        case 'agent.identity.settings.v1':
+        case 'agent.identity.name.v1':
           return (
-            <AgentIdentityPanel 
-              onBack={() => clearShellMenuSelectedAction('shell-header-system')}
-              agentName={agentName}
-              agentCompany={agentCompany}
-              agentRole={agentRole}
-              agentIntent={agentIntent}
-              userIntent={userIntent}
-              desiredOutcome={desiredOutcome}
-              onUpdate={(key, value) => {
-                if (key === 'agentName') setAgentName(value);
-                if (key === 'agentCompany') setAgentCompany(value);
-                if (key === 'agentRole') setAgentRole(value);
-                if (key === 'agentIntent') setAgentIntent(value);
-                if (key === 'userIntent') setUserIntent(value);
-                if (key === 'desiredOutcome') setDesiredOutcome(value);
-              }}
-            />
+            <div className="flex flex-col gap-3">
+              <SovereignTextInput value={agentName} onChange={(e) => setAgentName(e.target.value)} />
+              <button
+                type="button"
+                className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
+                style={{
+                  background: 'var(--panel-accent-bg)',
+                  border: '1px solid var(--panel-accent-border)',
+                  color: 'var(--panel-accent-text)',
+                }}
+                onClick={() => clearShellMenuSelectedAction('agent-identity')}
+              >
+                Done
+              </button>
+            </div>
+          );
+        case 'agent.identity.company.v1':
+          return (
+            <div className="flex flex-col gap-3">
+              <SovereignTextInput value={agentCompany} onChange={(e) => setAgentCompany(e.target.value)} />
+              <button
+                type="button"
+                className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
+                style={{
+                  background: 'var(--panel-accent-bg)',
+                  border: '1px solid var(--panel-accent-border)',
+                  color: 'var(--panel-accent-text)',
+                }}
+                onClick={() => clearShellMenuSelectedAction('agent-identity')}
+              >
+                Done
+              </button>
+            </div>
+          );
+        case 'agent.identity.role.v1':
+          return (
+            <div className="flex flex-col gap-3">
+              <SovereignTextInput value={agentRole} onChange={(e) => setAgentRole(e.target.value)} />
+              <button
+                type="button"
+                className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
+                style={{
+                  background: 'var(--panel-accent-bg)',
+                  border: '1px solid var(--panel-accent-border)',
+                  color: 'var(--panel-accent-text)',
+                }}
+                onClick={() => clearShellMenuSelectedAction('agent-identity')}
+              >
+                Done
+              </button>
+            </div>
+          );
+        case 'agent.identity.agent_intent.v1':
+          return (
+            <div className="flex flex-col gap-3">
+              <textarea
+                className="min-h-[6rem] w-full rounded-xl border p-3 text-sm"
+                style={{
+                  background: 'var(--panel-input-bg)',
+                  borderColor: 'var(--panel-input-border)',
+                  color: 'var(--panel-text)',
+                }}
+                value={agentIntent}
+                onChange={(e) => setAgentIntent(e.target.value)}
+              />
+              <button
+                type="button"
+                className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
+                style={{
+                  background: 'var(--panel-accent-bg)',
+                  border: '1px solid var(--panel-accent-border)',
+                  color: 'var(--panel-accent-text)',
+                }}
+                onClick={() => clearShellMenuSelectedAction('agent-identity')}
+              >
+                Done
+              </button>
+            </div>
+          );
+        case 'agent.identity.user_intent.v1':
+          return (
+            <div className="flex flex-col gap-3">
+              <textarea
+                className="min-h-[6rem] w-full rounded-xl border p-3 text-sm"
+                style={{
+                  background: 'var(--panel-input-bg)',
+                  borderColor: 'var(--panel-input-border)',
+                  color: 'var(--panel-text)',
+                }}
+                value={userIntent}
+                onChange={(e) => setUserIntent(e.target.value)}
+              />
+              <button
+                type="button"
+                className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
+                style={{
+                  background: 'var(--panel-accent-bg)',
+                  border: '1px solid var(--panel-accent-border)',
+                  color: 'var(--panel-accent-text)',
+                }}
+                onClick={() => clearShellMenuSelectedAction('agent-identity')}
+              >
+                Done
+              </button>
+            </div>
+          );
+        case 'agent.identity.desired_outcome.v1':
+          return (
+            <div className="flex flex-col gap-3">
+              <textarea
+                className="min-h-[6rem] w-full rounded-xl border p-3 text-sm"
+                style={{
+                  background: 'var(--panel-input-bg)',
+                  borderColor: 'var(--panel-input-border)',
+                  color: 'var(--panel-text)',
+                }}
+                value={desiredOutcome}
+                onChange={(e) => setDesiredOutcome(e.target.value)}
+              />
+              <button
+                type="button"
+                className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
+                style={{
+                  background: 'var(--panel-accent-bg)',
+                  border: '1px solid var(--panel-accent-border)',
+                  color: 'var(--panel-accent-text)',
+                }}
+                onClick={() => clearShellMenuSelectedAction('agent-identity')}
+              >
+                Done
+              </button>
+            </div>
           );
         case 'system.scripts.v1':
           return <AdminPanel onBack={() => clearShellMenuSelectedAction('system-controls')} />;
@@ -3660,14 +3905,26 @@ export default function App({
       }
     },
     [
+      agentCompany,
+      agentIntent,
+      agentName,
+      agentRole,
       clearShellMenuSelectedAction,
       closeShellMenus,
+      desiredOutcome,
       handleProfileUpdate,
       powerChromeState,
       selectVoiceboxRecordingProfile,
       shellMenuStore.recording,
       shellMenuStore.intent_ingestion,
+      setAgentCompany,
+      setAgentIntent,
+      setAgentName,
+      setAgentRole,
+      setDesiredOutcome,
       setShellMenuStore,
+      setUserIntent,
+      userIntent,
     ],
   );
   useEffect(() => {
@@ -3712,11 +3969,152 @@ export default function App({
     </div>
   );
 
+  const handleFooterProfilePress = useCallback(() => {
+    if (!authSessionActive) {
+      setAuthPanelOpen(true);
+      return;
+    }
+    if (!footerMenuPermitted) {
+      setMode('create_account');
+      return;
+    }
+    engageSessionEntry();
+    setHeaderMenuOpen(false);
+    setFooterMenuOpen((current) => !current);
+  }, [authSessionActive, engageSessionEntry, footerMenuPermitted, setFooterMenuOpen, setHeaderMenuOpen, setMode]);
+
   if (publicPodcastId) {
     return (
       <Suspense fallback={null}>
         <LazyPublicPodcastPage episodeId={publicPodcastId} />
       </Suspense>
+    );
+  }
+
+  if (!authSessionActive) {
+    return (
+      <div
+        className="fixed inset-0 flex flex-col overflow-hidden font-sans selection:bg-emerald-500/30"
+        style={themeToCssVars(theme)}
+        data-color-scheme={theme.colorScheme}
+      >
+        <ShellBackground theme={theme} />
+
+        {/* Shell chrome is always present — governance requires header + footer on every surface */}
+        <ShellIdentityBar
+          sessionLabel="AI OS"
+          shellInteractionMode="voice"
+          sessionContextLabel="Home"
+          workspaceState={workspaceDisclosure as any}
+          canvasView={null}
+          voiceInputAvailable={voicePttPermitted}
+          intentSummary={shellIntentLabel}
+          localModelReadiness={localModelReadiness}
+          showDiagnosticsChrome={showDiagnosticsChrome}
+          commanderName={undefined}
+          onOpenSystemControls={undefined}
+          onOpenTransparency={undefined}
+          headerMenuRecord={undefined}
+          headerMenuOpen={false}
+          onToggleHeaderMenu={() => setAuthPanelOpen(true)}
+          onCloseHeaderMenu={() => {}}
+          powerChromeState={powerChromeState}
+          voiceModelLabel={activeVoiceLabel}
+          loyaltySummary={loyaltyBadgeLabel}
+          availableSkillsCount={0}
+          statusSubtitle={shellHeaderSubtitle}
+          playbackActive={status === 'speaking'}
+          micEnabled={micEnabled}
+          speakerEnabled={speakerEnabled}
+          currentCueLabel={currentAudioCue?.label}
+          audioCues={[
+            ...(currentAudioCue ? [{ id: currentAudioCue.id, label: currentAudioCue.label, status: currentAudioCue.status }] : []),
+            ...queuedAudioCues.map((cue) => ({ id: cue.id, label: cue.label, status: cue.status })),
+          ]}
+          onTogglePlayback={handlePlayPauseCue}
+          onToggleMic={handleToggleMic}
+          onToggleSpeaker={handleToggleSpeaker}
+        />
+
+        <AnimatePresence>
+          {gateVoiceIntroActive && (
+            <LoyaltyIntroSequence
+              key="gate-intro"
+              speakText={(text, cueLabel) => void speakText(text, undefined, cueLabel, 'onboarding')}
+              stopSpeech={stopSpeech}
+              onComplete={() => {
+                setGateVoiceIntroActive(false);
+                // Only open auth if the intro was triggered by "Join the Community".
+                // "Explore AI OS" (vibe check) sets postAuthOpenProjectBuilderRef to null
+                // to signal we should return to the gate rather than push to auth.
+                if (postAuthOpenProjectBuilderRef.current) {
+                  setAuthPanelOpen(true);
+                }
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+        {!gateVoiceIntroActive ? (
+          <OnboardingGate
+            onVibeCheck={() => {
+              // Path 1 — DEMONSTRATE_CAPABILITIES: show voice intro, return to gate after.
+              postAuthOpenProjectBuilderRef.current = false;
+              setGateVoiceIntroActive(true);
+            }}
+            onJoinCommunity={() => {
+              // Path 2 — SALES_FUNNEL + FRICTIONLESS_ONBOARDING: skip intro, open auth directly.
+              postAuthOpenProjectBuilderRef.current = true;
+              setGateVoiceIntroActive(false);
+              setAuthPanelOpen(true);
+            }}
+            onReturningUser={() => {
+              // Path 3 — ACCESS_SYSTEM_DESKTOP: open auth to restore existing session.
+              postAuthOpenProjectBuilderRef.current = false;
+              setGateVoiceIntroActive(false);
+              setAuthPanelOpen(true);
+            }}
+          />
+        ) : null}
+
+        <CommandRail
+          rail={{
+            mode: 'voice',
+            primaryAction: 'ptt',
+            systemStatus: status === 'listening' ? 'listening' : status === 'processing' ? 'processing' : status === 'speaking' ? 'speaking' : 'idle',
+            intent: shellIntentLabel,
+          }}
+          mode="voice"
+          chatInput={chatInput}
+          onChatInputChange={handleChatInputChange}
+          onChatSubmit={handleChatSubmit}
+          onChatMicPress={() => void startPTTSession()}
+          onChatMicRelease={() => void stopPTTSession()}
+          onToggleVoiceChat={handleToggleVoiceChatFromShell}
+          isPTTActive={isPTTActive}
+          onPTTDown={(e) => void handlePTTDown(e)}
+          onPTTUp={(e) => void handlePTTUp(e)}
+          displayStatus={statusDisplay}
+          displayStatusDetail={displayStatusDetail}
+          loyaltySummary={loyaltyBadgeLabel}
+          statusTone={status === 'error' ? 'error' : status === 'offline' ? 'muted' : 'ok'}
+          showDiagnosticsChrome={showDiagnosticsChrome}
+          footerMenuRecord={undefined}
+          footerMenuOpen={false}
+          onProfilePress={() => setAuthPanelOpen(true)}
+        />
+
+        {authPanelOpen ? (
+          <AuthPanel
+            onClose={() => {
+              postAuthOpenProjectBuilderRef.current = false;
+              setAuthPanelOpen(false);
+            }}
+            onVerified={handleAuthVerified}
+          />
+        ) : null}
+        {showDeveloperHud ? <ScopeMetricsDevHud /> : null}
+      </div>
     );
   }
 
@@ -3768,7 +4166,7 @@ export default function App({
         onToggleSpeaker={handleToggleSpeaker}
       />
 
-      {shellMenuStore.context.auth_status === 'authenticated' && (
+      {shellMenuStore.context.auth_status === 'authenticated' && !activeShellMenuEntry && (
         <div className="absolute inset-0 z-[var(--z-shell-workspace-canvas)] pointer-events-none">
           <div className="pointer-events-auto h-full w-full">
             <VirtualDesktopEnvironment authStatus={shellMenuStore.context.auth_status} />
@@ -3792,12 +4190,12 @@ export default function App({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-x-0 top-[var(--shell-header-height)] bottom-[var(--shell-footer-height)] z-[var(--z-shell-chrome)]"
+            className="absolute inset-x-0 top-[var(--shell-header-height)] bottom-[var(--shell-footer-height)] z-[var(--z-shell-modal-backdrop)]"
           >
             <div
               className="absolute inset-0"
-              style={{ background: 'rgba(2,6,23,0.58)', backdropFilter: 'blur(8px)' }}
-              onClick={() => setHeaderMenuOpen(false)}
+              style={{ background: 'rgba(2,6,23,0.72)', backdropFilter: 'blur(8px)' }}
+              onClick={() => closeShellMenus()}
             />
             <motion.div
               initial={{ opacity: 0, y: -10 }}
@@ -3809,6 +4207,7 @@ export default function App({
               <ShellMenuController
                 record={activeShellMenuEntry.record}
                 onSelect={handleShellMenuAction}
+                onClose={closeShellMenus}
                 variant="shell-layer"
                 className="h-full"
                 activeLevelId={shellMenuStore.ui.active_level_id_by_menu_id[activeShellMenuEntry.menu_id]}
@@ -3859,6 +4258,127 @@ export default function App({
           </ShellOverlayFrame>
         )}
 
+        {mode === 'intent_settings' && (
+          <ShellOverlayFrame overlayKey="intent_settings" onClose={() => setMode('voice')} align="center">
+            <SovereignCard className="max-w-lg w-full border border-[var(--panel-border)] bg-[var(--panel-bg)] p-6 shadow-2xl">
+              <SovereignTitle level={2} className="text-[var(--panel-heading)]">
+                ARCH communication protocol
+              </SovereignTitle>
+              <SovereignDescription className="mt-2 text-[var(--panel-text-muted)]">
+                Governed responses follow Acknowledge → Reflect → Context → Handoff. The shell weaves these elements invisibly into natural language; this surface is the operator reference only.
+              </SovereignDescription>
+              <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-[var(--panel-text)]">
+                <li>
+                  <span className="font-semibold text-[var(--panel-heading)]">Acknowledge</span> — confirm what was heard without debating it.
+                </li>
+                <li>
+                  <span className="font-semibold text-[var(--panel-heading)]">Reflect</span> — restate intent in your own words.
+                </li>
+                <li>
+                  <span className="font-semibold text-[var(--panel-heading)]">Context</span> — surface the minimum relevant framing.
+                </li>
+                <li>
+                  <span className="font-semibold text-[var(--panel-heading)]">Handoff</span> — end with a clear next step or deliverable.
+                </li>
+              </ul>
+              <button
+                type="button"
+                className="mt-6 w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
+                style={{
+                  background: 'var(--panel-accent-bg)',
+                  border: '1px solid var(--panel-accent-border)',
+                  color: 'var(--panel-accent-text)',
+                }}
+                onClick={() => setMode('voice')}
+              >
+                Close
+              </button>
+            </SovereignCard>
+          </ShellOverlayFrame>
+        )}
+
+        {appearanceTune && (
+          <ShellOverlayFrame
+            overlayKey={`appearance_tune_${appearanceTune}`}
+            onClose={() => setAppearanceTune(null)}
+            align="center"
+          >
+            <SovereignCard className="max-w-md w-full border border-[var(--panel-border)] bg-[var(--panel-bg)] p-6 shadow-2xl">
+              <SovereignTitle level={2} className="text-[var(--panel-heading)]">
+                {appearanceTune === 'overlay_color' && 'Overlay tint color'}
+                {appearanceTune === 'overlay_opacity' && 'Overlay opacity'}
+                {appearanceTune === 'overlay_width' && 'Overlay width'}
+                {appearanceTune === 'canvas_padding' && 'Canvas padding'}
+              </SovereignTitle>
+              {appearanceTune === 'overlay_color' && (
+                <div className="mt-4 flex flex-col gap-3">
+                  <input
+                    type="color"
+                    value={theme.overlayColor}
+                    onChange={(e) => setTheme({ overlayColor: e.target.value })}
+                    className="h-12 w-full cursor-pointer rounded-lg border"
+                    style={{ borderColor: 'var(--panel-input-border)', background: 'var(--panel-input-bg)' }}
+                  />
+                </div>
+              )}
+              {appearanceTune === 'overlay_opacity' && (
+                <div className="mt-4 flex flex-col gap-2">
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={theme.overlayOpacity}
+                    onChange={(e) => setTheme({ overlayOpacity: parseFloat(e.target.value) })}
+                    className="w-full"
+                  />
+                  <span className="text-sm text-[var(--panel-text-muted)]">{Math.round(theme.overlayOpacity * 100)}%</span>
+                </div>
+              )}
+              {appearanceTune === 'overlay_width' && (
+                <div className="mt-4 flex flex-col gap-2">
+                  <input
+                    type="range"
+                    min={50}
+                    max={100}
+                    step={1}
+                    value={theme.overlayWidthPercent}
+                    onChange={(e) => setTheme({ overlayWidthPercent: parseInt(e.target.value, 10) })}
+                    className="w-full"
+                  />
+                  <span className="text-sm text-[var(--panel-text-muted)]">{theme.overlayWidthPercent}% viewport</span>
+                </div>
+              )}
+              {appearanceTune === 'canvas_padding' && (
+                <div className="mt-4 flex flex-col gap-2">
+                  <input
+                    type="range"
+                    min={0}
+                    max={48}
+                    step={1}
+                    value={theme.overlayPadding}
+                    onChange={(e) => setTheme({ overlayPadding: parseInt(e.target.value, 10) })}
+                    className="w-full"
+                  />
+                  <span className="text-sm text-[var(--panel-text-muted)]">{theme.overlayPadding}px</span>
+                </div>
+              )}
+              <button
+                type="button"
+                className="mt-6 w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
+                style={{
+                  background: 'var(--panel-accent-bg)',
+                  border: '1px solid var(--panel-accent-border)',
+                  color: 'var(--panel-accent-text)',
+                }}
+                onClick={() => setAppearanceTune(null)}
+              >
+                Done
+              </button>
+            </SovereignCard>
+          </ShellOverlayFrame>
+        )}
+
         {mode === 'create_account' && (
           <ShellOverlayFrame overlayKey="create_account" onClose={() => setMode('voice')} align="center">
             <div className="bg-[var(--panel-surface)] border border-[var(--panel-border)] rounded-xl p-8 max-w-md w-full shadow-2xl flex flex-col gap-6">
@@ -3874,9 +4394,9 @@ export default function App({
                 <button onClick={() => setMode('voice')} className="px-4 py-2 text-[var(--panel-text-muted)] hover:text-[var(--panel-text)]">Cancel</button>
                 <button 
                   onClick={() => {
-                    // Explicitly assign the baseline role and initialize the smart_contract state in the backend
                     invoke('initialize_smart_contract').catch(console.warn);
-                    setShellMenuStore(prev => ({ ...prev, context: { ...prev.context, auth_status: 'authenticated' } }));
+                    markOtpVerified();
+                    setAuthSessionActive(true);
                     setMode('voice');
                   }} 
                   className="px-4 py-2 bg-[var(--panel-accent-bg)] text-[var(--panel-accent-text)] rounded-md font-medium"
@@ -3934,6 +4454,14 @@ export default function App({
                 onOpenWorkspace={openWorkspaceHub}
                 onOpenPodcasts={handleOpenPodcasts}
               />
+            </Suspense>
+          </ShellOverlayFrame>
+        )}
+
+        {mode === 'coding_agent' && (
+          <ShellOverlayFrame overlayKey="coding_agent" onClose={() => setMode('voice')} align="top">
+            <Suspense fallback={null}>
+              <LazyCodingAgentPanel onClose={() => setMode('voice')} />
             </Suspense>
           </ShellOverlayFrame>
         )}
@@ -4081,13 +4609,14 @@ export default function App({
         loyaltySummary={loyaltyBadgeLabel}
         statusTone={status === 'error' ? 'error' : status === 'offline' ? 'muted' : 'ok'}
         showDiagnosticsChrome={showDiagnosticsChrome}
-        footerMenuRecord={footerMenuPermitted ? footerUserMenuRecord : undefined}
+        footerMenuRecord={authSessionActive ? footerUserMenuRecord : undefined}
         footerMenuOpen={footerMenuOpen}
         onToggleFooterMenu={() => {
           engageSessionEntry();
           setHeaderMenuOpen(false);
           setFooterMenuOpen((current) => !current);
         }}
+        onProfilePress={handleFooterProfilePress}
       />
 
       {/* File import badge — shown when files are in context AND kernel permits file_upload */}
