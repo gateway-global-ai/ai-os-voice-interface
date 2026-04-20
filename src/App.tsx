@@ -87,7 +87,7 @@ import type { VoiceProfile } from './core/io/VoiceboxClient';
 import { stripIntentLineForDisplay } from './shellCanvas/intentParse';
 import { logShellCanvasAudit } from './shellCanvas/shellCanvasAudit';
 import { useWorkspaceCanvas } from './shellCanvas/WorkspaceCanvasContext';
-import { ShellVoiceIdlePanel } from './components/shell/ShellVoiceIdlePanel';
+import { ShellVoiceIdlePanel, type VibeTopicId } from './components/shell/ShellVoiceIdlePanel';
 import {
   LoyaltyIntroSequence,
   hasSeenLoyaltyIntro,
@@ -231,6 +231,15 @@ type AppMode =
 
 /** Workspace canvas uses `workspaceCanvas` state (intent outputs), not AppMode. */
 const LOCAL_STT_PLACEHOLDER = '__LOCAL_STT_PLACEHOLDER__';
+
+const VIBE_TOPIC_USER_PROMPTS: Record<VibeTopicId, string> = {
+  university:
+    'What is Vibe Coding University in this AI OS? Explain clearly for someone new, as if speaking aloud — at most four short sentences, no lists or markdown.',
+  community:
+    'What is the Vibe Code Community? Explain clearly for someone new, as if speaking aloud — at most four short sentences, no lists or markdown.',
+  coding_platform:
+    'What is the Vibe Coding Platform in this AI OS? Explain clearly for someone new, as if speaking aloud — at most four short sentences, no lists or markdown.',
+};
 
 function scaffoldingDensityForVerbosity(level: KernelVerbosityLevel): number {
   switch (level) {
@@ -2580,6 +2589,14 @@ export default function App({
     ],
   );
 
+  const handleExplainVibeTopic = useCallback(
+    (topic: VibeTopicId) => {
+      engageSessionEntry();
+      void submitIntentText(VIBE_TOPIC_USER_PROMPTS[topic], 'voice', { appendUserMessage: true });
+    },
+    [engageSessionEntry, submitIntentText],
+  );
+
   submitIntentTextRef.current = submitIntentText;
   beginInteractionRef.current = beginInteraction;
   engageSessionEntryRef.current = engageSessionEntry;
@@ -3606,15 +3623,19 @@ export default function App({
           setTheme({ backgroundType: 'canvas', customBgKind: null, customBgPath: null });
           return;
         case 'appearance_open_overlay_color':
+          closeShellMenus();
           setAppearanceTune('overlay_color');
           return;
         case 'appearance_open_overlay_opacity':
+          closeShellMenus();
           setAppearanceTune('overlay_opacity');
           return;
         case 'appearance_open_overlay_width':
+          closeShellMenus();
           setAppearanceTune('overlay_width');
           return;
         case 'appearance_open_canvas_padding':
+          closeShellMenus();
           setAppearanceTune('canvas_padding');
           return;
         case 'appearance_open_custom_background': {
@@ -3955,8 +3976,7 @@ export default function App({
           setMode(selectedMode);
         }}
         onStart={handleLandingStart}
-        onOpenIntro={() => setShowLoyaltyIntro(true)}
-        onOpenPodcasts={handleOpenPodcasts}
+        onExplainVibeTopic={handleExplainVibeTopic}
       />
     </div>
   ) : (

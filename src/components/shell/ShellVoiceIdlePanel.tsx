@@ -2,22 +2,17 @@
  * AI OS welcome canvas.
  *
  * Shown before the first session starts. Keeps the center stage sparse:
- * ambient video, one primary power button, and lightweight secondary actions.
+ * ambient video, one primary power button, and lightweight topic actions.
  *
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
 import { motion } from 'motion/react';
 import { Power } from 'lucide-react';
-import {
-  activateReferralCode,
-  trackReferralAttempt,
-  verifyReferralCode,
-} from '../../core/referralAccess';
-import { podcastEpisodes } from '../../content/podcastEpisodes';
 import type { SessionEntryClassification } from '../../shell/sessionEntryClassification';
 import type { WorkspaceState } from '../../shell/workspaceState';
+
+export type VibeTopicId = 'university' | 'community' | 'coding_platform';
 
 type Props = {
   workspaceState: WorkspaceState;
@@ -27,45 +22,23 @@ type Props = {
   onSelectMode: (mode: 'voice' | 'chat') => void;
   /** Called when the user clicks the Start button. */
   onStart?: () => void;
-  onOpenIntro?: () => void;
-  onOpenPodcasts?: () => void;
+  /** Sends a voice-AI explanation request for the tapped Vibe topic. */
+  onExplainVibeTopic?: (topic: VibeTopicId) => void;
 };
 
-export function ShellVoiceIdlePanel({ onStart, onSelectMode, onOpenIntro, onOpenPodcasts }: Props) {
-  const [referralCode, setReferralCode] = useState('');
-  const [referralMessage, setReferralMessage] = useState<string | null>(null);
-  const [referralAccepted, setReferralAccepted] = useState(false);
-  const [showReferralField, setShowReferralField] = useState(false);
-  const latestPodcast = podcastEpisodes[podcastEpisodes.length - 1] ?? null;
+const VIBE_TOPIC_BUBBLES: { id: VibeTopicId; label: string }[] = [
+  { id: 'university', label: 'University' },
+  { id: 'community', label: 'Community' },
+  { id: 'coding_platform', label: 'Coding Platform' },
+];
 
+export function ShellVoiceIdlePanel({ onStart, onSelectMode, onExplainVibeTopic }: Props) {
   const handleStart = () => {
     if (onStart) {
       onStart();
     } else {
       onSelectMode('voice');
     }
-  };
-
-  const handleEnter = () => {
-    if (!referralCode.trim()) {
-      setReferralMessage(null);
-      handleStart();
-      return;
-    }
-
-    const { accepted, normalized } = verifyReferralCode(referralCode);
-    trackReferralAttempt(referralCode, accepted);
-
-    if (!accepted) {
-      setReferralAccepted(false);
-      setReferralMessage('Referral code not recognized. Use a valid early-access code.');
-      return;
-    }
-
-    activateReferralCode(normalized);
-    setReferralAccepted(true);
-    setReferralMessage(`Referral code ${normalized} accepted. Opening early access...`);
-    handleStart();
   };
 
   return (
@@ -77,7 +50,7 @@ export function ShellVoiceIdlePanel({ onStart, onSelectMode, onOpenIntro, onOpen
     >
       <video
         className="absolute inset-0 h-full w-full object-cover"
-        src="/videos/welcome-circle-blue.mp4"
+        src="/videos/vibe_coder_video_bg.mp4"
         autoPlay
         loop
         muted
@@ -108,24 +81,16 @@ export function ShellVoiceIdlePanel({ onStart, onSelectMode, onOpenIntro, onOpen
             AI Operating System
           </motion.p>
 
-          <div className="space-y-3">
-            <h1
-              className="text-3xl font-black tracking-tight md:text-5xl"
-              style={{ color: 'var(--panel-heading)', textShadow: '0 0 28px rgba(15,23,42,0.32)' }}
-            >
-              Welcome to AI OS
-            </h1>
-            <p
-              className="mx-auto max-w-md text-sm leading-relaxed md:text-base"
-              style={{ color: 'var(--panel-text-muted)' }}
-            >
-              Voice-first, background-led, and ready when you are.
-            </p>
-          </div>
+          <h1
+            className="text-3xl font-black tracking-tight md:text-5xl"
+            style={{ color: 'var(--panel-heading)', textShadow: '0 0 28px rgba(15,23,42,0.32)' }}
+          >
+            The Vibe Coding University.
+          </h1>
 
           <motion.button
             type="button"
-            onClick={handleEnter}
+            onClick={handleStart}
             className="flex h-28 w-28 items-center justify-center rounded-full text-white"
             style={{
               background: 'linear-gradient(135deg, rgba(15,118,110,0.9) 0%, rgba(8,145,178,0.92) 48%, rgba(37,99,235,0.92) 100%)',
@@ -146,52 +111,19 @@ export function ShellVoiceIdlePanel({ onStart, onSelectMode, onOpenIntro, onOpen
             Press to enter
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <SecondaryAction
-              label={showReferralField ? 'Hide referral code' : 'Use referral code'}
-              onClick={() => {
-                setShowReferralField((current) => !current);
-                setReferralMessage(null);
-              }}
-            />
-            <SecondaryAction label="Research intro" onClick={onOpenIntro} />
-            <SecondaryAction
-              label={latestPodcast ? `Podcast ${latestPodcast.durationLabel}` : 'Open podcast'}
-              onClick={onOpenPodcasts}
-            />
-          </div>
-
-          {showReferralField ? (
+          {onExplainVibeTopic ? (
             <div
-              className="w-full max-w-sm rounded-2xl p-3 backdrop-blur-md"
-              style={{
-                background: 'color-mix(in srgb, var(--panel-bg) 48%, transparent)',
-                border: '1px solid var(--panel-border)',
-              }}
+              className="flex flex-wrap items-center justify-center gap-3"
+              role="group"
+              aria-label="Vibe topics"
             >
-              <input
-                value={referralCode}
-                onChange={(event) => {
-                  setReferralCode(event.target.value);
-                  if (referralMessage) setReferralMessage(null);
-                  if (referralAccepted) setReferralAccepted(false);
-                }}
-                placeholder="Enter referral code"
-                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                style={{
-                  background: 'var(--panel-input-bg)',
-                  border: '1px solid var(--panel-input-border)',
-                  color: 'var(--panel-text)',
-                }}
-              />
-              {referralMessage ? (
-                <p
-                  className="mt-2 text-xs leading-relaxed"
-                  style={{ color: referralAccepted ? 'var(--panel-accent-text)' : '#fca5a5' }}
-                >
-                  {referralMessage}
-                </p>
-              ) : null}
+              {VIBE_TOPIC_BUBBLES.map((item) => (
+                <TopicBubble
+                  key={item.id}
+                  label={item.label}
+                  onClick={() => onExplainVibeTopic(item.id)}
+                />
+              ))}
             </div>
           ) : null}
 
@@ -211,7 +143,7 @@ export function ShellVoiceIdlePanel({ onStart, onSelectMode, onOpenIntro, onOpen
   );
 }
 
-function SecondaryAction({ label, onClick }: { label: string; onClick?: () => void }) {
+function TopicBubble({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <motion.button
       type="button"

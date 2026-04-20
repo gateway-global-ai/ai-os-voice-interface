@@ -37,7 +37,8 @@ export function ShellOverlayFrame({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className={cn(
-        'absolute inset-0 z-[var(--z-shell-chrome)] flex justify-center bg-black/40 backdrop-blur-md',
+        /* Above workspace canvas (60), shell menu layer (65), and header/footer chrome — modal overlays must receive pointer events */
+        'absolute inset-0 z-[var(--z-shell-system-controls)] flex justify-center bg-black/40 backdrop-blur-md',
         align === 'top'
           ? 'items-start pt-[calc(var(--shell-header-height)+var(--shell-overlay-padding))]'
           : 'items-center',
