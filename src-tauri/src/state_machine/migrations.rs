@@ -35,6 +35,7 @@ pub(crate) fn initialize_schema(connection: &Connection) -> AiosResult<()> {
     configure_database(connection)?;
     run_migrations(connection)?;
     seed_defaults(connection)?;
+    crate::intent_loop::initialize_intent_loop_schema(connection)?;
     Ok(())
 }
 

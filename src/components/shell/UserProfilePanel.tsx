@@ -106,31 +106,8 @@ export function UserProfilePanel({ onBack, powerState, onSave, onCreateAccount }
         </h3>
       </div>
 
-      {/* Not signed in — prompt to create account */}
-      {powerState === 'idle' ? (
-        <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-white/20 bg-white/[0.04]">
-            <UserPlus className="h-7 w-7 text-zinc-500" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-zinc-200">No account yet</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-              Create a free account to personalise your AI OS experience, save your profile, and unlock all features.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onCreateAccount}
-            className="flex w-full min-h-[2.75rem] items-center justify-center gap-2 rounded-xl border border-cyan-400/35 bg-cyan-500/15 text-sm font-semibold text-cyan-100 transition-all hover:bg-cyan-500/25"
-          >
-            <UserPlus className="h-4 w-4" />
-            Create Account
-          </button>
-        </div>
-      ) : (
-        <>
-          {/* Avatar */}
-          <div className="mb-5 flex flex-col items-center gap-2">
+      {/* Avatar */}
+      <div className="mb-5 flex flex-col items-center gap-2">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -215,8 +192,17 @@ export function UserProfilePanel({ onBack, powerState, onSave, onCreateAccount }
           >
             {saved ? 'Saved!' : 'Save Profile'}
           </button>
-        </>
-      )}
+
+          {powerState === 'idle' && (
+            <button
+              type="button"
+              onClick={onCreateAccount}
+              className="mt-3 flex w-full min-h-[2.75rem] items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-semibold text-zinc-300 transition-all hover:bg-white/10"
+            >
+              <UserPlus className="h-4 w-4" />
+              Create Cloud Account
+            </button>
+          )}
     </motion.div>
   );
 }

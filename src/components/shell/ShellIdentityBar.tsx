@@ -39,19 +39,12 @@ type Props = {
   localModelReadiness?: LocalModelReadiness | null;
   showDiagnosticsChrome: boolean;
   commanderName?: string;
-  onLogout?: () => void;
-  onProfileUpdate?: (profile: import('../../onboarding/onboardingState').OnboardingProfile) => void;
-  onOpenVoiceSettings?: () => void;
+  onOpenSystemControls?: () => void;
   onOpenTransparency?: () => void;
-  onOpenPodcasts?: () => void;
-  onOpenKnowledge?: () => void;
-  onOpenWorkspace?: () => void;
-  onOpenAppearance?: () => void;
   headerMenuRecord?: ShellMenuRecord;
   headerMenuOpen: boolean;
   onToggleHeaderMenu: () => void;
   onCloseHeaderMenu: () => void;
-  onHeaderMenuAction: (actionId: string) => void;
   powerChromeState: PowerChromeState;
   voiceModelLabel: string;
   loyaltySummary: string;
@@ -118,19 +111,12 @@ export function ShellIdentityBar({
   localModelReadiness,
   showDiagnosticsChrome,
   commanderName,
-  onLogout,
-  onProfileUpdate,
-  onOpenVoiceSettings,
+  onOpenSystemControls,
   onOpenTransparency,
-  onOpenPodcasts,
-  onOpenKnowledge,
-  onOpenWorkspace,
-  onOpenAppearance,
   headerMenuRecord,
   headerMenuOpen,
   onToggleHeaderMenu,
   onCloseHeaderMenu,
-  onHeaderMenuAction,
   powerChromeState,
   voiceModelLabel,
   loyaltySummary: _loyaltySummary,
@@ -366,17 +352,7 @@ export function ShellIdentityBar({
           <ShellSystemControls
             powerState={powerChromeState}
             userName={commanderName}
-            onLogout={onLogout}
-            onProfileUpdate={onProfileUpdate}
-            onOpenVoiceSettings={onOpenVoiceSettings}
-            onOpenPodcasts={onOpenPodcasts}
-            onOpenKnowledge={onOpenKnowledge}
-            onOpenWorkspace={onOpenWorkspace}
-            onOpenAppearance={onOpenAppearance}
-            onOpenTransparency={onOpenTransparency}
-            currentVoiceLabel={voiceModelLabel}
-            currentVoiceStatus={statusSubtitle || voiceNote}
-            currentCueLabel={currentCueLabel}
+            onOpenMenu={onOpenSystemControls}
           />
         </div>
       </motion.div>

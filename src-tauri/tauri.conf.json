@@ -46,7 +46,14 @@
   },
   "plugins": {
     "shell": {
-      "open": false
+      "open": true,
+      "execute": [
+        {
+          "name": "cargo",
+          "cmd": "cargo",
+          "args": true
+        }
+      ]
     }
   }
 }

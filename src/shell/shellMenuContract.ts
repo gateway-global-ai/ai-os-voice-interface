@@ -7,6 +7,7 @@ import {
 export type ShellMenuId =
   | 'shell-header-system'
   | 'shell-footer-user'
+  | 'system-controls'
   | 'voice-control'
   | 'voice-box'
   | 'appearance'
@@ -25,7 +26,12 @@ export type ShellMenuContentType =
 
 export type ShellMenuSelectionBehavior = 'open_panel' | 'open_surface' | 'run_action';
 
-export type ShellMenuDetailSurfaceId = 'voicebox.record.capture.v1';
+export type ShellMenuDetailSurfaceId =
+  | 'voicebox.record.capture.v1'
+  | 'system.profile.v1'
+  | 'system.scripts.v1'
+  | 'appearance.settings.v1'
+  | 'agent.identity.settings.v1';
 
 export type ShellMenuIcon =
   | 'workspace'

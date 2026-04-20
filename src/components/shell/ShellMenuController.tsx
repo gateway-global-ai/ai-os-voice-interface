@@ -30,6 +30,7 @@ type Props = {
   onActiveLevelChange?: (levelId: string) => void;
   selectedActionId?: string;
   onClearSelectedAction?: () => void;
+  onBackMenu?: () => void;
   renderDetailSurface?: (
     surface: ShellMenuDetailSurfaceDefinition,
     selectedActionId: string,
@@ -183,6 +184,7 @@ export function ShellMenuController({
   onActiveLevelChange,
   selectedActionId,
   onClearSelectedAction,
+  onBackMenu,
   renderDetailSurface,
 }: Props) {
   if (!isValidShellMenuRecord(record)) {
@@ -234,13 +236,20 @@ export function ShellMenuController({
       data-menu-zone={record.menu_zone}
       data-template-family={record.template_family}
     >
-      <div className="border-b px-4 py-3" style={{ borderColor: 'var(--panel-border)' }}>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--panel-text-muted)' }}>
-          {menuZoneLabel(record)}
-        </p>
-        <p className="mt-1 text-xs" style={{ color: 'var(--panel-text-muted)' }}>
-          Source: {record.data_source_ref}
-        </p>
+      <div className="border-b px-4 py-3 flex justify-between items-center" style={{ borderColor: 'var(--panel-border)' }}>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--panel-text-muted)' }}>
+            {menuZoneLabel(record)}
+          </p>
+          <p className="mt-1 text-xs" style={{ color: 'var(--panel-text-muted)' }}>
+            Source: {record.data_source_ref}
+          </p>
+        </div>
+        {onBackMenu && (
+          <button onClick={onBackMenu} style={{ background: 'transparent', border: 'none', color: 'var(--panel-text-muted)', cursor: 'pointer', fontSize: '0.875rem' }}>
+            &larr; Back
+          </button>
+        )}
       </div>
 
       {variant === 'shell-layer' ? (

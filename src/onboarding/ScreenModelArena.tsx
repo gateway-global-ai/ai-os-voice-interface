@@ -12,6 +12,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronRight,
@@ -127,15 +128,27 @@ export function ScreenModelArena({ commanderName, onNext }: ScreenModelArenaProp
 
   // Auto-open with a greeting from the bot
   useEffect(() => {
-    setMessages([
-      {
-        role: 'assistant',
-        content:
-          `Welcome, ${commanderName || 'Commander'}. I am AI OS Chat Bot v1.0, your state-aware agent. ` +
-          `I operate at three levels: State Processor (system intelligence), Progress Coach (intent-to-outcome mapping), and Dependence Mapping (plan builder). ` +
-          `How can I serve you today?`,
-      },
-    ]);
+    invoke<Record<string, string>>('get_active_intent_state')
+      .then((intentState) => {
+        const greeting = intentState.greetingMessage || `Welcome, ${commanderName || 'Commander'}. I know "vibe coding" can be exhausting when shortcuts break in production. I'm here to guide you through a better way. We have the Vibe Coding University to learn, and the Community to build together. Let's start with our 7-step process: what is your purpose today?`;
+        setMessages([
+          {
+            role: 'assistant',
+            content: greeting,
+          },
+        ]);
+      })
+      .catch(() => {
+        setMessages([
+          {
+            role: 'assistant',
+            content:
+              `Welcome, ${commanderName || 'Commander'}. I know "vibe coding" can be exhausting when shortcuts break in production. ` +
+              `I'm here to guide you through a better way. We have the Vibe Coding University to learn, and the Community to build together. ` +
+              `Let's start with our 7-step process: what is your purpose today?`,
+          },
+        ]);
+      });
   }, [commanderName]);
 
   // ─── Send message ───────────────────────────────────────────────────────────

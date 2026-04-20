@@ -107,7 +107,12 @@ import { useKernelTelemetry } from './kernel/useKernelTelemetry';
 import type { KernelVerbosityLevel } from './kernel/types';
 import { kernelPermits } from './kernel/types';
 import { ShellIdentityBar } from './components/shell/ShellIdentityBar';
+import { VirtualDesktopEnvironment } from './components/shell/VirtualDesktopEnvironment';
 import { ShellMenuController } from './components/shell/ShellMenuController';
+import { UserProfilePanel } from './components/shell/UserProfilePanel';
+import { AppearancePanel } from './components/shell/AppearancePanel';
+import { AgentIdentityPanel } from './components/shell/AgentIdentityPanel';
+import { AdminPanel } from './components/shell/AdminPanel';
 import type { PowerChromeState } from './components/shell/ShellSystemControls';
 import { getVoiceRoute, setVoiceRoute, voiceRouteLabel, type VoiceRouteId } from './config/voiceRoutePreference';
 import { CommandRail, type CommandRailState } from './components/shell/CommandRail';
@@ -151,6 +156,11 @@ import { CENTRAL_SHELL_MENU_REGISTRY } from './shell/shellMenuRegistry';
 import type { ShellMenuRegistryEntry, ShellMenuStoreState } from './shell/shellMenuStoreTypes';
 import { VOICEBOX_SAMPLE_PROMPTS, VOICEBOX_SAMPLE_TARGET, voiceboxPromptForCount } from './shell/voiceBoxRecordConfig';
 import { VoiceBoxRecordDetailSurface } from './components/shell/VoiceBoxRecordDetailSurface';
+import { RealityCheckReport } from './components/shell/RealityCheckReport';
+import { intentIngestionController } from './shell/IntentIngestionController';
+import { heuristicShortcutScanner } from './shell/HeuristicShortcutScanner';
+import { knowledgeRetrievalService } from './knowledge/KnowledgeRetrievalService';
+import type { ShortcutTrigger } from './knowledge/KnowledgeBaseSchema';
 
 type SystemStatus =
   | "connected"
@@ -179,6 +189,19 @@ type ShellAudioCue = {
   overrideVoice?: string;
 };
 
+async function tryQuitApplication(): Promise<void> {
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().close();
+  } catch {
+    try {
+      window.close();
+    } catch {
+      /* noop */
+    }
+  }
+}
+
 type AppMode =
   | "voice"
   | "chat"
@@ -192,7 +215,8 @@ type AppMode =
   | "knowledge"
   | "user_storage"
   | "transparency"
-  | "podcasts";
+  | "podcasts"
+  | "create_account";
 
 /** Workspace canvas uses `workspaceCanvas` state (intent outputs), not AppMode. */
 const LOCAL_STT_PLACEHOLDER = '__LOCAL_STT_PLACEHOLDER__';
@@ -286,6 +310,7 @@ function buildSystemPrompt(ctx: SystemPromptContext): string {
     `{"tool":"read_file","path":"<absolute-path>"}`,
     `{"tool":"list_directory","path":"<absolute-path>"}`,
     `{"tool":"pick_file"}`,
+    `{"tool":"trigger_account_creation"}`,
     `Do not include any other text on that line. After receiving the file content, answer the user's question.`,
   ].join(' ');
 
@@ -1334,6 +1359,7 @@ export default function App({
       diagnostics_enabled: false,
       appearance_dirty: false,
       agent_identity_dirty: false,
+      auth_status: 'guest',
       active_surface_mode: 'voice',
     },
     ui: {
@@ -1359,6 +1385,13 @@ export default function App({
       session_id: 0,
       voicebox_ready: null,
     },
+    intent_ingestion: {
+      status: 'idle',
+      current_payload: null,
+      active_baseline: null,
+      pending_review: null,
+      last_error: null,
+    },
     revision: 1,
   }));
   const [isPTTActive, setIsPTTActive] = useState(false);
@@ -1367,9 +1400,15 @@ export default function App({
 
   // Hydrate conversation history from SQLite on boot
   useEffect(() => {
-    invoke<Array<{ message_id: string; role: string; text: string; timestamp_ms: number }>>(
-      'get_conversation_history'
-    ).then((history) => {
+    Promise.all([
+      invoke<Array<{ message_id: string; role: string; text: string; timestamp_ms: number }>>('get_conversation_history').catch(() => []),
+      invoke<Record<string, string>>('get_active_intent_state').catch(() => ({}))
+    ]).then(([history, intentState]) => {
+      if (intentState.agentIntent) setAgentIntent(intentState.agentIntent);
+      if (intentState.userIntent) setUserIntent(intentState.userIntent);
+      
+      const greeting = intentState.greetingMessage || "Welcome to AI OS. How can I help you today?";
+
       if (history.length > 0) {
         setMessages(
           history.map((m) => ({
@@ -1383,12 +1422,10 @@ export default function App({
         setMessages([{
           id: '1',
           role: 'agent',
-          text: "Hi — I’m your AI OS shell. Speak or type; use the header system menu only when you need settings.",
+          text: greeting,
           timestamp: new Date(),
         }]);
       }
-    }).catch(() => {
-      // DB not ready - leave messages empty, shell renders normally
     });
   }, []);
 
@@ -1804,10 +1841,8 @@ export default function App({
   });
 
   // Intent State
-  const [agentIntent, setAgentIntent] = useState(
-    'Be concise, helpful, and intent-driven. Follow the user’s stated goals. Use INTENT_JSON only as documented.'
-  );
-  const [userIntent, setUserIntent] = useState("Organize my digital life, manage my schedule, and help me stay focused on my core goals.");
+  const [agentIntent, setAgentIntent] = useState("");
+  const [userIntent, setUserIntent] = useState("");
   const [desiredOutcome, setDesiredOutcome] = useState("A successful interaction where the user's needs are met efficiently and the agent provides proactive value.");
   const [agentName, setAgentName] = useState("AI OS Assistant");
   const [agentCompany, setAgentCompany] = useState("");
@@ -2368,6 +2403,9 @@ export default function App({
               } else {
                 toolResult = '(no file selected)';
               }
+            } else if (toolCall.tool === 'trigger_account_creation') {
+              setMode('create_account');
+              toolResult = 'Account creation UI has been displayed to the user.';
             }
             if (toolResult) {
               // Re-invoke with the file result appended
@@ -2647,6 +2685,61 @@ export default function App({
             await VoiceboxClient.addSample(activeProfileId, wavBytes, referenceText);
             await audioCtx.close();
 
+            // Intent Ingestion Hookup
+            const payload = intentIngestionController.completeIntentIngestionCapture({
+              id: `capture_${Date.now()}`,
+              transcript: referenceText,
+              duration_ms: chunks.length * 250,
+            });
+            const baseline = intentIngestionController.bindIntentToProjectBaseline(payload);
+            const handoff = intentIngestionController.buildIntentReviewHandoff(payload, baseline);
+
+            // Run deterministic shortcut scanner
+            const shortcutReport = await heuristicShortcutScanner.scanProject(baseline, {
+              'src/App.tsx': '<div style={{ marginTop: "43px" }} />', // Simulated file content
+              'src/api.ts': 'catch (e) {}', // Simulated file content
+            });
+            handoff.shortcut_report = shortcutReport;
+
+            // Map shortcut report to triggers
+            const triggers: ShortcutTrigger[] = [];
+            if (shortcutReport.ui_fragility.length > 0) triggers.push('ui_fragility');
+            if (shortcutReport.mock_data_hallucinations.length > 0) triggers.push('mock_data_hallucinations');
+            if (shortcutReport.repeated_code.length > 0) triggers.push('repeated_code');
+            if (shortcutReport.suppressed_exceptions.length > 0) triggers.push('suppressed_exceptions');
+
+            // Retrieve educational lessons
+            const lessons = await knowledgeRetrievalService.getLessonsForShortcuts(triggers);
+            handoff.educational_lessons = lessons;
+
+            let mvp_success_probability: number | null = null;
+            let probability_disclosed: boolean | null = null;
+            try {
+              const { sovereignAgentService } = await import('./shell/SovereignAgentService');
+              const analysis = await sovereignAgentService.analyzeIntent(handoff);
+              if (analysis.confidence_score !== undefined && analysis.confidence_score !== null) {
+                mvp_success_probability = Math.round(analysis.confidence_score * 100);
+              }
+              probability_disclosed = analysis.probability_disclosed;
+            } catch (e) {
+              console.error('Failed to get sovereign analysis:', e);
+            }
+
+            setShellMenuStore((prev) => ({
+              ...prev,
+              intent_ingestion: {
+                ...prev.intent_ingestion,
+                status: 'handoff_ready',
+                current_payload: payload,
+                active_baseline: baseline,
+                pending_review: handoff,
+                last_error: null,
+                mvp_success_probability,
+                probability_disclosed,
+              },
+              revision: prev.revision + 1,
+            }));
+
             setShellMenuRecordingState((recording) => {
               const nextCount = (recording.sample_count_by_profile_id[activeProfileId] ?? 0) + 1;
               return {
@@ -2710,6 +2803,7 @@ export default function App({
       }
     },
     [
+      setShellMenuStore,
       setShellMenuRecordingState,
       shellMenuStore.recording.active_profile_id,
       shellMenuStore.recording.selected_prompt_text,
@@ -2923,7 +3017,61 @@ export default function App({
     engageSessionEntry();
     const userText = chatInput;
     setChatInput("");
-    await submitIntentText(userText, 'chat', { appendUserMessage: true });
+    
+    // Intent Ingestion Hookup for Chat
+    const payload = intentIngestionController.completeIntentIngestionCapture({
+      id: `capture_${Date.now()}`,
+      transcript: userText,
+      duration_ms: 0,
+    });
+    const baseline = intentIngestionController.bindIntentToProjectBaseline(payload);
+    const handoff = intentIngestionController.buildIntentReviewHandoff(payload, baseline);
+
+    // Run deterministic shortcut scanner
+    const shortcutReport = await heuristicShortcutScanner.scanProject(baseline, {
+      'src/App.tsx': '<div style={{ marginTop: "43px" }} />', // Simulated file content
+      'src/api.ts': 'catch (e) {}', // Simulated file content
+    });
+    handoff.shortcut_report = shortcutReport;
+
+    // Map shortcut report to triggers
+    const triggers: ShortcutTrigger[] = [];
+    if (shortcutReport.ui_fragility.length > 0) triggers.push('ui_fragility');
+    if (shortcutReport.mock_data_hallucinations.length > 0) triggers.push('mock_data_hallucinations');
+    if (shortcutReport.repeated_code.length > 0) triggers.push('repeated_code');
+    if (shortcutReport.suppressed_exceptions.length > 0) triggers.push('suppressed_exceptions');
+
+    // Retrieve educational lessons
+    const lessons = await knowledgeRetrievalService.getLessonsForShortcuts(triggers);
+    handoff.educational_lessons = lessons;
+
+    let mvp_success_probability: number | null = null;
+    let probability_disclosed: boolean | null = null;
+    try {
+      const { sovereignAgentService } = await import('./shell/SovereignAgentService');
+      const analysis = await sovereignAgentService.analyzeIntent(handoff);
+      if (analysis.confidence_score !== undefined && analysis.confidence_score !== null) {
+        mvp_success_probability = Math.round(analysis.confidence_score * 100);
+      }
+      probability_disclosed = analysis.probability_disclosed;
+    } catch (e) {
+      console.error('Failed to get sovereign analysis:', e);
+    }
+
+    setShellMenuStore((prev) => ({
+      ...prev,
+      intent_ingestion: {
+        ...prev.intent_ingestion,
+        status: 'handoff_ready',
+        current_payload: payload,
+        active_baseline: baseline,
+        pending_review: handoff,
+        last_error: null,
+        mvp_success_probability,
+        probability_disclosed,
+      },
+      revision: prev.revision + 1,
+    }));
   };
 
   const workspaceSurfaceOpen =
@@ -3058,13 +3206,29 @@ export default function App({
   const voicePttPermitted = kernelAllowsComponent('voice_ptt');
   const headerMenuPermitted = kernelAllowsComponent('shell_header_menu');
   const footerMenuPermitted = kernelAllowsComponent('shell_footer_user_menu');
+  const [dynamicMenuRegistry, setDynamicMenuRegistry] = useState<Record<ShellMenuId, ShellMenuRegistryEntry>>(CENTRAL_SHELL_MENU_REGISTRY);
+
+  useEffect(() => {
+    // Load the menu registry dynamically from the database on boot via the new resolve_intent_menu command.
+    invoke<Record<ShellMenuId, ShellMenuRegistryEntry>>('resolve_intent_menu')
+      .then((registry) => {
+        if (registry && Object.keys(registry).length > 0) {
+          setDynamicMenuRegistry(registry);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to resolve intent menu from backend, falling back to central registry:', err);
+      });
+  }, [shellMenuStore.context.auth_status]); // Re-resolve when auth status changes
+
   const shellMenuRegistry = useMemo<Record<ShellMenuId, ShellMenuRegistryEntry>>(() => {
-    const headerSystemMenu = CENTRAL_SHELL_MENU_REGISTRY['shell-header-system'];
-    const footerUserMenu = CENTRAL_SHELL_MENU_REGISTRY['shell-footer-user'];
+    const headerSystemMenu = dynamicMenuRegistry['shell-header-system'];
+    const footerUserMenu = dynamicMenuRegistry['shell-footer-user'];
+    const systemControlsMenu = dynamicMenuRegistry['system-controls'];
 
     return {
-      ...CENTRAL_SHELL_MENU_REGISTRY,
-      'shell-header-system': {
+      ...dynamicMenuRegistry,
+      'shell-header-system': headerSystemMenu ? {
         ...headerSystemMenu,
         record: {
           ...headerSystemMenu.record,
@@ -3077,8 +3241,8 @@ export default function App({
             ),
           })),
         },
-      },
-      'shell-footer-user': {
+      } : undefined,
+      'shell-footer-user': footerUserMenu ? {
         ...footerUserMenu,
         record: {
           ...footerUserMenu.record,
@@ -3091,9 +3255,33 @@ export default function App({
             ),
           })),
         },
-      },
-    };
-  }, [showDiagnosticsChrome, workspaceSurfaceOpen]);
+      } : undefined,
+      'system-controls': systemControlsMenu ? {
+        ...systemControlsMenu,
+        record: {
+          ...systemControlsMenu.record,
+          levels: systemControlsMenu.record.levels.map((level) => ({
+            ...level,
+            items: level.items.map((item) => {
+              if (item.action_id === 'open_menu_voice_control') {
+                return {
+                  ...item,
+                  badge: activeVoiceLabel.replace(/\s+Voice$/i, ''),
+                };
+              }
+              if (item.action_id === 'system_logout') {
+                return {
+                  ...item,
+                  disabled: powerChromeState !== 'signed_in',
+                };
+              }
+              return item;
+            }),
+          })),
+        },
+      } : undefined,
+    } as Record<ShellMenuId, ShellMenuRegistryEntry>;
+  }, [dynamicMenuRegistry, activeVoiceLabel, powerChromeState, showDiagnosticsChrome, workspaceSurfaceOpen]);
 
   useEffect(() => {
     setShellMenuStore((prev) => ({
@@ -3124,7 +3312,9 @@ export default function App({
                         ? 'transparency'
                         : mode === 'api_health'
                           ? 'api_health'
-                          : 'voice';
+                          : mode === 'create_account'
+                            ? 'create_account'
+                            : 'voice';
 
     setShellMenuStore((prev) => ({
       ...prev,
@@ -3170,10 +3360,7 @@ export default function App({
 
   const headerSystemMenuRecord = shellMenuStore.registry_by_id['shell-header-system'].record;
   const footerUserMenuRecord = shellMenuStore.registry_by_id['shell-footer-user'].record;
-  const activeShellMenuId =
-    shellMenuStore.ui.active_menu_id && shellMenuStore.ui.active_menu_id !== 'shell-footer-user'
-      ? shellMenuStore.ui.active_menu_id
-      : null;
+  const activeShellMenuId = shellMenuStore.ui.active_menu_id;
   const activeShellMenuEntry = activeShellMenuId
     ? shellMenuStore.registry_by_id[activeShellMenuId]
     : null;
@@ -3283,16 +3470,6 @@ export default function App({
           setMode('voice');
           openShellMenuById('voice-control');
           return;
-        case 'open_appearance':
-        case 'open_menu_appearance':
-          setMode('voice');
-          openShellMenuById('appearance');
-          return;
-        case 'open_intent_settings':
-        case 'open_menu_agent_identity':
-          setMode('voice');
-          openShellMenuById('agent-identity');
-          return;
         case 'open_menu_voice_box':
           setMode('voice');
           openShellMenuById('voice-box');
@@ -3317,6 +3494,15 @@ export default function App({
           closeShellMenus();
           setMode('transparency');
           return;
+        case 'system_logout':
+          if (powerChromeState === 'signed_in') {
+            closeShellMenus();
+            handleLogout();
+          }
+          return;
+        case 'system_quit_app':
+          await tryQuitApplication();
+          return;
         case 'set_voice_route_gemini':
           applyVoiceRoute('gemini');
           return;
@@ -3338,117 +3524,6 @@ export default function App({
         case 'appearance_set_background_live_effects':
           setTheme({ backgroundType: 'canvas', customBgKind: null, customBgPath: null });
           return;
-        case 'appearance_open_overlay_color': {
-          const nextColor = window.prompt('Overlay tint color (#RRGGBB):', theme.overlayColor);
-          if (nextColor?.trim()) {
-            setTheme({ overlayColor: nextColor.trim() });
-          }
-          return;
-        }
-        case 'appearance_open_overlay_opacity': {
-          const raw = window.prompt('Overlay opacity (0 - 1):', String(theme.overlayOpacity));
-          if (!raw) return;
-          const nextOpacity = Number(raw);
-          if (Number.isFinite(nextOpacity) && nextOpacity >= 0 && nextOpacity <= 1) {
-            setTheme({ overlayOpacity: nextOpacity });
-          }
-          return;
-        }
-        case 'appearance_open_overlay_width': {
-          const raw = window.prompt('Overlay width percent:', String(theme.overlayWidthPercent));
-          if (!raw) return;
-          const nextWidth = Number(raw);
-          if (Number.isFinite(nextWidth) && nextWidth >= 60 && nextWidth <= 100) {
-            setTheme({ overlayWidthPercent: nextWidth });
-          }
-          return;
-        }
-        case 'appearance_open_canvas_padding': {
-          const raw = window.prompt('Shell overlay padding (px):', String(theme.overlayPadding));
-          if (!raw) return;
-          const nextPadding = Number(raw);
-          if (Number.isFinite(nextPadding) && nextPadding >= 0) {
-            setTheme({ overlayPadding: nextPadding });
-          }
-          return;
-        }
-        case 'appearance_open_custom_background': {
-          const nextPath = window.prompt('Custom background path:', theme.customBgPath ?? '');
-          if (!nextPath?.trim()) return;
-          const trimmedPath = nextPath.trim();
-          const customBgKind = /\.(mp4|webm|mov)$/i.test(trimmedPath) ? 'video' : 'image';
-          setTheme({ backgroundType: 'custom', customBgPath: trimmedPath, customBgKind });
-          return;
-        }
-        case 'appearance_open_background_library': {
-          const nextBackground = window.prompt(
-            'Installed background id:',
-            theme.canvasBackgroundId,
-          );
-          if (nextBackground?.trim()) {
-            setTheme({
-              backgroundType: 'canvas',
-              canvasBackgroundId: nextBackground.trim(),
-              customBgKind: null,
-              customBgPath: null,
-            });
-          }
-          return;
-        }
-        case 'agent_identity_edit_name': {
-          const nextValue = window.prompt('Agent name:', agentName);
-          if (nextValue !== null) setAgentName(nextValue);
-          return;
-        }
-        case 'agent_identity_edit_company': {
-          const nextValue = window.prompt('Agent company:', agentCompany);
-          if (nextValue !== null) setAgentCompany(nextValue);
-          return;
-        }
-        case 'agent_identity_edit_role': {
-          const nextValue = window.prompt('Agent role:', agentRole);
-          if (nextValue !== null) setAgentRole(nextValue);
-          return;
-        }
-        case 'agent_identity_edit_agent_intent': {
-          const nextValue = window.prompt('Agent intent:', agentIntent);
-          if (nextValue !== null) setAgentIntent(nextValue);
-          return;
-        }
-        case 'agent_identity_edit_user_intent': {
-          const nextValue = window.prompt('User intent:', userIntent);
-          if (nextValue !== null) setUserIntent(nextValue);
-          return;
-        }
-        case 'agent_identity_edit_desired_outcome': {
-          const nextValue = window.prompt('Desired outcome:', desiredOutcome);
-          if (nextValue !== null) setDesiredOutcome(nextValue);
-          return;
-        }
-        case 'open_voicebox_profiles': {
-          const profiles = await VoiceboxClient.listProfiles();
-          if (profiles.length === 0) {
-            window.alert('No Voice Box profiles are installed yet.');
-            return;
-          }
-          const defaultProfile = voice || profiles[0]?.id || '';
-          const selection = window.prompt(
-            `Select Voice Box profile by id:\n${profiles.map((profile) => `${profile.id} - ${profile.name}`).join('\n')}`,
-            defaultProfile,
-          );
-          if (!selection?.trim()) return;
-          await activateVoiceboxProfile(selection.trim());
-          return;
-        }
-        case 'open_voicebox_create': {
-          const profileName = window.prompt('New Voice Box profile name:');
-          if (!profileName?.trim()) return;
-          const profile = await VoiceboxClient.createProfile(profileName.trim());
-          await refreshVoiceboxRecordingState();
-          selectVoiceboxRecordingProfile(profile.id);
-          await activateVoiceboxProfile(profile.id);
-          return;
-        }
         case 'open_voicebox_upload': {
           const archivePath = await VoiceboxClient.pickArchivePath();
           if (!archivePath) return;
@@ -3483,11 +3558,13 @@ export default function App({
       closeShellMenus,
       desiredOutcome,
       engageSessionEntry,
+      handleLogout,
       handleOpenKnowledgePanel,
       handleOpenPodcasts,
       markShellMenuActionSelected,
       openShellMenuById,
       openWorkspaceHub,
+      powerChromeState,
       resetTheme,
       refreshVoiceboxRecordingState,
       selectVoiceboxRecordingProfile,
@@ -3501,30 +3578,97 @@ export default function App({
   );
   const renderShellMenuDetailSurface = useCallback(
     (surfaceId: string) => {
-      if (surfaceId !== 'voicebox.record.capture.v1') {
-        return null;
-      }
-      const activeProfileId = shellMenuStore.recording.active_profile_id;
-      const activeSampleCount = activeProfileId
-        ? shellMenuStore.recording.sample_count_by_profile_id[activeProfileId] ?? 0
-        : 0;
+      switch (surfaceId) {
+        case 'intent.reality.check.v1':
+          if (shellMenuStore.intent_ingestion.status === 'handoff_ready') {
+            return (
+              <RealityCheckReport 
+                ingestionState={shellMenuStore.intent_ingestion} 
+                onApplyFix={(points) => {
+                  setShellMenuStore(prev => {
+                    const currentProb = prev.intent_ingestion.mvp_success_probability || 0;
+                    return {
+                      ...prev,
+                      intent_ingestion: {
+                        ...prev.intent_ingestion,
+                        mvp_success_probability: Math.min(100, currentProb + points)
+                      },
+                      revision: prev.revision + 1
+                    };
+                  });
+                }}
+              />
+            );
+          }
+          return null;
+        case 'voicebox.record.capture.v1': {
+          const activeProfileId = shellMenuStore.recording.active_profile_id;
+          const activeSampleCount = activeProfileId
+            ? shellMenuStore.recording.sample_count_by_profile_id[activeProfileId] ?? 0
+            : 0;
 
-      return (
-        <VoiceBoxRecordDetailSurface
-          profiles={shellMenuStore.recording.available_profiles}
-          activeProfileId={activeProfileId}
-          sampleCount={activeSampleCount}
-          sampleTarget={shellMenuStore.recording.recommended_sample_target}
-          promptText={shellMenuStore.recording.selected_prompt_text}
-          captureStatus={shellMenuStore.recording.capture_status}
-          lastError={shellMenuStore.recording.last_error}
-          voiceboxReady={shellMenuStore.recording.voicebox_ready}
-          pttBindingEnabled={shellMenuStore.recording.ptt_binding_enabled}
-          onSelectProfile={(profileId) => selectVoiceboxRecordingProfile(profileId || null)}
-        />
-      );
+          return (
+            <VoiceBoxRecordDetailSurface
+              profiles={shellMenuStore.recording.available_profiles}
+              activeProfileId={activeProfileId}
+              sampleCount={activeSampleCount}
+              sampleTarget={shellMenuStore.recording.recommended_sample_target}
+              promptText={shellMenuStore.recording.selected_prompt_text}
+              captureStatus={shellMenuStore.recording.capture_status}
+              lastError={shellMenuStore.recording.last_error}
+              voiceboxReady={shellMenuStore.recording.voicebox_ready}
+              pttBindingEnabled={shellMenuStore.recording.ptt_binding_enabled}
+              onSelectProfile={(profileId) => selectVoiceboxRecordingProfile(profileId || null)}
+            />
+          );
+        }
+        case 'system.profile.v1':
+          return (
+            <UserProfilePanel
+              onBack={() => clearShellMenuSelectedAction('system-controls')}
+              powerState={powerChromeState}
+              onSave={handleProfileUpdate}
+              onCreateAccount={() => { closeShellMenus(); setMode('create_account'); }}
+            />
+          );
+        case 'appearance.settings.v1':
+          return <AppearancePanel onBack={() => clearShellMenuSelectedAction('shell-header-system')} />;
+        case 'agent.identity.settings.v1':
+          return (
+            <AgentIdentityPanel 
+              onBack={() => clearShellMenuSelectedAction('shell-header-system')}
+              agentName={agentName}
+              agentCompany={agentCompany}
+              agentRole={agentRole}
+              agentIntent={agentIntent}
+              userIntent={userIntent}
+              desiredOutcome={desiredOutcome}
+              onUpdate={(key, value) => {
+                if (key === 'agentName') setAgentName(value);
+                if (key === 'agentCompany') setAgentCompany(value);
+                if (key === 'agentRole') setAgentRole(value);
+                if (key === 'agentIntent') setAgentIntent(value);
+                if (key === 'userIntent') setUserIntent(value);
+                if (key === 'desiredOutcome') setDesiredOutcome(value);
+              }}
+            />
+          );
+        case 'system.scripts.v1':
+          return <AdminPanel onBack={() => clearShellMenuSelectedAction('system-controls')} />;
+        default:
+          return null;
+      }
     },
-    [selectVoiceboxRecordingProfile, shellMenuStore.recording],
+    [
+      clearShellMenuSelectedAction,
+      closeShellMenus,
+      handleProfileUpdate,
+      powerChromeState,
+      selectVoiceboxRecordingProfile,
+      shellMenuStore.recording,
+      shellMenuStore.intent_ingestion,
+      setShellMenuStore,
+    ],
   );
   useEffect(() => {
     if (workspaceCanvas) {
@@ -3596,20 +3740,8 @@ export default function App({
         localModelReadiness={localModelReadiness}
         showDiagnosticsChrome={showDiagnosticsChrome}
         commanderName={commanderName ?? undefined}
-        onLogout={handleLogout}
-        onProfileUpdate={handleProfileUpdate}
-        onOpenVoiceSettings={() => {
-          setMode('voice');
-          openShellMenuById('voice-control');
-        }}
+        onOpenSystemControls={() => openShellMenuById('system-controls')}
         onOpenTransparency={() => setMode('transparency')}
-        onOpenPodcasts={handleOpenPodcasts}
-        onOpenKnowledge={() => handleOpenKnowledgePanel('library')}
-        onOpenAppearance={() => {
-          setMode('voice');
-          openShellMenuById('appearance');
-        }}
-        onOpenWorkspace={openWorkspaceHub}
         headerMenuRecord={headerMenuPermitted ? headerSystemMenuRecord : undefined}
         headerMenuOpen={headerMenuOpen}
         onToggleHeaderMenu={() => {
@@ -3618,7 +3750,6 @@ export default function App({
           setHeaderMenuOpen((current) => !current);
         }}
         onCloseHeaderMenu={() => setHeaderMenuOpen(false)}
-        onHeaderMenuAction={handleShellMenuAction}
         powerChromeState={powerChromeState}
         voiceModelLabel={activeVoiceLabel}
         loyaltySummary={loyaltyBadgeLabel}
@@ -3637,6 +3768,14 @@ export default function App({
         onToggleSpeaker={handleToggleSpeaker}
       />
 
+      {shellMenuStore.context.auth_status === 'authenticated' && (
+        <div className="absolute inset-0 z-[var(--z-shell-workspace-canvas)] pointer-events-none">
+          <div className="pointer-events-auto h-full w-full">
+            <VirtualDesktopEnvironment authStatus={shellMenuStore.context.auth_status} />
+          </div>
+        </div>
+      )}
+
       <ShellContentZone
         theme={shellTheme}
         mode={mode === 'chat' ? 'chat' : 'voice'}
@@ -3647,9 +3786,9 @@ export default function App({
       />
 
       <AnimatePresence>
-        {headerMenuOpen && headerMenuPermitted && activeShellMenuEntry?.menu_id === 'shell-header-system' ? (
+        {activeShellMenuEntry && (activeShellMenuEntry.menu_id !== 'shell-header-system' || headerMenuPermitted) ? (
           <motion.div
-            key="header-menu-layer"
+            key={`shell-menu-layer-${activeShellMenuEntry.menu_id}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -3668,14 +3807,28 @@ export default function App({
               className="relative h-full"
             >
               <ShellMenuController
-                record={headerSystemMenuRecord}
+                record={activeShellMenuEntry.record}
                 onSelect={handleShellMenuAction}
                 variant="shell-layer"
                 className="h-full"
-                activeLevelId={shellMenuStore.ui.active_level_id_by_menu_id['shell-header-system']}
-                onActiveLevelChange={(levelId) => setShellMenuLevel('shell-header-system', levelId)}
-                selectedActionId={shellMenuStore.ui.selected_action_id_by_menu_id['shell-header-system']}
-                onClearSelectedAction={() => clearShellMenuSelectedAction('shell-header-system')}
+                activeLevelId={shellMenuStore.ui.active_level_id_by_menu_id[activeShellMenuEntry.menu_id]}
+                onActiveLevelChange={(levelId) => setShellMenuLevel(activeShellMenuEntry.menu_id, levelId)}
+                selectedActionId={shellMenuStore.ui.selected_action_id_by_menu_id[activeShellMenuEntry.menu_id]}
+                onClearSelectedAction={() => clearShellMenuSelectedAction(activeShellMenuEntry.menu_id)}
+                onBackMenu={
+                  shellMenuStore.ui.menu_stack.length > 1
+                    ? () => {
+                        setShellMenuStore((prev) => ({
+                          ...prev,
+                          ui: {
+                            ...prev.ui,
+                            menu_stack: prev.ui.menu_stack.slice(0, -1),
+                            active_menu_id: prev.ui.menu_stack[prev.ui.menu_stack.length - 2] || null,
+                          },
+                        }));
+                      }
+                    : undefined
+                }
                 renderDetailSurface={(surface) => renderShellMenuDetailSurface(surface.surface_id)}
               />
             </motion.div>
@@ -3696,28 +3849,6 @@ export default function App({
           </motion.div>
         )}
 
-        {activeShellMenuEntry && activeShellMenuEntry.menu_id !== 'shell-header-system' ? (
-          <ShellOverlayFrame
-            overlayKey={activeShellMenuEntry.menu_id}
-            onClose={closeShellMenus}
-            align="top"
-            reserveFooterSpace={false}
-            fullScreen
-          >
-            <ShellMenuController
-              record={activeShellMenuEntry.record}
-              onSelect={handleShellMenuAction}
-              variant="shell-layer"
-              className="h-full"
-              activeLevelId={shellMenuStore.ui.active_level_id_by_menu_id[activeShellMenuEntry.menu_id]}
-              onActiveLevelChange={(levelId) => setShellMenuLevel(activeShellMenuEntry.menu_id, levelId)}
-              selectedActionId={shellMenuStore.ui.selected_action_id_by_menu_id[activeShellMenuEntry.menu_id]}
-              onClearSelectedAction={() => clearShellMenuSelectedAction(activeShellMenuEntry.menu_id)}
-              renderDetailSurface={(surface) => renderShellMenuDetailSurface(surface.surface_id)}
-            />
-          </ShellOverlayFrame>
-        ) : null}
-
         {mode === 'disc_settings' && (
           <ShellOverlayFrame overlayKey="disc_settings" onClose={() => setMode('voice')} align="top">
             <DISCSettingsOverlay
@@ -3725,6 +3856,35 @@ export default function App({
               onChange={handleDISCChange}
               onClose={() => setMode('voice')}
             />
+          </ShellOverlayFrame>
+        )}
+
+        {mode === 'create_account' && (
+          <ShellOverlayFrame overlayKey="create_account" onClose={() => setMode('voice')} align="center">
+            <div className="bg-[var(--panel-surface)] border border-[var(--panel-border)] rounded-xl p-8 max-w-md w-full shadow-2xl flex flex-col gap-6">
+              <h2 className="text-xl font-semibold text-[var(--panel-heading)]">Create Account</h2>
+              <p className="text-[var(--panel-text)] text-sm">
+                The AI Agent has triggered the account creation flow. Please sign up to authenticate and unlock the Virtual Desktop Environment.
+              </p>
+              <div className="flex flex-col gap-3">
+                <input type="text" placeholder="Email" className="bg-[var(--panel-input-bg)] border border-[var(--panel-input-border)] text-[var(--panel-text)] p-2 rounded-md" />
+                <input type="password" placeholder="Password" className="bg-[var(--panel-input-bg)] border border-[var(--panel-input-border)] text-[var(--panel-text)] p-2 rounded-md" />
+              </div>
+              <div className="flex justify-end gap-3 mt-4">
+                <button onClick={() => setMode('voice')} className="px-4 py-2 text-[var(--panel-text-muted)] hover:text-[var(--panel-text)]">Cancel</button>
+                <button 
+                  onClick={() => {
+                    // Explicitly assign the baseline role and initialize the smart_contract state in the backend
+                    invoke('initialize_smart_contract').catch(console.warn);
+                    setShellMenuStore(prev => ({ ...prev, context: { ...prev.context, auth_status: 'authenticated' } }));
+                    setMode('voice');
+                  }} 
+                  className="px-4 py-2 bg-[var(--panel-accent-bg)] text-[var(--panel-accent-text)] rounded-md font-medium"
+                >
+                  Sign Up
+                </button>
+              </div>
+            </div>
           </ShellOverlayFrame>
         )}
 
@@ -3928,7 +4088,6 @@ export default function App({
           setHeaderMenuOpen(false);
           setFooterMenuOpen((current) => !current);
         }}
-        onFooterMenuAction={handleShellMenuAction}
       />
 
       {/* File import badge — shown when files are in context AND kernel permits file_upload */}

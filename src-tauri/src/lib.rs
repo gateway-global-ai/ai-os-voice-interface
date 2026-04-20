@@ -1,4 +1,5 @@
 mod commands;
+mod intent_loop;
 mod state_machine;
 mod state_machine_commands;
 mod visual_context;
@@ -73,7 +74,9 @@ pub fn run() {
       state_machine_commands::process_intent,
       state_machine_commands::record_outcome,
       state_machine_commands::register_node_contract,
-      visual_context::capture_visual_context
+      visual_context::capture_visual_context,
+      intent_loop::resolve_intent_menu,
+      intent_loop::get_active_intent_state
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

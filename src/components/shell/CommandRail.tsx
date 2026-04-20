@@ -8,7 +8,6 @@ import type { FormEvent, PointerEvent, ReactNode } from 'react';
 import { MessageSquare, Home, Send, Mic, Circle, UserRound } from 'lucide-react';
 import { motion } from 'motion/react';
 import { VoicePttButton } from '../ui/VoicePttButton';
-import { ShellMenuController } from './ShellMenuController';
 import type { CommandRailState } from './commandRailTypes';
 import type { ShellMenuRecord } from '../../shell/shellMenuContract';
 
@@ -38,7 +37,6 @@ type Props = {
   footerMenuRecord?: ShellMenuRecord;
   footerMenuOpen?: boolean;
   onToggleFooterMenu?: () => void;
-  onFooterMenuAction?: (actionId: string) => void;
 };
 
 function mapRailStatus(s: CommandRailState['systemStatus']): string {
@@ -65,7 +63,6 @@ export function CommandRail({
   footerMenuRecord,
   footerMenuOpen = false,
   onToggleFooterMenu,
-  onFooterMenuAction,
 }: Props) {
   const voicePrimary = rail.mode === 'voice' && rail.primaryAction === 'ptt';
   const chatPrimary  = rail.mode === 'chat'  && rail.primaryAction === 'send';
@@ -94,12 +91,6 @@ export function CommandRail({
           />
         </div>
       )}
-
-      {footerMenuRecord && footerMenuOpen && onFooterMenuAction ? (
-        <div className="absolute bottom-[calc(100%+0.55rem)] right-4 z-[var(--z-shell-chrome)] w-[min(24rem,calc(100vw-1.5rem))] md:right-6">
-          <ShellMenuController record={footerMenuRecord} onSelect={onFooterMenuAction} />
-        </div>
-      ) : null}
 
       <div className="relative z-10 flex min-h-[var(--shell-footer-height)] items-center justify-between gap-2 px-4 py-2 md:px-6">
 

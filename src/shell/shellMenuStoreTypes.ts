@@ -30,6 +30,7 @@ export interface ShellMenuContextState {
   diagnostics_enabled: boolean;
   appearance_dirty: boolean;
   agent_identity_dirty: boolean;
+  auth_status: 'guest' | 'authenticated';
   active_surface_mode:
     | 'voice'
     | 'chat'
@@ -41,7 +42,8 @@ export interface ShellMenuContextState {
     | 'podcasts'
     | 'knowledge'
     | 'transparency'
-    | 'api_health';
+    | 'api_health'
+    | 'create_account';
 }
 
 export interface ShellMenuUIState {
@@ -77,11 +79,87 @@ export interface ShellMenuRecordingState {
   voicebox_ready: boolean | null;
 }
 
+export type ShellIntentIngestionStatus =
+  | 'idle'
+  | 'capturing'
+  | 'processing'
+  | 'bound'
+  | 'handoff_ready'
+  | 'error';
+
+export type ProjectBaselineSource =
+  | 'github_repository'
+  | 'project_zip'
+  | 'workspace_session'
+  | 'unknown';
+
+export interface ProjectBaseline {
+  source: ProjectBaselineSource;
+  project_id: string;
+  session_id: string;
+  repo_url?: string;
+  branch?: string;
+  commit?: string;
+  zip_file_name?: string;
+  directory_map_summary?: string;
+  session_knowledge_refs?: string[];
+}
+
+export interface UserIntentPayload {
+  id: string;
+  captured_at: string;
+  transcript: string;
+  duration_ms?: number;
+}
+
+export interface ShortcutDetectionReport {
+  ui_fragility: string[];
+  mock_data_hallucinations: string[];
+  repeated_code: string[];
+  suppressed_exceptions: string[];
+}
+
+import type { EducationalLesson } from '../knowledge/KnowledgeBaseSchema';
+
+export interface IntentReviewHandoffEnvelope {
+  id: string;
+  user_intent: UserIntentPayload;
+  project_baseline: ProjectBaseline;
+  session_context: Record<string, unknown>;
+  review_request: {
+    status: 'pending' | 'submitted';
+    requested_at?: string;
+  };
+  audit: {
+    created_at: string;
+    created_by: string;
+  };
+  shortcut_report?: ShortcutDetectionReport;
+  educational_lessons?: EducationalLesson[];
+}
+
+export interface SovereignAnalysisResponse {
+  content: string;
+  confidence_score: number;
+  probability_disclosed: boolean;
+}
+
+export interface ShellMenuIntentIngestionState {
+  status: ShellIntentIngestionStatus;
+  current_payload: UserIntentPayload | null;
+  active_baseline: ProjectBaseline | null;
+  pending_review: IntentReviewHandoffEnvelope | null;
+  last_error: string | null;
+  mvp_success_probability: number | null;
+  probability_disclosed: boolean | null;
+}
+
 export interface ShellMenuStoreState {
   registry_by_id: Record<ShellMenuId, ShellMenuRegistryEntry>;
   context: ShellMenuContextState;
   ui: ShellMenuUIState;
   recording: ShellMenuRecordingState;
+  intent_ingestion: ShellMenuIntentIngestionState;
   revision: number;
 }
 

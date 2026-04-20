@@ -32,6 +32,7 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
             description: 'Adjust shell appearance through the governed shell menu.',
             action_id: 'open_menu_appearance',
             icon: 'appearance',
+            detail_surface: 'appearance.settings.v1',
           },
           {
             item_id: 'shell-open-podcasts',
@@ -52,6 +53,7 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
             description: 'Adjust core agent identity, intent, and desired outcome through the governed shell menu.',
             action_id: 'open_menu_agent_identity',
             icon: 'system',
+            detail_surface: 'agent.identity.settings.v1',
           },
           {
             item_id: 'shell-open-transparency',
@@ -79,6 +81,20 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
       'shell_owned',
       'deterministic_levels',
       'intent_first',
+    ],
+    detail_surfaces: [
+      {
+        surface_id: 'appearance.settings.v1',
+        title: 'Appearance',
+        description: 'Adjust shell appearance.',
+        render_mode: 'level_2_detail',
+      },
+      {
+        surface_id: 'agent.identity.settings.v1',
+        title: 'Agent Identity',
+        description: 'Adjust core agent identity.',
+        render_mode: 'level_2_detail',
+      },
     ],
   },
 };
@@ -143,6 +159,97 @@ export const SHELL_FOOTER_USER_MENU: ShellMenuRegistryEntry = {
     data_source_ref: 'shell.menu.footer.user.v3',
     selection_behavior: 'open_surface',
     disclosure_requirements: ['footer_secondary', 'user_focused'],
+  },
+};
+
+export const SYSTEM_CONTROLS_MENU: ShellMenuRegistryEntry = {
+  menu_id: 'system-controls',
+  menu_zone: 'header_system',
+  permission_class: 'shell_system',
+  data_source_ref: 'shell.menu.system.controls.v1',
+  parent_menu_id: null,
+  launched_from_action_id: null,
+  launch_mode: 'replace_active',
+  record: {
+    menu_id: 'system-controls',
+    menu_zone: 'header_system',
+    content_type: 'settings',
+    level_count: 2,
+    levels: [
+      {
+        level_id: 'runtime-and-identity',
+        level_label: 'Runtime and identity',
+        items: [
+          {
+            item_id: 'system-controls-voice-runtime',
+            label: 'Voice runtime',
+            description: 'Review the active voice route and open governed voice controls.',
+            action_id: 'open_menu_voice_control',
+            icon: 'voice',
+          },
+          {
+            item_id: 'system-controls-profile',
+            label: 'Profile',
+            description: 'Edit the signed-in account profile inside the shell menu pane.',
+            action_id: 'open_system_profile',
+            icon: 'profile',
+            detail_surface: 'system.profile.v1',
+          },
+          {
+            item_id: 'system-controls-scripts',
+            label: 'Scripts',
+            description: 'Edit narration and voice script overrides inside the shell menu pane.',
+            action_id: 'open_system_scripts',
+            icon: 'system',
+            detail_surface: 'system.scripts.v1',
+          },
+        ],
+      },
+      {
+        level_id: 'session-actions',
+        level_label: 'Session actions',
+        items: [
+          {
+            item_id: 'system-controls-logout',
+            label: 'Log out',
+            description: 'End the signed-in session when account access is available.',
+            action_id: 'system_logout',
+            icon: 'system',
+          },
+          {
+            item_id: 'system-controls-quit',
+            label: 'Quit app',
+            description: 'Close the current AI OS shell window.',
+            action_id: 'system_quit_app',
+            icon: 'system',
+          },
+        ],
+      },
+    ],
+    template_family: 'list',
+    permission_class: 'shell_system',
+    data_source_ref: 'shell.menu.system.controls.v1',
+    selection_behavior: 'open_surface',
+    disclosure_requirements: [
+      'header_attached',
+      'shell_owned',
+      'deterministic_levels',
+      'intent_first',
+    ],
+    detail_surfaces: [
+      {
+        surface_id: 'system.profile.v1',
+        title: 'Profile',
+        description: 'Edit the current signed-in identity inside the standard shell menu pane.',
+        render_mode: 'level_2_detail',
+      },
+      {
+        surface_id: 'system.scripts.v1',
+        title: 'Scripts',
+        description: 'Review narration and script overrides inside the standard shell menu pane.',
+        render_mode: 'level_2_detail',
+      },
+    ],
   },
 };
 
@@ -506,6 +613,7 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
 export const CENTRAL_SHELL_MENU_REGISTRY: Record<ShellMenuId, ShellMenuRegistryEntry> = {
   'shell-header-system': SHELL_HEADER_SYSTEM_MENU,
   'shell-footer-user': SHELL_FOOTER_USER_MENU,
+  'system-controls': SYSTEM_CONTROLS_MENU,
   'voice-control': VOICE_CONTROL_MENU,
   'voice-box': VOICE_BOX_MENU,
   appearance: APPEARANCE_MENU,
