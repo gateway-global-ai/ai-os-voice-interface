@@ -148,7 +148,7 @@ function TopicBubble({ label, onClick }: { label: string; onClick: () => void })
     <motion.button
       type="button"
       onClick={onClick}
-      className="rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em]"
+      className="rounded-full px-4 py-2 text-[14px] font-semibold uppercase tracking-[0.18em]"
       style={{
         background: 'color-mix(in srgb, var(--panel-surface) 72%, transparent)',
         border: '1px solid var(--panel-border)',
