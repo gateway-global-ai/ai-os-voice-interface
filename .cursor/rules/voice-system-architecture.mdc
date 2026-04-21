@@ -13,7 +13,7 @@ alwaysApply: false
 export type VoiceRouteId = 'voicebox' | 'browser' | 'gemini';
 //  voicebox = Voicebox local TTS (runs on device hardware)
 //  browser  = Web Speech API / browser built-in TTS
-//  gemini   = Gemini 2.5 TTS via @google/genai
+//  gemini   = Gemini 2.5 TTS via same-origin `/api/gemini/*` gateway (server holds @google/genai + key)
 ```
 
 **No other values.** Do not add new TTS routes without updating this type AND adding a corresponding engine implementation.

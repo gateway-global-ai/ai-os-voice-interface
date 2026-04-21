@@ -319,7 +319,6 @@ export class GeminiVoiceEngine implements IVoiceEngine {
       this.streamAbortController = new AbortController();
       this.nextChunkStartTime = 0;
       let receivedAudio = false;
-      let streamReportedDone = false;
 
       try {
         await streamGeminiSpeech(
@@ -335,9 +334,6 @@ export class GeminiVoiceEngine implements IVoiceEngine {
               }
               if (chunk.type === 'error') {
                 throw new Error(chunk.error);
-              }
-              if (chunk.type === 'done') {
-                streamReportedDone = true;
               }
             },
           },
@@ -369,8 +365,29 @@ export class GeminiVoiceEngine implements IVoiceEngine {
         this.streamAbortController = null;
       }
 
-      if (!receivedAudio && streamReportedDone) {
-        throw new Error('Gemini stream ended without audio');
+      // Live WebSocket sometimes completes with `done` but no audio chunks (model/API timing).
+      if (!receivedAudio) {
+        try {
+          console.warn('[GeminiVoiceEngine] No audio from live stream; using one-shot gateway TTS');
+          this.clearScheduledPlayback();
+          this.playbackQueue = Promise.resolve();
+          this.nextChunkStartTime = 0;
+          const response = await geminiSynthesizeSpeech({ text, voiceName });
+          const arrayBuffer = base64ToArrayBuffer(response.audioData);
+          const audioCtx = this.getAudioContext();
+          if (isGeminiLinearPcm(response.mimeType)) {
+            await playPcm16Mono(audioCtx, arrayBuffer);
+          } else {
+            await playAudioBuffer(audioCtx, arrayBuffer);
+          }
+          receivedAudio = true;
+        } catch (fallbackErr) {
+          console.warn('[GeminiVoiceEngine] One-shot TTS after empty stream failed:', fallbackErr);
+        }
+      }
+
+      if (!receivedAudio) {
+        throw new Error('Gemini TTS produced no audio');
       }
 
       this.onPlaybackResult?.({

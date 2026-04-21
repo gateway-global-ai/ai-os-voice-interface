@@ -30,6 +30,11 @@ type Props = {
   centerStage?: ReactNode;
   chatEndRef?: React.RefObject<HTMLDivElement | null>;
   renderMessage?: (message: ShellTranscriptMessage) => ReactNode;
+  /**
+   * Voice landing / idle hero: drop main horizontal + chrome padding so a full-bleed
+   * background video can reach the viewport edges (header/footer stay fixed above).
+   */
+  voiceCenterFullBleed?: boolean;
 };
 
 function DefaultMessageRow({
@@ -72,9 +77,22 @@ export function ShellContentZone({
   centerStage,
   chatEndRef,
   renderMessage,
+  voiceCenterFullBleed = false,
 }: Props) {
+  const mainChrome =
+    mode === 'chat'
+      ? 'px-4 pb-[calc(var(--shell-footer-height)+1.25rem)] pt-[calc(var(--shell-header-height)+2.5rem)] md:px-6'
+      : voiceCenterFullBleed
+        ? 'min-h-0 flex-1 px-0 pb-0 pt-0'
+        : 'px-4 pb-[calc(var(--shell-footer-height)+1.25rem)] pt-[calc(var(--shell-header-height)+2.5rem)] md:px-6';
+
   return (
-    <main className="relative z-[var(--z-shell-main)] flex h-full flex-col px-4 pb-[calc(var(--shell-footer-height)+1.25rem)] pt-[calc(var(--shell-header-height)+2.5rem)] md:px-6">
+    <main
+      className={cn(
+        'relative z-[var(--z-shell-main)] flex h-full min-h-0 flex-col',
+        mainChrome,
+      )}
+    >
       {mode === 'chat' ? (
         <div className="mx-auto flex h-full w-full max-w-6xl flex-1 overflow-hidden">
           <div className="flex-1 overflow-y-auto px-1 py-3 md:px-3 md:py-4">
@@ -87,7 +105,12 @@ export function ShellContentZone({
           </div>
         </div>
       ) : (
-        <div className="relative flex flex-1 items-center justify-center">
+        <div
+          className={cn(
+            'relative flex min-h-0 flex-1',
+            voiceCenterFullBleed ? 'w-full' : 'items-center justify-center',
+          )}
+        >
           {centerStage}
           {transcription ? (
             <div className="pointer-events-none absolute inset-x-0 bottom-24 flex justify-center px-4">

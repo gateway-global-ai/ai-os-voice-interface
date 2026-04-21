@@ -8,6 +8,7 @@ export type ShellMenuId =
   | 'shell-header-system'
   | 'shell-footer-user'
   | 'system-controls'
+  | 'guest-entry'
   | 'voice-control'
   | 'voice-box'
   | 'appearance'

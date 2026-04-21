@@ -1,14 +1,12 @@
 /**
- * AI OS welcome canvas.
- *
- * Shown before the first session starts. Keeps the center stage sparse:
- * ambient video, one primary power button, and lightweight topic actions.
+ * AI OS welcome canvas — Vibe Coding University landing.
  *
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
+import { Fragment } from 'react';
 import { motion } from 'motion/react';
-import { Power } from 'lucide-react';
+import { Pause, Play } from 'lucide-react';
 import type { SessionEntryClassification } from '../../shell/sessionEntryClassification';
 import type { WorkspaceState } from '../../shell/workspaceState';
 
@@ -17,13 +15,20 @@ export type VibeTopicId = 'university' | 'community' | 'coding_platform';
 type Props = {
   workspaceState: WorkspaceState;
   sessionEntry: SessionEntryClassification;
-  /** Kept for API compatibility. */
-  onOpenMenu: () => void;
+  /** Kept for API compatibility (e.g. voice/chat preference before session). */
   onSelectMode: (mode: 'voice' | 'chat') => void;
-  /** Called when the user clicks the Start button. */
-  onStart?: () => void;
-  /** Sends a voice-AI explanation request for the tapped Vibe topic. */
+  /** Recorded welcome — play / pause. */
+  introAudioPlaying: boolean;
+  onIntroPlayPause: () => void;
+  /** Skip welcome and continue (e.g. join / loyalty / shell). */
+  onSkipIntro: () => void;
+  onOpenMenu: () => void;
+  /** Sends a short scripted narration for the tapped Vibe topic. */
   onExplainVibeTopic?: (topic: VibeTopicId) => void;
+  /** Small label above the headline (defaults to neutral OS line). */
+  eyebrow?: string;
+  /** Status line above bottom chrome (replaces kernel-ready copy when set). */
+  footline?: string;
 };
 
 const VIBE_TOPIC_BUBBLES: { id: VibeTopicId; label: string }[] = [
@@ -32,14 +37,16 @@ const VIBE_TOPIC_BUBBLES: { id: VibeTopicId; label: string }[] = [
   { id: 'coding_platform', label: 'Coding Platform' },
 ];
 
-export function ShellVoiceIdlePanel({ onStart, onSelectMode, onExplainVibeTopic }: Props) {
-  const handleStart = () => {
-    if (onStart) {
-      onStart();
-    } else {
-      onSelectMode('voice');
-    }
-  };
+export function ShellVoiceIdlePanel({
+  onSelectMode: _onSelectMode,
+  introAudioPlaying,
+  onIntroPlayPause,
+  onSkipIntro,
+  onExplainVibeTopic,
+  eyebrow = 'AI Operating System',
+  footline = 'Sovereign Kernel Ready',
+}: Props) {
+  void _onSelectMode;
 
   return (
     <motion.div
@@ -49,7 +56,7 @@ export function ShellVoiceIdlePanel({ onStart, onSelectMode, onExplainVibeTopic 
       className="absolute inset-0 overflow-hidden text-center"
     >
       <video
-        className="absolute inset-0 h-full w-full object-cover"
+        className="pointer-events-none absolute inset-0 h-full min-h-full w-full min-w-full object-cover"
         src="/videos/vibe_coder_video_bg.mp4"
         autoPlay
         loop
@@ -78,7 +85,7 @@ export function ShellVoiceIdlePanel({ onStart, onSelectMode, onExplainVibeTopic 
             className="text-[9px] font-black uppercase tracking-[0.32em]"
             style={{ color: 'var(--panel-text-muted)' }}
           >
-            AI Operating System
+            {eyebrow}
           </motion.p>
 
           <h1
@@ -90,7 +97,7 @@ export function ShellVoiceIdlePanel({ onStart, onSelectMode, onExplainVibeTopic 
 
           <motion.button
             type="button"
-            onClick={handleStart}
+            onClick={() => void onIntroPlayPause()}
             className="flex h-28 w-28 items-center justify-center rounded-full text-white"
             style={{
               background: 'linear-gradient(135deg, rgba(15,118,110,0.9) 0%, rgba(8,145,178,0.92) 48%, rgba(37,99,235,0.92) 100%)',
@@ -99,17 +106,19 @@ export function ShellVoiceIdlePanel({ onStart, onSelectMode, onExplainVibeTopic 
             }}
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
-            aria-label="Enter AI OS"
+            aria-label={introAudioPlaying ? 'Pause intro recording' : 'Play intro recording'}
           >
-            <Power size={34} />
+            {introAudioPlaying ? <Pause size={36} strokeWidth={2.2} /> : <Play size={36} strokeWidth={2.2} className="ml-1" />}
           </motion.button>
 
-          <p
-            className="text-[11px] font-bold uppercase tracking-[0.28em]"
+          <button
+            type="button"
+            onClick={onSkipIntro}
+            className="text-[11px] font-bold uppercase tracking-[0.28em] underline-offset-4 transition hover:opacity-90"
             style={{ color: 'var(--panel-heading)' }}
           >
-            Press to enter
-          </p>
+            Click to skip intro
+          </button>
 
           {onExplainVibeTopic ? (
             <div
@@ -118,11 +127,12 @@ export function ShellVoiceIdlePanel({ onStart, onSelectMode, onExplainVibeTopic 
               aria-label="Vibe topics"
             >
               {VIBE_TOPIC_BUBBLES.map((item) => (
-                <TopicBubble
-                  key={item.id}
-                  label={item.label}
-                  onClick={() => onExplainVibeTopic(item.id)}
-                />
+                <Fragment key={item.id}>
+                  <TopicBubble
+                    label={item.label}
+                    onClick={() => onExplainVibeTopic(item.id)}
+                  />
+                </Fragment>
               ))}
             </div>
           ) : null}
@@ -135,7 +145,7 @@ export function ShellVoiceIdlePanel({ onStart, onSelectMode, onExplainVibeTopic 
               className="h-1.5 w-1.5 rounded-full animate-pulse"
               style={{ background: 'var(--panel-accent-text)' }}
             />
-            Sovereign Kernel Ready
+            {footline}
           </div>
         </motion.div>
       </div>

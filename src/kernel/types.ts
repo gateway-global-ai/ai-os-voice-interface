@@ -30,6 +30,8 @@ export interface OsStateSnapshot {
    * No governed component should render unless its id is present here.
    * Example values: 'voice_ptt' | 'chat_input' | 'file_upload' |
    * 'shell_header_menu' | 'shell_footer_user_menu'
+   * Guest entry chrome may show header menus before kernel hydration; the shell treats
+   * unauthenticated surfaces as always permitted for `shell_header_menu` equivalents.
    */
   permitted_ui_components: string[];
   /**

@@ -83,6 +83,13 @@ const LazyApiHealthOverlay = lazy(() =>
   import('./overlays/ApiHealthOverlay').then((module) => ({ default: module.ApiHealthOverlay })),
 );
 import * as VoiceboxClient from './core/io/VoiceboxClient';
+import {
+  toggleLandingWelcomePlayback,
+  stopLandingStartWelcome,
+  landingStartWelcomeAudioSrc,
+} from './shell/landingStartWelcomeAudio';
+import { VIBE_TOPIC_SCRIPTED_RESPONSES, vibeTopicUserPromptLine } from './shell/vibeLandingNarration';
+import { VibeJoinCommunityCard } from './components/shell/VibeJoinCommunityCard';
 import type { VoiceProfile } from './core/io/VoiceboxClient';
 import { stripIntentLineForDisplay } from './shellCanvas/intentParse';
 import { logShellCanvasAudit } from './shellCanvas/shellCanvasAudit';
@@ -159,13 +166,21 @@ import {
   writeOnboardingProfile,
 } from './onboarding/onboardingState';
 import { buildShellPromptContract } from './shell/shellPromptContract';
+import { useShellJourney } from './shell/useShellJourney';
+import { getLandingWelcomePlayback } from './shell/landingStartWelcomeAudio';
+import {
+  buildVibeCodersHostSystemPrompt,
+  buildVibeCodersScreenBuddyPrompt,
+  readVibeGuestDisplayName,
+  shouldUseVibeCodersHostPrompt,
+  writeVibeGuestDisplayName,
+} from './shell/vibeCodersSystemPrompt';
 import type { ShellMenuId } from './shell/shellMenuContract';
 import { CENTRAL_SHELL_MENU_REGISTRY, filterShellMenuRegistryForAuth } from './shell/shellMenuRegistry';
 import type { ShellMenuRegistryEntry, ShellMenuStoreState } from './shell/shellMenuStoreTypes';
 import { VOICEBOX_SAMPLE_PROMPTS, VOICEBOX_SAMPLE_TARGET, voiceboxPromptForCount } from './shell/voiceBoxRecordConfig';
 import { VoiceBoxRecordDetailSurface } from './components/shell/VoiceBoxRecordDetailSurface';
 import { RealityCheckReport } from './components/shell/RealityCheckReport';
-import { OnboardingGate } from './components/onboarding/OnboardingGate';
 import { AuthPanel } from './components/shell/AuthPanel';
 import { intentIngestionController } from './shell/IntentIngestionController';
 import { heuristicShortcutScanner } from './shell/HeuristicShortcutScanner';
@@ -187,7 +202,7 @@ type VoicePlaybackEngine =
   | 'browser'
   | 'browser_fallback';
 
-type ShellAudioCueSource = 'agent' | 'onboarding' | 'system';
+type ShellAudioCueSource = 'agent' | 'onboarding' | 'system' | 'landing';
 
 type ShellAudioCue = {
   id: string;
@@ -232,14 +247,23 @@ type AppMode =
 /** Workspace canvas uses `workspaceCanvas` state (intent outputs), not AppMode. */
 const LOCAL_STT_PLACEHOLDER = '__LOCAL_STT_PLACEHOLDER__';
 
-const VIBE_TOPIC_USER_PROMPTS: Record<VibeTopicId, string> = {
-  university:
-    'What is Vibe Coding University in this AI OS? Explain clearly for someone new, as if speaking aloud — at most four short sentences, no lists or markdown.',
-  community:
-    'What is the Vibe Code Community? Explain clearly for someone new, as if speaking aloud — at most four short sentences, no lists or markdown.',
-  coding_platform:
-    'What is the Vibe Coding Platform in this AI OS? Explain clearly for someone new, as if speaking aloud — at most four short sentences, no lists or markdown.',
-};
+function isGeminiLikelyQuotaError(err: unknown): boolean {
+  const s = err instanceof Error ? err.message : String(err);
+  return (
+    s.includes('429')
+    || s.includes('RESOURCE_EXHAUSTED')
+    || s.includes('Resource exhausted')
+    || /quota|rate limit|exhausted/i.test(s)
+  );
+}
+
+function logGeminiGatewayFallback(context: string, err: unknown): void {
+  if (isGeminiLikelyQuotaError(err)) {
+    console.info(`[Gemini ${context}] Quota or rate limit — using local model.`);
+    return;
+  }
+  console.warn(`[Gemini ${context}] failed, falling back to local model:`, err);
+}
 
 function scaffoldingDensityForVerbosity(level: KernelVerbosityLevel): number {
   switch (level) {
@@ -363,10 +387,6 @@ GOOD EXAMPLE (Do this):
   ].join(' ');
 }
 
-/**
- * System prompt for the Visual Grounding path — used when a UI screenshot is attached
- * to the Gemini multimodal request. Enforces the ARCH protocol with spatial awareness.
- */
 function buildGroundedSystemPrompt(
   commanderName: string | null,
   loyaltyPromptLines: string[],
@@ -396,6 +416,49 @@ function buildGroundedSystemPrompt(
     ``,
     `IDENTITY: You are the AIOS Governor, a governed intelligence. Do not call yourself "Google" or "Gemini."`,
   ].join('\n');
+}
+
+/**
+ * Guest shell or signed-in pre-session vibe landing — route LLM to marketing host prompts,
+ * not Governor / screen-grounding prompts.
+ */
+function isVibePublicShellSurface(p: {
+  authSessionActive: boolean;
+  shellSessionStarted: boolean;
+  mode: AppMode;
+  workspaceCanvas: unknown;
+  showDiagnosticsChrome: boolean;
+  status: SystemStatus;
+  showLoyaltyIntro: boolean;
+  currentAudioCue: ShellAudioCue | null;
+  isPTTActive: boolean;
+  transcription: string;
+  landingWelcomeActive: boolean;
+}): boolean {
+  if (!p.authSessionActive) {
+    return (
+      p.mode === 'voice' &&
+      !p.workspaceCanvas &&
+      !p.showDiagnosticsChrome &&
+      p.status !== 'processing' &&
+      (p.status !== 'speaking' ||
+        p.currentAudioCue?.source === 'onboarding' ||
+        p.currentAudioCue?.source === 'landing' ||
+        p.landingWelcomeActive) &&
+      !(p.isPTTActive && p.status === 'listening') &&
+      !p.transcription.trim()
+    );
+  }
+  return (
+    !p.shellSessionStarted &&
+    p.mode === 'voice' &&
+    !p.workspaceCanvas &&
+    !p.showDiagnosticsChrome &&
+    p.status !== 'processing' &&
+    (p.status !== 'speaking' || p.showLoyaltyIntro || p.currentAudioCue?.source === 'onboarding') &&
+    !(p.isPTTActive && p.status === 'listening') &&
+    !p.transcription.trim()
+  );
 }
 
 const VoiceSettingsOverlay = ({ 
@@ -1371,7 +1434,11 @@ export default function App({
   /** Phone OTP session — gates shell chrome until verified (persisted via onboardingState). */
   const [authSessionActive, setAuthSessionActive] = useState(() => isOtpVerified());
   const [authPanelOpen, setAuthPanelOpen] = useState(false);
-  const [gateVoiceIntroActive, setGateVoiceIntroActive] = useState(false);
+  const [guestNicknameOverlayOpen, setGuestNicknameOverlayOpen] = useState(false);
+  const [guestNicknameDraft, setGuestNicknameDraft] = useState('');
+  const [guestJoinSurfaceOpen, setGuestJoinSurfaceOpen] = useState(false);
+  const guestPreferredInterfaceRef = useRef<'voice' | 'chat'>('voice');
+  const [landingIntroPlaying, setLandingIntroPlaying] = useState(false);
   const postAuthOpenProjectBuilderRef = useRef(false);
   const [status, setStatus] = useState<SystemStatus>("connected");
   const [shellMenuStore, setShellMenuStore] = useState<ShellMenuStoreState>(() => ({
@@ -1423,16 +1490,27 @@ export default function App({
   const [transcription, setTranscription] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
 
-  // Hydrate conversation history from SQLite on boot
+  // Hydrate conversation history from SQLite on boot (Tauri only; browser has no kernel DB).
   useEffect(() => {
+    if (!isTauri) {
+      setMessages([
+        {
+          id: '1',
+          role: 'agent',
+          text: 'Welcome to AI OS. How can I help you today?',
+          timestamp: new Date(),
+        },
+      ]);
+      return;
+    }
     Promise.all([
       invoke<Array<{ message_id: string; role: string; text: string; timestamp_ms: number }>>('get_conversation_history').catch(() => []),
-      invoke<Record<string, string>>('get_active_intent_state').catch(() => ({}))
+      invoke<Record<string, string>>('get_active_intent_state').catch(() => ({})),
     ]).then(([history, intentState]) => {
       if (intentState.agentIntent) setAgentIntent(intentState.agentIntent);
       if (intentState.userIntent) setUserIntent(intentState.userIntent);
-      
-      const greeting = intentState.greetingMessage || "Welcome to AI OS. How can I help you today?";
+
+      const greeting = intentState.greetingMessage || 'Welcome to AI OS. How can I help you today?';
 
       if (history.length > 0) {
         setMessages(
@@ -1441,15 +1519,17 @@ export default function App({
             role: m.role as 'user' | 'agent',
             text: m.text,
             timestamp: new Date(m.timestamp_ms),
-          }))
+          })),
         );
       } else {
-        setMessages([{
-          id: '1',
-          role: 'agent',
-          text: greeting,
-          timestamp: new Date(),
-        }]);
+        setMessages([
+          {
+            id: '1',
+            role: 'agent',
+            text: greeting,
+            timestamp: new Date(),
+          },
+        ]);
       }
     });
   }, []);
@@ -1680,17 +1760,17 @@ export default function App({
     markOtpVerified();
     setAuthSessionActive(true);
     setAuthPanelOpen(false);
-    setGateVoiceIntroActive(false);
     const existing = readOnboardingProfile();
     const openProjectBuilder = postAuthOpenProjectBuilderRef.current;
     postAuthOpenProjectBuilderRef.current = false;
     writeOnboardingProfile({
       commander_name: existing?.commander_name?.trim() || 'Operator',
-      interface_mode: existing?.interface_mode ?? 'voice',
+      interface_mode: guestPreferredInterfaceRef.current || existing?.interface_mode || 'voice',
       arrival_type: openProjectBuilder ? 'new' : 'returning',
       enrolled_at: existing?.enrolled_at ?? Date.now(),
       phone_number: phone,
     });
+    setGuestJoinSurfaceOpen(false);
     setShellSessionStarted(true);
     if (openProjectBuilder) {
       queueMicrotask(() => setMode('coding_agent'));
@@ -1702,8 +1782,41 @@ export default function App({
     setSessionEntryClassification('returning');
   }, []);
 
-  /** Called when the user clicks "Start AI OS" on the landing panel. */
-  const handleLandingStart = useCallback(() => {
+  const handleLandingIntroPlayPause = useCallback(async () => {
+    try {
+      const next = await toggleLandingWelcomePlayback(landingStartWelcomeAudioSrc(), () => {
+        setLandingIntroPlaying(false);
+      });
+      setLandingIntroPlaying(next === 'playing');
+    } catch (err) {
+      console.warn('[landing welcome] Recording unavailable —', err);
+      setLandingIntroPlaying(false);
+    }
+  }, []);
+
+  const openGuestJoinSurface = useCallback(() => {
+    stopLandingStartWelcome();
+    setLandingIntroPlaying(false);
+    setGuestJoinSurfaceOpen(true);
+  }, []);
+
+  const handleGuestSkipIntro = useCallback(() => {
+    postAuthOpenProjectBuilderRef.current = false;
+    openGuestJoinSurface();
+  }, [openGuestJoinSurface]);
+
+  const handleGuestSelectMode = useCallback(
+    (selectedMode: 'voice' | 'chat') => {
+      guestPreferredInterfaceRef.current = selectedMode;
+      openGuestJoinSurface();
+    },
+    [openGuestJoinSurface],
+  );
+
+  const handleAuthenticatedSkipIntro = useCallback(() => {
+    VoiceboxClient.stop();
+    stopLandingStartWelcome();
+    setLandingIntroPlaying(false);
     if (!hasSeenLoyaltyIntro()) {
       setShowLoyaltyIntro(true);
     } else {
@@ -1711,6 +1824,11 @@ export default function App({
       setShellSessionStarted(true);
     }
   }, [engageSessionEntry]);
+
+  const handleGuestContinueWithPhone = useCallback(() => {
+    setGuestJoinSurfaceOpen(false);
+    setAuthPanelOpen(true);
+  }, []);
 
   const openWorkspaceHub = useCallback(() => {
     engageSessionEntry();
@@ -1799,12 +1917,15 @@ export default function App({
   const handleToggleVoiceChatFromShell = useCallback(() => {
     recordInteraction();
     const target: 'voice' | 'chat' = mode === 'chat' ? 'voice' : 'chat';
+    if (!authSessionActive) {
+      guestPreferredInterfaceRef.current = target;
+    }
     tryApplyShellNavigationAction(
       { type: 'set_voice_chat_mode', mode: target === 'chat' ? 'chat' : 'voice' },
       readInterimShellAuthority(),
       shellApplyHandlers,
     );
-  }, [mode, recordInteraction, shellApplyHandlers]);
+  }, [authSessionActive, mode, recordInteraction, shellApplyHandlers]);
 
   const handleChatInputChange = useCallback(
     (value: string) => {
@@ -2068,6 +2189,8 @@ export default function App({
       return;
     }
 
+    stopLandingStartWelcome();
+    setLandingIntroPlaying(false);
     setCurrentAudioCue({ ...cue, status: 'playing' });
     setStatus('speaking');
     try {
@@ -2124,6 +2247,8 @@ export default function App({
   speakTextRef.current = speakText;
 
   const stopSpeech = useCallback(() => {
+    stopLandingStartWelcome();
+    setLandingIntroPlaying(false);
     VoiceboxClient.stop();
     if (geminiVoiceEngineRef.current) {
       void geminiVoiceEngineRef.current.stop();
@@ -2132,28 +2257,6 @@ export default function App({
     setCurrentAudioCue((current) => current ? { ...current, status: 'stopped' } : current);
     setTranscription('');
   }, []);
-
-  const handlePlayPauseCue = useCallback(() => {
-    if (status === 'speaking') {
-      stopSpeech();
-      return;
-    }
-
-    if (!speakerEnabled) {
-      setSpeakerEnabled(true);
-    }
-
-    const nextQueuedCue = queuedAudioCues[0];
-    if (nextQueuedCue) {
-      setQueuedAudioCues((current) => current.slice(1));
-      void playAudioCue(nextQueuedCue);
-      return;
-    }
-
-    if (currentAudioCue) {
-      void playAudioCue({ ...currentAudioCue, id: `${currentAudioCue.id}_replay_${Date.now()}` });
-    }
-  }, [currentAudioCue, playAudioCue, queuedAudioCues, speakerEnabled, status, stopSpeech]);
 
   const handleToggleSpeaker = useCallback(() => {
     setSpeakerEnabled((current) => {
@@ -2173,6 +2276,73 @@ export default function App({
     setKnowledgePanelInitialTab(initialTab);
     setMode('knowledge');
   }, []);
+
+  const showVoiceIdleOrientation = isVibePublicShellSurface({
+    authSessionActive,
+    shellSessionStarted,
+    mode,
+    workspaceCanvas,
+    showDiagnosticsChrome,
+    status,
+    showLoyaltyIntro,
+    currentAudioCue,
+    isPTTActive,
+    transcription,
+    landingWelcomeActive: landingIntroPlaying,
+  });
+
+  const shellJourney = useShellJourney({
+    authSessionActive,
+    shellSessionStarted,
+    sessionEntryClassification,
+    mode,
+    workspaceCanvas,
+    showVibeHero: showVoiceIdleOrientation,
+    voiceRouteLabel: activeVoiceLabel,
+    loyaltyState: promptContract.loyaltyState,
+  });
+
+  const handlePlayPauseCue = useCallback(() => {
+    const landingPlayback = getLandingWelcomePlayback();
+    if (landingIntroPlaying || landingPlayback === 'paused') {
+      void handleLandingIntroPlayPause();
+      return;
+    }
+    if (showVoiceIdleOrientation && landingPlayback === 'idle' && status !== 'speaking' && !currentAudioCue?.text?.trim() && queuedAudioCues.length === 0) {
+      void handleLandingIntroPlayPause();
+      return;
+    }
+
+    if (status === 'speaking') {
+      stopSpeech();
+      return;
+    }
+
+    if (!speakerEnabled) {
+      setSpeakerEnabled(true);
+    }
+
+    const nextQueuedCue = queuedAudioCues[0];
+    if (nextQueuedCue) {
+      setQueuedAudioCues((current) => current.slice(1));
+      void playAudioCue(nextQueuedCue);
+      return;
+    }
+
+    if (currentAudioCue) {
+      void playAudioCue({ ...currentAudioCue, id: `${currentAudioCue.id}_replay_${Date.now()}` });
+    }
+  }, [
+    currentAudioCue,
+    handleLandingIntroPlayPause,
+    landingIntroPlaying,
+    playAudioCue,
+    queuedAudioCues,
+    showVoiceIdleOrientation,
+    speakerEnabled,
+    status,
+    stopSpeech,
+  ]);
 
   const submitIntentText = useCallback(
     async (
@@ -2260,12 +2430,24 @@ export default function App({
           }
         }
 
+        const useVibeHostPrompt = shouldUseVibeCodersHostPrompt({
+          authSessionActive,
+          showVoiceIdleOrientation,
+          mode,
+        });
+        const vibeHostPromptParams = {
+          snapshot: shellJourney,
+          sessionEntryClassification,
+          guestDisplayName: readVibeGuestDisplayName(),
+          kernelCurrentIntent: kernelState?.current_intent ?? null,
+        };
+
         const agentMessageId = (Date.now() + 1).toString();
         activeAgentMessageIdRef.current = agentMessageId;
 
         // ── Visual Grounding: call the same-origin Gemini gateway when a frame is available ──
         const frameBase64 = latestFrameRef.current;
-        if (frameBase64) {
+        if (frameBase64 && !useVibeHostPrompt) {
           setMessages((prev) => [
             ...prev,
             { id: agentMessageId, role: 'agent', text: 'Analysing screen…', timestamp: new Date() },
@@ -2317,11 +2499,61 @@ export default function App({
               );
             }
           } catch (geminiErr) {
-            console.warn('[Visual Grounding] Gemini gateway multimodal failed, falling back to local kernel:', geminiErr);
+            logGeminiGatewayFallback('Visual grounding', geminiErr);
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === agentMessageId
                   ? { ...msg, text: 'Screen analysis unavailable — switching to text response.' }
+                  : msg,
+              ),
+            );
+          }
+        } else if (frameBase64 && useVibeHostPrompt) {
+          setMessages((prev) => [
+            ...prev,
+            { id: agentMessageId, role: 'agent', text: 'Looking at your screen…', timestamp: new Date() },
+          ]);
+          try {
+            const systemPrompt = buildVibeCodersScreenBuddyPrompt(
+              shellJourney,
+              readVibeGuestDisplayName(),
+              kernelState?.current_intent ?? null,
+            );
+            const groundedText = await geminiGenerateText({
+              userText: trimmed,
+              model: 'gemini-2.0-flash',
+              systemInstruction: systemPrompt,
+              maxOutputTokens: 200,
+              temperature: 0.55,
+              inlineImage: {
+                mimeType: 'image/jpeg',
+                data: frameBase64,
+              },
+            });
+            if (groundedText) {
+              activeAgentMessageIdRef.current = null;
+              setMessages((prev) =>
+                prev.map((msg) => msg.id === agentMessageId ? { ...msg, text: groundedText } : msg),
+              );
+              persistMessage({ id: agentMessageId, role: 'agent', text: groundedText, timestamp: new Date() });
+              runShellIntentPipeline(groundedText);
+              resetTelemetry();
+              await speakText(groundedText, voice);
+              return;
+            }
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === agentMessageId
+                  ? { ...msg, text: 'No response from Gemini — switching to local model.' }
+                  : msg,
+              ),
+            );
+          } catch (geminiErr) {
+            logGeminiGatewayFallback('Vibe screen buddy', geminiErr);
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === agentMessageId
+                  ? { ...msg, text: 'Screen peek unavailable — try again in a moment.' }
                   : msg,
               ),
             );
@@ -2333,11 +2565,13 @@ export default function App({
             { id: agentMessageId, role: 'agent', text: 'Thinking…', timestamp: new Date() },
           ]);
           try {
-            const systemPrompt = buildGroundedSystemPrompt(
-              onboardingProfile?.commander_name ?? null,
-              promptContract.promptLines,
-              false,
-            );
+            const systemPrompt = useVibeHostPrompt
+              ? buildVibeCodersHostSystemPrompt(vibeHostPromptParams)
+              : buildGroundedSystemPrompt(
+                  onboardingProfile?.commander_name ?? null,
+                  promptContract.promptLines,
+                  false,
+                );
             const groundedText = await geminiGenerateText({
               userText: trimmed,
               model: 'gemini-2.0-flash',
@@ -2366,7 +2600,7 @@ export default function App({
               );
             }
           } catch (geminiTextErr) {
-            console.warn('[Gemini gateway text-only] failed, falling back to Ollama:', geminiTextErr);
+            logGeminiGatewayFallback('Text-only', geminiTextErr);
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === agentMessageId
@@ -2416,18 +2650,20 @@ export default function App({
 
           kernelResponse = await invoke<string>('execute_blind_action', {
             intentText: trimmed,
-            systemPrompt: buildSystemPrompt({
-              agentName,
-              agentRole,
-              agentIntent,
-              userIntent,
-              desiredOutcome,
-              discProfile,
-              source,
-              commanderName,
-              loyaltyPromptLines: promptContract.promptLines,
-              fileContext: importedFiles.length > 0 ? importedFiles : undefined,
-            }),
+            systemPrompt: useVibeHostPrompt
+              ? buildVibeCodersHostSystemPrompt(vibeHostPromptParams)
+              : buildSystemPrompt({
+                  agentName,
+                  agentRole,
+                  agentIntent,
+                  userIntent,
+                  desiredOutcome,
+                  discProfile,
+                  source,
+                  commanderName,
+                  loyaltyPromptLines: promptContract.promptLines,
+                  fileContext: importedFiles.length > 0 ? importedFiles : undefined,
+                }),
           });
         } catch (ollamaErr) {
           console.warn('[Ollama] execute_blind_action failed:', ollamaErr);
@@ -2480,11 +2716,13 @@ export default function App({
               try {
                 const followUp = await invoke<string>('execute_blind_action', {
                   intentText: `Tool result for ${toolCallMatch[0]}: ${toolResult.slice(0, 4000)}`,
-                  systemPrompt: buildSystemPrompt({
-                    agentName, agentRole, agentIntent, userIntent, desiredOutcome, discProfile, source,
-                    commanderName,
-                    loyaltyPromptLines: promptContract.promptLines,
-                  }),
+                  systemPrompt: useVibeHostPrompt
+                    ? buildVibeCodersHostSystemPrompt(vibeHostPromptParams)
+                    : buildSystemPrompt({
+                        agentName, agentRole, agentIntent, userIntent, desiredOutcome, discProfile, source,
+                        commanderName,
+                        loyaltyPromptLines: promptContract.promptLines,
+                      }),
                 });
                 resolvedResponse = followUp.trim() || resolvedResponse;
               } catch (followUpErr) {
@@ -2586,15 +2824,45 @@ export default function App({
       discProfile,
       commanderName,
       promptContract,
+      authSessionActive,
+      shellSessionStarted,
+      mode,
+      workspaceCanvas,
+      showDiagnosticsChrome,
+      status,
+      showLoyaltyIntro,
+      currentAudioCue,
+      isPTTActive,
+      transcription,
+      onboardingProfile,
+      importedFiles,
+      landingIntroPlaying,
+      shellJourney,
+      showVoiceIdleOrientation,
+      sessionEntryClassification,
+      kernelState,
     ],
   );
 
   const handleExplainVibeTopic = useCallback(
     (topic: VibeTopicId) => {
       engageSessionEntry();
-      void submitIntentText(VIBE_TOPIC_USER_PROMPTS[topic], 'voice', { appendUserMessage: true });
+      const script = VIBE_TOPIC_SCRIPTED_RESPONSES[topic];
+      const userLine = vibeTopicUserPromptLine(topic);
+      const baseId = `${Date.now()}_${topic}`;
+      setMessages((prev) => [
+        ...prev,
+        { id: `u_${baseId}`, role: 'user', text: userLine, timestamp: new Date() },
+        { id: `a_${baseId}`, role: 'agent', text: script, timestamp: new Date() },
+      ]);
+      const topicCue: Record<VibeTopicId, string> = {
+        university: 'University',
+        community: 'Community',
+        coding_platform: 'Coding platform',
+      };
+      void speakText(script, undefined, `About ${topicCue[topic]}`, 'onboarding');
     },
-    [engageSessionEntry, submitIntentText],
+    [engageSessionEntry, speakText],
   );
 
   submitIntentTextRef.current = submitIntentText;
@@ -3163,11 +3431,14 @@ export default function App({
     status === 'connected' ? 'ready' : status === 'offline' ? 'offline' : status;
 
   const loyaltyBadgeLabel = useMemo(
-    () => promptContract.loyaltyLabel.toLowerCase().includes('user') ? 'User Loyalty' : 'Platform Loyalty',
-    [promptContract.loyaltyLabel],
+    () => (promptContract.loyaltyState === 'user_first' ? 'User Loyalty' : 'Platform Loyalty'),
+    [promptContract.loyaltyState],
   );
 
   const shellHeaderSubtitle = useMemo(() => {
+    if (landingIntroPlaying) {
+      return 'Public welcome audio · landing-welcome.wav';
+    }
     if (!speakerEnabled && queuedAudioCues.length > 0) {
       return 'Speaker muted · Cue ready';
     }
@@ -3201,10 +3472,29 @@ export default function App({
         }
         return micEnabled ? '' : 'Mic muted';
     }
-  }, [currentAudioCue, micEnabled, queuedAudioCues.length, speakerEnabled, status, voicePlaybackEngine]);
+  }, [currentAudioCue, landingIntroPlaying, micEnabled, queuedAudioCues.length, speakerEnabled, status, voicePlaybackEngine]);
+
+  const shellIdentityCueLabel = landingIntroPlaying
+    ? 'Public welcome audio · landing-welcome.wav'
+    : currentAudioCue?.label;
+
+  const shellIdentityAudioCues = useMemo(() => {
+    const welcomeLabel = 'Public welcome audio · landing-welcome.wav';
+    const base = [
+      ...(currentAudioCue ? [{ id: currentAudioCue.id, label: currentAudioCue.label, status: currentAudioCue.status }] : []),
+      ...queuedAudioCues.map((cue) => ({ id: cue.id, label: cue.label, status: cue.status })),
+    ];
+    if (landingIntroPlaying) {
+      return [{ id: 'landing_welcome_public', label: welcomeLabel, status: 'playing' as const }, ...base];
+    }
+    return base;
+  }, [currentAudioCue, queuedAudioCues, landingIntroPlaying]);
 
   const displayStatusDetail = useMemo(() => {
     if (showDiagnosticsChrome) return undefined;
+    if (landingIntroPlaying) {
+      return 'Welcome audio playing';
+    }
     if (mode === 'chat') {
       if (kernelVerbosityLevel === 'start_button') return undefined;
       if (kernelVerbosityLevel === 'sentence') return 'Type to send';
@@ -3240,17 +3530,7 @@ export default function App({
       default:
         return undefined;
     }
-  }, [currentAudioCue, kernelVerbosityLevel, micEnabled, mode, queuedAudioCues.length, showDiagnosticsChrome, speakerEnabled, status, workspaceCanvas]);
-
-  const showVoiceIdleOrientation =
-    !shellSessionStarted &&
-    mode === 'voice' &&
-    !workspaceCanvas &&
-    !showDiagnosticsChrome &&
-    status !== 'processing' &&
-    (status !== 'speaking' || showLoyaltyIntro || currentAudioCue?.source === 'onboarding') &&
-    !(isPTTActive && status === 'listening') &&
-    !transcription.trim();
+  }, [currentAudioCue, kernelVerbosityLevel, landingIntroPlaying, micEnabled, mode, queuedAudioCues.length, showDiagnosticsChrome, speakerEnabled, status, workspaceCanvas]);
 
   const shellTheme = useMemo<ShellGlassTheme>(
     () => ({
@@ -3281,11 +3561,13 @@ export default function App({
   const chatPermitted = kernelAllowsComponent('chat_input');
   const voicePttPermitted = kernelAllowsComponent('voice_ptt');
   const headerMenuPermitted = kernelAllowsComponent('shell_header_menu');
+  /** Guest landing always shows governed header menus; authenticated still follows kernel contract. */
+  const headerMenuChromeAllowed = !authSessionActive || headerMenuPermitted;
   const footerMenuPermitted = kernelAllowsComponent('shell_footer_user_menu');
   const [dynamicMenuRegistry, setDynamicMenuRegistry] = useState<Record<ShellMenuId, ShellMenuRegistryEntry>>(CENTRAL_SHELL_MENU_REGISTRY);
 
   useEffect(() => {
-    // Load the menu registry dynamically from the database on boot via the new resolve_intent_menu command.
+    if (!isTauri) return;
     invoke<Record<ShellMenuId, ShellMenuRegistryEntry>>('resolve_intent_menu')
       .then((registry) => {
         if (registry && Object.keys(registry).length > 0) {
@@ -3298,13 +3580,17 @@ export default function App({
   }, [authSessionActive]); // Re-resolve when OTP session changes
 
   const shellMenuRegistry = useMemo<Record<ShellMenuId, ShellMenuRegistryEntry>>(() => {
-    const headerSystemMenu = dynamicMenuRegistry['shell-header-system'];
-    const footerUserMenu = dynamicMenuRegistry['shell-footer-user'];
-    const systemControlsMenu = dynamicMenuRegistry['system-controls'];
+    const headerSystemMenu =
+      dynamicMenuRegistry['shell-header-system'] ?? CENTRAL_SHELL_MENU_REGISTRY['shell-header-system'];
+    const footerUserMenu =
+      dynamicMenuRegistry['shell-footer-user'] ?? CENTRAL_SHELL_MENU_REGISTRY['shell-footer-user'];
+    const systemControlsMenu =
+      dynamicMenuRegistry['system-controls'] ?? CENTRAL_SHELL_MENU_REGISTRY['system-controls'];
 
-    const merged = {
+    let merged: Record<ShellMenuId, ShellMenuRegistryEntry> = {
+      ...CENTRAL_SHELL_MENU_REGISTRY,
       ...dynamicMenuRegistry,
-      'shell-header-system': headerSystemMenu ? {
+      'shell-header-system': {
         ...headerSystemMenu,
         record: {
           ...headerSystemMenu.record,
@@ -3317,8 +3603,8 @@ export default function App({
             ),
           })),
         },
-      } : undefined,
-      'shell-footer-user': footerUserMenu ? {
+      },
+      'shell-footer-user': {
         ...footerUserMenu,
         record: {
           ...footerUserMenu.record,
@@ -3331,8 +3617,8 @@ export default function App({
             ),
           })),
         },
-      } : undefined,
-      'system-controls': systemControlsMenu ? {
+      },
+      'system-controls': {
         ...systemControlsMenu,
         record: {
           ...systemControlsMenu.record,
@@ -3355,11 +3641,45 @@ export default function App({
             }),
           })),
         },
-      } : undefined,
-    } as Record<ShellMenuId, ShellMenuRegistryEntry>;
+      },
+    };
+
+    if (!authSessionActive) {
+      const guestEntry = merged['guest-entry'];
+      if (guestEntry?.record?.levels?.[0]) {
+        const badge = sessionEntryClassification === 'new' ? 'First visit' : 'Returning';
+        merged = {
+          ...merged,
+          'guest-entry': {
+            ...guestEntry,
+            record: {
+              ...guestEntry.record,
+              levels: guestEntry.record.levels.map((level, idx) =>
+                idx === 0
+                  ? {
+                      ...level,
+                      items: level.items.map((item, j) =>
+                        j === 0 ? { ...item, badge } : item,
+                      ),
+                    }
+                  : level,
+              ),
+            },
+          },
+        };
+      }
+    }
 
     return filterShellMenuRegistryForAuth(merged, authSessionActive ? 'authenticated' : 'guest');
-  }, [dynamicMenuRegistry, activeVoiceLabel, powerChromeState, showDiagnosticsChrome, workspaceSurfaceOpen, authSessionActive]);
+  }, [
+    dynamicMenuRegistry,
+    activeVoiceLabel,
+    powerChromeState,
+    showDiagnosticsChrome,
+    workspaceSurfaceOpen,
+    authSessionActive,
+    sessionEntryClassification,
+  ]);
 
   useEffect(() => {
     setShellMenuStore((prev) => ({
@@ -3540,6 +3860,23 @@ export default function App({
       markShellMenuActionSelected(activeShellMenuId ?? shellMenuStore.ui.active_menu_id, actionId);
 
       switch (actionId) {
+        case 'guest_verify_phone':
+          closeShellMenus();
+          setAuthPanelOpen(true);
+          return;
+        case 'guest_open_display_name':
+          closeShellMenus();
+          setGuestNicknameDraft(readVibeGuestDisplayName() ?? '');
+          setGuestNicknameOverlayOpen(true);
+          return;
+        case 'guest_explore_topics':
+          closeShellMenus();
+          openGuestJoinSurface();
+          return;
+        case 'guest_open_public_shell_menu':
+          closeShellMenus();
+          openShellMenuById('shell-header-system');
+          return;
         case 'open_workspace':
           openWorkspaceHub();
           return;
@@ -3713,6 +4050,7 @@ export default function App({
       handleOpenKnowledgePanel,
       handleOpenPodcasts,
       markShellMenuActionSelected,
+      openGuestJoinSurface,
       openShellMenuById,
       openWorkspaceHub,
       powerChromeState,
@@ -3721,6 +4059,9 @@ export default function App({
       setAppearanceTune,
       selectVoiceboxRecordingProfile,
       setTheme,
+      setAuthPanelOpen,
+      setGuestNicknameDraft,
+      setGuestNicknameOverlayOpen,
       setShellMenuRecordingState,
       shellMenuStore.ui.active_menu_id,
       showDiagnosticsChrome,
@@ -3965,17 +4306,29 @@ export default function App({
       <ShellVoiceIdlePanel
         workspaceState={workspaceDisclosure}
         sessionEntry={sessionEntryClassification}
+        eyebrow="Vibe Coding University"
+        footline={
+          authSessionActive
+            ? 'Play the welcome, tap a topic, or skip to continue.'
+            : 'You are on the guest landing — play the welcome, explore topics, or skip to join.'
+        }
+        introAudioPlaying={landingIntroPlaying}
+        onIntroPlayPause={() => void handleLandingIntroPlayPause()}
+        onSkipIntro={authSessionActive ? handleAuthenticatedSkipIntro : handleGuestSkipIntro}
         onOpenMenu={() => {
           engageSessionEntry();
           setFooterMenuOpen(false);
           setHeaderMenuOpen((current) => !current);
         }}
-        onSelectMode={(selectedMode) => {
-          engageSessionEntry();
-          setShellSessionStarted(true);
-          setMode(selectedMode);
-        }}
-        onStart={handleLandingStart}
+        onSelectMode={
+          authSessionActive
+            ? (selectedMode) => {
+                engageSessionEntry();
+                setShellSessionStarted(true);
+                setMode(selectedMode);
+              }
+            : handleGuestSelectMode
+        }
         onExplainVibeTopic={handleExplainVibeTopic}
       />
     </div>
@@ -3991,7 +4344,10 @@ export default function App({
 
   const handleFooterProfilePress = useCallback(() => {
     if (!authSessionActive) {
-      setAuthPanelOpen(true);
+      engageSessionEntry();
+      setHeaderMenuOpen(false);
+      setFooterMenuOpen(false);
+      openShellMenuById('guest-entry');
       return;
     }
     if (!footerMenuPermitted) {
@@ -4001,140 +4357,21 @@ export default function App({
     engageSessionEntry();
     setHeaderMenuOpen(false);
     setFooterMenuOpen((current) => !current);
-  }, [authSessionActive, engageSessionEntry, footerMenuPermitted, setFooterMenuOpen, setHeaderMenuOpen, setMode]);
+  }, [
+    authSessionActive,
+    engageSessionEntry,
+    footerMenuPermitted,
+    openShellMenuById,
+    setFooterMenuOpen,
+    setHeaderMenuOpen,
+    setMode,
+  ]);
 
   if (publicPodcastId) {
     return (
       <Suspense fallback={null}>
         <LazyPublicPodcastPage episodeId={publicPodcastId} />
       </Suspense>
-    );
-  }
-
-  if (!authSessionActive) {
-    return (
-      <div
-        className="fixed inset-0 flex flex-col overflow-hidden font-sans selection:bg-emerald-500/30"
-        style={themeToCssVars(theme)}
-        data-color-scheme={theme.colorScheme}
-      >
-        <ShellBackground theme={theme} />
-
-        {/* Shell chrome is always present — governance requires header + footer on every surface */}
-        <ShellIdentityBar
-          sessionLabel="AI OS"
-          shellInteractionMode="voice"
-          sessionContextLabel="Home"
-          workspaceState={workspaceDisclosure as any}
-          canvasView={null}
-          voiceInputAvailable={voicePttPermitted}
-          intentSummary={shellIntentLabel}
-          localModelReadiness={localModelReadiness}
-          showDiagnosticsChrome={showDiagnosticsChrome}
-          commanderName={undefined}
-          onOpenSystemControls={undefined}
-          onOpenTransparency={undefined}
-          headerMenuRecord={undefined}
-          headerMenuOpen={false}
-          onToggleHeaderMenu={() => setAuthPanelOpen(true)}
-          onCloseHeaderMenu={() => {}}
-          powerChromeState={powerChromeState}
-          voiceModelLabel={activeVoiceLabel}
-          loyaltySummary={loyaltyBadgeLabel}
-          availableSkillsCount={0}
-          statusSubtitle={shellHeaderSubtitle}
-          playbackActive={status === 'speaking'}
-          micEnabled={micEnabled}
-          speakerEnabled={speakerEnabled}
-          currentCueLabel={currentAudioCue?.label}
-          audioCues={[
-            ...(currentAudioCue ? [{ id: currentAudioCue.id, label: currentAudioCue.label, status: currentAudioCue.status }] : []),
-            ...queuedAudioCues.map((cue) => ({ id: cue.id, label: cue.label, status: cue.status })),
-          ]}
-          onTogglePlayback={handlePlayPauseCue}
-          onToggleMic={handleToggleMic}
-          onToggleSpeaker={handleToggleSpeaker}
-        />
-
-        <AnimatePresence>
-          {gateVoiceIntroActive && (
-            <LoyaltyIntroSequence
-              key="gate-intro"
-              speakText={(text, cueLabel) => void speakText(text, undefined, cueLabel, 'onboarding')}
-              stopSpeech={stopSpeech}
-              onComplete={() => {
-                setGateVoiceIntroActive(false);
-                // Only open auth if the intro was triggered by "Join the Community".
-                // "Explore AI OS" (vibe check) sets postAuthOpenProjectBuilderRef to null
-                // to signal we should return to the gate rather than push to auth.
-                if (postAuthOpenProjectBuilderRef.current) {
-                  setAuthPanelOpen(true);
-                }
-              }}
-            />
-          )}
-        </AnimatePresence>
-
-        {!gateVoiceIntroActive ? (
-          <OnboardingGate
-            onVibeCheck={() => {
-              // Path 1 — DEMONSTRATE_CAPABILITIES: show voice intro, return to gate after.
-              postAuthOpenProjectBuilderRef.current = false;
-              setGateVoiceIntroActive(true);
-            }}
-            onJoinCommunity={() => {
-              // Path 2 — SALES_FUNNEL + FRICTIONLESS_ONBOARDING: skip intro, open auth directly.
-              postAuthOpenProjectBuilderRef.current = true;
-              setGateVoiceIntroActive(false);
-              setAuthPanelOpen(true);
-            }}
-            onReturningUser={() => {
-              // Path 3 — ACCESS_SYSTEM_DESKTOP: open auth to restore existing session.
-              postAuthOpenProjectBuilderRef.current = false;
-              setGateVoiceIntroActive(false);
-              setAuthPanelOpen(true);
-            }}
-          />
-        ) : null}
-
-        <CommandRail
-          rail={{
-            mode: 'voice',
-            primaryAction: 'ptt',
-            systemStatus: status === 'listening' ? 'listening' : status === 'processing' ? 'processing' : status === 'speaking' ? 'speaking' : 'idle',
-            intent: shellIntentLabel,
-          }}
-          mode="voice"
-          chatInput={chatInput}
-          onChatInputChange={handleChatInputChange}
-          onChatSubmit={handleChatSubmit}
-          onChatMicPress={() => void startPTTSession()}
-          onChatMicRelease={() => void stopPTTSession()}
-          onToggleVoiceChat={handleToggleVoiceChatFromShell}
-          isPTTActive={isPTTActive}
-          onPTTDown={(e) => void handlePTTDown(e)}
-          onPTTUp={(e) => void handlePTTUp(e)}
-          displayStatus={statusDisplay}
-          displayStatusDetail={displayStatusDetail}
-          loyaltySummary={loyaltyBadgeLabel}
-          statusTone={status === 'error' ? 'error' : status === 'offline' ? 'muted' : 'ok'}
-          showDiagnosticsChrome={showDiagnosticsChrome}
-          footerMenuRecord={undefined}
-          footerMenuOpen={false}
-          onProfilePress={() => setAuthPanelOpen(true)}
-        />
-
-        {authPanelOpen ? (
-          <AuthPanel
-            onClose={() => {
-              postAuthOpenProjectBuilderRef.current = false;
-              setAuthPanelOpen(false);
-            }}
-            onVerified={handleAuthVerified}
-          />
-        ) : null}
-        {showDeveloperHud ? <ScopeMetricsDevHud /> : null}
-      </div>
     );
   }
 
@@ -4148,7 +4385,7 @@ export default function App({
       {/* Dynamic background + overlay tint */}
       <ShellBackground theme={theme} />
       <ShellIdentityBar
-        sessionLabel="Local Session"
+        sessionLabel={authSessionActive ? 'Local Session' : 'AI OS'}
         shellInteractionMode={mode === 'chat' ? 'chat' : 'voice'}
         sessionContextLabel={workspaceCanvas?.view ? workspaceCanvas.view.replace(/_/g, ' ') : 'Home'}
         workspaceState={workspaceDisclosure as any}
@@ -4158,9 +4395,11 @@ export default function App({
         localModelReadiness={localModelReadiness}
         showDiagnosticsChrome={showDiagnosticsChrome}
         commanderName={commanderName ?? undefined}
-        onOpenSystemControls={() => openShellMenuById('system-controls')}
+        onOpenSystemControls={
+          authSessionActive ? () => openShellMenuById('system-controls') : () => openShellMenuById('guest-entry')
+        }
         onOpenTransparency={() => setMode('transparency')}
-        headerMenuRecord={headerMenuPermitted ? headerSystemMenuRecord : undefined}
+        headerMenuRecord={headerMenuChromeAllowed ? headerSystemMenuRecord : undefined}
         headerMenuOpen={headerMenuOpen}
         onToggleHeaderMenu={() => {
           engageSessionEntry();
@@ -4170,17 +4409,16 @@ export default function App({
         onCloseHeaderMenu={() => setHeaderMenuOpen(false)}
         powerChromeState={powerChromeState}
         voiceModelLabel={activeVoiceLabel}
+        headerPillLabel={shellJourney.primaryLabel}
+        headerPillTitle={`${activeVoiceLabel.replace(/\s+Voice$/i, '')}. ${shellJourney.disclosureLine}`}
         loyaltySummary={loyaltyBadgeLabel}
-        availableSkillsCount={kernelState?.available_skills?.length ?? 0}
+        availableSkillsCount={authSessionActive ? kernelState?.available_skills?.length ?? 0 : 0}
         statusSubtitle={shellHeaderSubtitle}
-        playbackActive={status === 'speaking'}
+        playbackActive={status === 'speaking' || landingIntroPlaying}
         micEnabled={micEnabled}
         speakerEnabled={speakerEnabled}
-        currentCueLabel={currentAudioCue?.label}
-        audioCues={[
-          ...(currentAudioCue ? [{ id: currentAudioCue.id, label: currentAudioCue.label, status: currentAudioCue.status }] : []),
-          ...queuedAudioCues.map((cue) => ({ id: cue.id, label: cue.label, status: cue.status })),
-        ]}
+        currentCueLabel={shellIdentityCueLabel}
+        audioCues={shellIdentityAudioCues}
         onTogglePlayback={handlePlayPauseCue}
         onToggleMic={handleToggleMic}
         onToggleSpeaker={handleToggleSpeaker}
@@ -4201,10 +4439,14 @@ export default function App({
         transcription={transcription}
         centerStage={voiceCenterStage}
         chatEndRef={chatEndRef}
+        voiceCenterFullBleed={showVoiceIdleOrientation}
       />
 
       <AnimatePresence>
-        {activeShellMenuEntry && (activeShellMenuEntry.menu_id !== 'shell-header-system' || headerMenuPermitted) ? (
+        {activeShellMenuEntry &&
+        (activeShellMenuEntry.menu_id === 'guest-entry' ||
+          activeShellMenuEntry.menu_id !== 'shell-header-system' ||
+          headerMenuChromeAllowed) ? (
           <motion.div
             key={`shell-menu-layer-${activeShellMenuEntry.menu_id}`}
             initial={{ opacity: 0 }}
@@ -4404,7 +4646,8 @@ export default function App({
             <div className="bg-[var(--panel-surface)] border border-[var(--panel-border)] rounded-xl p-8 max-w-md w-full shadow-2xl flex flex-col gap-6">
               <h2 className="text-xl font-semibold text-[var(--panel-heading)]">Create Account</h2>
               <p className="text-[var(--panel-text)] text-sm">
-                The AI Agent has triggered the account creation flow. Please sign up to authenticate and unlock the Virtual Desktop Environment.
+                This path is for account setup from inside the shell. New visitors usually start from the Vibe landing,
+                use Play or Skip intro, then join with a quick phone code.
               </p>
               <div className="flex flex-col gap-3">
                 <input type="text" placeholder="Email" className="bg-[var(--panel-input-bg)] border border-[var(--panel-input-border)] text-[var(--panel-text)] p-2 rounded-md" />
@@ -4414,7 +4657,9 @@ export default function App({
                 <button onClick={() => setMode('voice')} className="px-4 py-2 text-[var(--panel-text-muted)] hover:text-[var(--panel-text)]">Cancel</button>
                 <button 
                   onClick={() => {
-                    invoke('initialize_smart_contract').catch(console.warn);
+                    if (isTauri) {
+                      void invoke('initialize_smart_contract').catch(console.warn);
+                    }
                     markOtpVerified();
                     setAuthSessionActive(true);
                     setMode('voice');
@@ -4626,6 +4871,7 @@ export default function App({
         onPTTUp={(e) => void handlePTTUp(e)}
         displayStatus={statusDisplay}
         displayStatusDetail={displayStatusDetail}
+        footerJourneyLine={shellJourney.footerLine}
         loyaltySummary={loyaltyBadgeLabel}
         statusTone={status === 'error' ? 'error' : status === 'offline' ? 'muted' : 'ok'}
         showDiagnosticsChrome={showDiagnosticsChrome}
@@ -4670,6 +4916,98 @@ export default function App({
           <Paperclip size={16} />
         </button>
       )}
+
+      {!authSessionActive && guestJoinSurfaceOpen ? (
+        <ShellOverlayFrame
+          overlayKey="guest_vibe_join"
+          onClose={() => setGuestJoinSurfaceOpen(false)}
+          align="center"
+        >
+          <VibeJoinCommunityCard
+            preferredModeLabel={guestPreferredInterfaceRef.current}
+            onContinueWithPhone={handleGuestContinueWithPhone}
+            onBack={() => setGuestJoinSurfaceOpen(false)}
+          />
+        </ShellOverlayFrame>
+      ) : null}
+
+      {!authSessionActive && guestNicknameOverlayOpen ? (
+        <ShellOverlayFrame
+          overlayKey="guest_display_name"
+          onClose={() => setGuestNicknameOverlayOpen(false)}
+          align="center"
+        >
+          <div
+            className="flex w-full max-w-md flex-col gap-5 rounded-2xl border p-6 shadow-2xl"
+            style={{
+              background: 'var(--panel-bg)',
+              borderColor: 'var(--panel-border)',
+            }}
+          >
+            <SovereignTitle level={2} className="text-[var(--panel-heading)]">
+              What should we call you?
+            </SovereignTitle>
+            <SovereignDescription className="text-[var(--panel-text-muted)]">
+              Optional nickname saved on this device only. The host can use it in greetings before you verify with
+              phone.
+            </SovereignDescription>
+            <input
+              type="text"
+              value={guestNicknameDraft}
+              onChange={(e) => setGuestNicknameDraft(e.target.value.slice(0, 48))}
+              maxLength={48}
+              placeholder="e.g. Alex"
+              autoComplete="nickname"
+              className="w-full rounded-xl border px-4 py-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-[var(--panel-accent-border)]"
+              style={{
+                background: 'var(--panel-input-bg)',
+                borderColor: 'var(--panel-input-border)',
+                color: 'var(--panel-text)',
+              }}
+            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <SovereignButton
+                variant="secondary"
+                className="sm:min-w-[7rem]"
+                onClick={() => {
+                  writeVibeGuestDisplayName(null);
+                  setGuestNicknameDraft('');
+                }}
+              >
+                Clear
+              </SovereignButton>
+              <SovereignButton
+                variant="secondary"
+                className="sm:min-w-[7rem]"
+                onClick={() => setGuestNicknameOverlayOpen(false)}
+              >
+                Cancel
+              </SovereignButton>
+              <SovereignButton
+                variant="primary"
+                className="sm:min-w-[7rem]"
+                onClick={() => {
+                  writeVibeGuestDisplayName(guestNicknameDraft);
+                  setGuestNicknameOverlayOpen(false);
+                }}
+              >
+                Save
+              </SovereignButton>
+            </div>
+          </div>
+        </ShellOverlayFrame>
+      ) : null}
+
+      {!authSessionActive && authPanelOpen ? (
+        <AuthPanel
+          variant="vibe"
+          onClose={() => {
+            postAuthOpenProjectBuilderRef.current = false;
+            setAuthPanelOpen(false);
+          }}
+          onVerified={handleAuthVerified}
+        />
+      ) : null}
 
       {showDeveloperHud ? <ScopeMetricsDevHud /> : null}
 

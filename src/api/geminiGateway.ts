@@ -43,17 +43,60 @@ type GeminiGatewayTtsResponse = {
   mimeType: string;
 };
 
-async function readJsonResponse<T>(response: Response): Promise<T> {
-  const text = await response.text();
-  const parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-  if (!response.ok) {
-    const errorMessage =
-      typeof parsed.error === 'string'
-        ? parsed.error
-        : `HTTP ${response.status}${text ? `: ${text.slice(0, 200)}` : ''}`;
-    throw new Error(errorMessage);
+/** Thrown when a Gemini gateway `fetch` returns `!response.ok`. Use `status` / `code` for retry/backoff (e.g. 429). */
+export class GeminiGatewayHttpError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly detail?: string;
+  readonly upstreamStatus?: number;
+
+  constructor(
+    message: string,
+    init: {
+      status: number;
+      code?: string;
+      detail?: string;
+      upstreamStatus?: number;
+    },
+  ) {
+    super(message);
+    this.name = 'GeminiGatewayHttpError';
+    this.status = init.status;
+    this.code = init.code;
+    this.detail = init.detail;
+    this.upstreamStatus = init.upstreamStatus;
   }
-  return parsed as T;
+}
+
+/** Parse JSON from a same-origin `/api/gemini/*` response; throws {@link GeminiGatewayHttpError} when `!response.ok`. */
+export async function readJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!response.ok) {
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      throw new GeminiGatewayHttpError(
+        `HTTP ${response.status}: ${response.statusText || 'Error'}`,
+        { status: response.status, detail: text ? text.slice(0, 300) : undefined },
+      );
+    }
+    const errorMsg =
+      typeof parsed.error === 'string' ? parsed.error : `HTTP ${response.status}`;
+    const code = typeof parsed.code === 'string' ? parsed.code : undefined;
+    const detail = typeof parsed.detail === 'string' ? parsed.detail : undefined;
+    const upstreamStatus =
+      typeof parsed.upstreamStatus === 'number' ? parsed.upstreamStatus : undefined;
+    const message = [errorMsg, code && `[${code}]`, detail].filter(Boolean).join(' — ');
+    throw new GeminiGatewayHttpError(message || errorMsg, {
+      status: response.status,
+      code,
+      detail,
+      upstreamStatus,
+    });
+  }
+  if (!text.trim()) return {} as T;
+  return JSON.parse(text) as T;
 }
 
 export async function fetchGeminiGatewayReadiness(): Promise<GeminiGatewayReadiness> {
@@ -105,14 +148,28 @@ export async function streamGeminiSpeech(
 
   if (!response.ok) {
     const text = await response.text();
-    let parsedError: string | undefined;
+    let parsed: Record<string, unknown> = {};
     try {
-      const parsed = text ? (JSON.parse(text) as { error?: unknown }) : undefined;
-      parsedError = typeof parsed?.error === 'string' ? parsed.error : undefined;
+      parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
     } catch {
-      // ignore parse failure
+      throw new GeminiGatewayHttpError(`HTTP ${response.status}`, {
+        status: response.status,
+        detail: text ? text.slice(0, 300) : undefined,
+      });
     }
-    throw new Error(parsedError ?? `HTTP ${response.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
+    const errorMsg =
+      typeof parsed.error === 'string' ? parsed.error : `HTTP ${response.status}`;
+    const code = typeof parsed.code === 'string' ? parsed.code : undefined;
+    const detail = typeof parsed.detail === 'string' ? parsed.detail : undefined;
+    const upstreamStatus =
+      typeof parsed.upstreamStatus === 'number' ? parsed.upstreamStatus : undefined;
+    const message = [errorMsg, code && `[${code}]`, detail].filter(Boolean).join(' — ');
+    throw new GeminiGatewayHttpError(message || errorMsg, {
+      status: response.status,
+      code,
+      detail,
+      upstreamStatus,
+    });
   }
 
   if (!response.body) {
