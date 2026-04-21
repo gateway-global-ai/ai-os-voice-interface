@@ -44,6 +44,7 @@ export const SHELL_MENU_DESKTOP_SUB_PATH: Readonly<Record<ShellMenuId, DesktopSu
   'shell-header-system': null,            // top-level launcher — sub-path depends on item selected
   'shell-footer-user': DesktopSubPath.KNOWLEDGE_BASE,
   'system-controls': DesktopSubPath.ACCESS_ACCOUNT,
+  'guest-entry': null,
   'voice-control': DesktopSubPath.SYSTEM_SETTINGS,
   'voice-box': DesktopSubPath.SYSTEM_SETTINGS,
   appearance: DesktopSubPath.SYSTEM_SETTINGS,
@@ -55,7 +56,8 @@ export function filterShellMenuRegistryForAuth(
   auth: 'guest' | 'authenticated',
 ): Record<ShellMenuId, ShellMenuRegistryEntry> {
   if (auth === 'authenticated') {
-    return registry;
+    const { 'guest-entry': _removed, ...rest } = registry;
+    return rest as Record<ShellMenuId, ShellMenuRegistryEntry>;
   }
   const next: Record<ShellMenuId, ShellMenuRegistryEntry> = { ...registry };
   for (const id of Object.keys(next) as ShellMenuId[]) {
@@ -78,6 +80,65 @@ export function filterShellMenuRegistryForAuth(
   }
   return next;
 }
+
+/** Phone-first entry for guests — opened from power / start; items are guest-safe action_ids. */
+export const GUEST_ENTRY_MENU: ShellMenuRegistryEntry = {
+  menu_id: 'guest-entry',
+  menu_zone: 'header_system',
+  permission_class: 'shell_system',
+  data_source_ref: 'shell.menu.guest_entry.v1',
+  parent_menu_id: null,
+  launched_from_action_id: null,
+  launch_mode: 'replace_active',
+  record: {
+    menu_id: 'guest-entry',
+    menu_zone: 'header_system',
+    content_type: 'system',
+    level_count: 1,
+    levels: [
+      {
+        level_id: 'guest-shell-entry',
+        level_label: 'Shell entry',
+        items: [
+          {
+            item_id: 'guest-verify-phone',
+            label: 'Verify with phone',
+            description:
+              'SMS code unlocks governed workspace, appearance, agent identity, DISC, and architecture reference.',
+            action_id: 'guest_verify_phone',
+            icon: 'profile',
+          },
+          {
+            item_id: 'guest-explore-topics',
+            label: 'Explore topics',
+            description: 'Choose voice or chat, then continue the community join path before verifying.',
+            action_id: 'guest_explore_topics',
+            icon: 'podcasts',
+          },
+          {
+            item_id: 'guest-display-name',
+            label: 'What should we call you?',
+            description: 'Optional nickname saved on this device only — helps the host greet you before phone verify.',
+            action_id: 'guest_open_display_name',
+            icon: 'profile',
+          },
+          {
+            item_id: 'guest-public-routes',
+            label: 'Public shell routes',
+            description: 'Podcasts, transparency, and diagnostics (when enabled) without a verified session.',
+            action_id: 'guest_open_public_shell_menu',
+            icon: 'system',
+          },
+        ],
+      },
+    ],
+    template_family: 'list',
+    permission_class: 'shell_system',
+    data_source_ref: 'shell.menu.guest_entry.v1',
+    selection_behavior: 'open_surface',
+    disclosure_requirements: ['header_attached', 'shell_owned', 'deterministic_levels', 'intent_first'],
+  },
+};
 
 export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
   menu_id: 'shell-header-system',
@@ -763,6 +824,7 @@ export const CENTRAL_SHELL_MENU_REGISTRY: Record<ShellMenuId, ShellMenuRegistryE
   'shell-header-system': SHELL_HEADER_SYSTEM_MENU,
   'shell-footer-user': SHELL_FOOTER_USER_MENU,
   'system-controls': SYSTEM_CONTROLS_MENU,
+  'guest-entry': GUEST_ENTRY_MENU,
   'voice-control': VOICE_CONTROL_MENU,
   'voice-box': VOICE_BOX_MENU,
   appearance: APPEARANCE_MENU,

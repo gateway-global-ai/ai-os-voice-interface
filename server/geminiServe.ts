@@ -8,7 +8,15 @@ const DEFAULT_VOICE = 'Kore';
 const LIVE_TTS_SYSTEM_INSTRUCTION =
   'You are a pure text-to-speech engine. Repeat the user provided transcript exactly as written, word for word. Do not answer questions, do not add filler, do not explain, and do not acknowledge the prompt.';
 
-type JsonResult = { status: number; body: unknown };
+/** JSON body shape for gateway errors returned from `buildGatewayJsonError`. */
+export type GeminiGatewayErrorBody = {
+  error: string;
+  code?: string;
+  detail?: string;
+  upstreamStatus?: number;
+};
+
+export type JsonResult = { status: number; body: unknown };
 
 type GeminiHistoryMessage = {
   role: 'user' | 'model';
@@ -39,8 +47,23 @@ type GeminiStreamChunk =
   | { type: 'done' }
   | { type: 'error'; error: string };
 
+/**
+ * Same-origin gateway key — **`GEMINI_API_KEY` only** (`.env.local` / process env for `npm run dev` / `npm start`).
+ * Do not use `VITE_GEMINI_API_KEY`: Vite exposes `VITE_*` vars to the browser bundle.
+ *
+ * Uses first **non-empty** value: `??` is not enough because `loadEnv` can set `GEMINI_API_KEY=""`,
+ * which would block fallback to `process.env` (e.g. PM2-injected secrets).
+ */
+function firstNonEmptyKey(...candidates: (string | undefined)[]): string {
+  for (const c of candidates) {
+    const t = (c ?? '').trim();
+    if (t) return t;
+  }
+  return '';
+}
+
 function getGeminiApiKey(env: Record<string, string>): string {
-  return (env.GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? '').trim();
+  return firstNonEmptyKey(env.GEMINI_API_KEY, process.env.GEMINI_API_KEY);
 }
 
 function createGeminiClient(env: Record<string, string>): GoogleGenAI {
@@ -87,6 +110,115 @@ function normalizeOptionalString(value: unknown): string | undefined {
 
 function normalizeOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function rawErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** When the SDK omits `.status`, infer from common Google GenAI error text. */
+function inferUpstreamStatusFromMessage(msg: string): number | undefined {
+  if (/\b429\b|RESOURCE_EXHAUSTED/i.test(msg)) return 429;
+  if (/\b401\b|UNAUTHENTICATED/i.test(msg)) return 401;
+  if (/\b403\b|PERMISSION_DENIED/i.test(msg)) return 403;
+  if (/\b404\b|NOT_FOUND\b/i.test(msg)) return 404;
+  return undefined;
+}
+
+function extractUpstreamStatus(error: unknown): number | undefined {
+  if (error && typeof error === 'object') {
+    const e = error as Record<string, unknown>;
+    if (typeof e.status === 'number' && Number.isFinite(e.status)) {
+      return e.status;
+    }
+    if (typeof e.upstreamStatus === 'number' && Number.isFinite(e.upstreamStatus)) {
+      return e.upstreamStatus;
+    }
+  }
+  return inferUpstreamStatusFromMessage(rawErrorMessage(error));
+}
+
+/**
+ * Map upstream Gemini / GenAI errors to gateway HTTP status + JSON (never a blind 500 for quota/auth).
+ *
+ * - 429 → 429 (`resource_exhausted`)
+ * - 401 / 403 → same (`unauthenticated` / `permission_denied`)
+ * - Missing `GEMINI_API_KEY` on host → 503 (`missing_api_key`)
+ * - Other upstream failures → 502 (`Upstream API failure` + `detail` = raw message)
+ */
+export function buildGatewayJsonError(error: unknown, logPrefix: string): JsonResult {
+  const rawMessage = rawErrorMessage(error);
+
+  if (rawMessage.includes('GEMINI_API_KEY missing')) {
+    console.error(`${logPrefix} missing configuration:`, rawMessage);
+    return {
+      status: 503,
+      body: {
+        error: 'Gemini API key is missing on the server.',
+        code: 'missing_api_key',
+      } satisfies GeminiGatewayErrorBody,
+    };
+  }
+
+  const upstreamStatus = extractUpstreamStatus(error);
+  console.error(
+    logPrefix,
+    rawMessage,
+    upstreamStatus !== undefined ? `(upstream HTTP ${upstreamStatus})` : '',
+  );
+
+  switch (upstreamStatus) {
+    case 429:
+      return {
+        status: 429,
+        body: {
+          error: 'Upstream rate limit exceeded.',
+          code: 'resource_exhausted',
+          detail:
+            'Hit Gemini API RPM/TPM quota. Retry after a short wait or raise limits in Google AI Studio / Google Cloud Console.',
+          upstreamStatus,
+        } satisfies GeminiGatewayErrorBody,
+      };
+    case 401:
+      return {
+        status: 401,
+        body: {
+          error: 'Upstream API authentication failed.',
+          code: 'unauthenticated',
+          detail: rawMessage,
+          upstreamStatus,
+        } satisfies GeminiGatewayErrorBody,
+      };
+    case 403:
+      return {
+        status: 403,
+        body: {
+          error: 'Upstream API permission denied.',
+          code: 'permission_denied',
+          detail: rawMessage,
+          upstreamStatus,
+        } satisfies GeminiGatewayErrorBody,
+      };
+    case 404:
+      return {
+        status: 502,
+        body: {
+          error: 'Upstream API failure',
+          code: 'model_or_resource_not_found',
+          detail: rawMessage,
+          upstreamStatus,
+        } satisfies GeminiGatewayErrorBody,
+      };
+    default:
+      return {
+        status: 502,
+        body: {
+          error: 'Upstream API failure',
+          detail: rawMessage,
+          ...(upstreamStatus !== undefined ? { upstreamStatus } : {}),
+        } satisfies GeminiGatewayErrorBody,
+      };
+  }
 }
 
 function resolveLiveTtsModel(env: Record<string, string>, requestedModel?: string): string {
@@ -199,14 +331,22 @@ export async function serveGeminiGenerate(
         ? [...history, { role: 'user' as const, parts: userParts }]
         : history;
 
+    const config: {
+      systemInstruction?: string;
+      maxOutputTokens?: number;
+      temperature?: number;
+    } = {};
+    const si = normalizeOptionalString(body.systemInstruction);
+    if (si) config.systemInstruction = si;
+    const mot = normalizeOptionalNumber(body.maxOutputTokens);
+    if (mot !== undefined) config.maxOutputTokens = mot;
+    const temp = normalizeOptionalNumber(body.temperature);
+    if (temp !== undefined) config.temperature = temp;
+
     const response = await ai.models.generateContent({
       model: normalizeOptionalString(body.model) ?? DEFAULT_TEXT_MODEL,
       contents,
-      config: {
-        systemInstruction: normalizeOptionalString(body.systemInstruction),
-        maxOutputTokens: normalizeOptionalNumber(body.maxOutputTokens),
-        temperature: normalizeOptionalNumber(body.temperature),
-      },
+      ...(Object.keys(config).length > 0 ? { config } : {}),
     });
 
     return {
@@ -216,10 +356,7 @@ export async function serveGeminiGenerate(
       },
     };
   } catch (error) {
-    return {
-      status: 500,
-      body: { error: error instanceof Error ? error.message : String(error) },
-    };
+    return buildGatewayJsonError(error, '[gemini/generate]');
   }
 }
 
@@ -276,10 +413,7 @@ export async function serveGeminiTts(
       },
     };
   } catch (error) {
-    return {
-      status: 500,
-      body: { error: error instanceof Error ? error.message : String(error) },
-    };
+    return buildGatewayJsonError(error, '[gemini/tts]');
   }
 }
 

@@ -20,12 +20,15 @@ type Props = {
   onClose: () => void;
   /** Called after OTP passes; phone is E.164-style normalized digits only for display. */
   onVerified: (phone: string) => void;
+  /** `vibe` — warmer copy for the Vibe Coding University guest join flow. */
+  variant?: 'default' | 'vibe';
 };
 
 /** When VITE_OTP_SKIP_SEND=true the send step is skipped (local dev without a backend). */
 const skipSend = import.meta.env.VITE_OTP_SKIP_SEND === 'true';
 
-export function AuthPanel({ onClose, onVerified }: Props) {
+export function AuthPanel({ onClose, onVerified, variant = 'default' }: Props) {
+  const vibe = variant === 'vibe';
   const [step, setStep] = useState<Step>('phone');
   const [phoneInput, setPhoneInput] = useState('');
   const [otpInput, setOtpInput] = useState('');
@@ -117,13 +120,23 @@ export function AuthPanel({ onClose, onVerified }: Props) {
 
         <SovereignTitle level={2} className="pr-10 text-[var(--panel-heading)]">
           <span id="auth-panel-title">
-            {step === 'phone' ? 'Sign in with phone' : 'Enter verification code'}
+            {step === 'phone'
+              ? vibe
+                ? 'Confirm your phone'
+                : 'Sign in with phone'
+              : vibe
+                ? 'Almost there — enter your code'
+                : 'Enter verification code'}
           </span>
         </SovereignTitle>
         <SovereignDescription className="mt-2 text-[var(--panel-text-muted)]">
           {step === 'phone'
-            ? 'We will send a one-time code to verify your identity.'
-            : `Code sent to …${phoneDigits.slice(-4)}. Check your messages.`}
+            ? vibe
+              ? 'We text one six-digit code to your number — no passwords to invent yet. It keeps bots out and lets us reserve your spot in the community.'
+              : 'We will send a one-time code to verify your identity.'
+            : vibe
+              ? `We sent a code to the number ending in ${phoneDigits.slice(-4)}. It can take a minute — check messages and spam folders.`
+              : `Code sent to …${phoneDigits.slice(-4)}. Check your messages.`}
         </SovereignDescription>
 
         {error ? (

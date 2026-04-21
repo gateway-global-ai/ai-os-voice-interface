@@ -4,7 +4,7 @@
  * Two modes:
  *   scripted = true  → returns curated onboarding responses (Option C: zero latency,
  *                       controlled narrative, demonstrates ARCH protocol in practice)
- *   scripted = false → real gemini-2.0-flash call when GEMINI_API_KEY is present
+ *   scripted = false → real gemini-2.0-flash via same-origin `/api/gemini/generate` when the app host has GEMINI_API_KEY
  *
  * @license SPDX-License-Identifier: Apache-2.0
  */

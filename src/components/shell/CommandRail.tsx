@@ -31,6 +31,8 @@ type Props = {
   onPTTUp: (e: PointerEvent<HTMLButtonElement>) => void;
   displayStatus: string;
   displayStatusDetail?: string;
+  /** When set, shown under Status instead of loyaltySummary (journey / next-step line). */
+  footerJourneyLine?: string;
   loyaltySummary?: string;
   statusTone: 'ok' | 'error' | 'muted';
   showDiagnosticsChrome: boolean;
@@ -60,6 +62,7 @@ export function CommandRail({
   onToggleVoiceChat,
   isPTTActive, onPTTDown, onPTTUp,
   displayStatus, displayStatusDetail,
+  footerJourneyLine,
   loyaltySummary,
   statusTone, showDiagnosticsChrome,
   footerMenuRecord,
@@ -192,12 +195,12 @@ export function CommandRail({
                     className="text-[9px] font-bold uppercase tracking-widest">
                 {displayStatus}
               </span>
-              {loyaltySummary ? (
+              {(footerJourneyLine ?? loyaltySummary) ? (
                 <span
                   style={{ color: 'var(--panel-text-muted)' }}
                   className="max-w-[10rem] text-right text-[8px] font-bold uppercase tracking-[0.16em] leading-snug"
                 >
-                  {loyaltySummary}
+                  {footerJourneyLine ?? loyaltySummary}
                 </span>
               ) : null}
               {displayStatusDetail && (

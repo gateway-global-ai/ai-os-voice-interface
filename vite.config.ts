@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { visualizer } from 'rollup-plugin-visualizer';
 import {defineConfig, loadEnv} from 'vite';
+import {mergeGeminiEnvFromEnvLocal} from './server/mergeGeminiEnv';
 import {localModelDevPlugin} from './vite/localModelPlugin';
 
 // Load `.env`, `.env.local`, etc. from this app folder (not the parent `Apps` directory).
@@ -30,7 +31,7 @@ function shouldGovernanceRewriteToV1(
 }
 
 export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, envDir, '');
+  const env = mergeGeminiEnvFromEnvLocal(envDir, loadEnv(mode, envDir, '') as Record<string, string>);
   const otpProxyTarget = env.VITE_OTP_PROXY_TARGET || 'http://127.0.0.1:3010';
   const governanceProxyTarget = env.VITE_GOVERNANCE_PROXY_TARGET || otpProxyTarget;
   const rewriteApiToV1 = shouldGovernanceRewriteToV1(env, otpProxyTarget, governanceProxyTarget);

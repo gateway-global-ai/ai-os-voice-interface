@@ -47,6 +47,10 @@ type Props = {
   onCloseHeaderMenu: () => void;
   powerChromeState: PowerChromeState;
   voiceModelLabel: string;
+  /** Journey / shell-state primary label for the center pill (replaces voice route as headline when set). */
+  headerPillLabel?: string;
+  /** Extended title for the center pill (e.g. voice route + disclosure). */
+  headerPillTitle?: string;
   loyaltySummary: string;
   availableSkillsCount: number;
   statusSubtitle?: string;
@@ -119,6 +123,8 @@ export function ShellIdentityBar({
   onCloseHeaderMenu,
   powerChromeState,
   voiceModelLabel,
+  headerPillLabel,
+  headerPillTitle,
   loyaltySummary: _loyaltySummary,
   availableSkillsCount: _availableSkillsCount,
   statusSubtitle,
@@ -139,6 +145,10 @@ export function ShellIdentityBar({
         ? 'Chat lane active'
         : 'Voice lane active';
   const modelBadgeLabel = voiceModelLabel.replace(/\s+Voice$/i, '');
+  const centerPillLabel = headerPillLabel?.trim() || modelBadgeLabel;
+  const centerPillTitle =
+    headerPillTitle?.trim() ||
+    (onOpenTransparency ? 'Open transparency details' : undefined);
 
   useEffect(() => {
     if (!showCueMenu && !headerMenuOpen) return;
@@ -188,11 +198,12 @@ export function ShellIdentityBar({
               <button
                 type="button"
                 onClick={onOpenTransparency}
-                className="pointer-events-auto inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] transition-opacity hover:opacity-95"
+                disabled={!onOpenTransparency}
+                className="pointer-events-auto inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40"
                 style={crumbButtonStyle()}
-                title="Open transparency details"
+                title={centerPillTitle}
               >
-                <span className="truncate">{modelBadgeLabel}</span>
+                <span className="truncate">{centerPillLabel}</span>
               </button>
             </div>
 

@@ -14,6 +14,7 @@ import express from 'express';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv } from 'vite';
+import { mergeGeminiEnvFromEnvLocal } from './mergeGeminiEnv';
 import { serveLocalModelChat, serveLocalModelReadiness } from '../src/local-llm/localModelServe';
 import {
   serveGeminiGenerate,
@@ -23,18 +24,27 @@ import {
   streamGeminiTts,
 } from './geminiServe';
 import { createPodcastEpisode, listPodcastEpisodes } from './podcastLibraryServe';
+import { forwardOtpJson, getOtpUpstreamBaseForLog } from './otpProxyForward';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const mode = process.env.NODE_ENV === 'production' ? 'production' : 'development';
-const env = loadEnv(mode, root, '');
+const env = mergeGeminiEnvFromEnvLocal(root, loadEnv(mode, root, '') as Record<string, string>);
 
 const port = Number(process.env.PORT) || 5173;
 
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '25mb' }));
+
+/** Phone OTP — same as Vite dev proxy to 123checkme `server.js` (see vite.config.ts). */
+app.post('/api/send-otp', (req, res) => {
+  void forwardOtpJson(env, req, res, '/api/send-otp');
+});
+app.post('/api/verify-otp', (req, res) => {
+  void forwardOtpJson(env, req, res, '/api/verify-otp');
+});
 
 app.get('/api/local-model/readiness', async (_req, res) => {
   try {
@@ -119,5 +129,7 @@ app.get('*', (req, res) => {
 });
 
 app.listen(port, '0.0.0.0', () => {
-  console.log(`[prodHost] listening on http://0.0.0.0:${port} (NODE_ENV=${process.env.NODE_ENV ?? 'unset'}, mode=${mode})`);
+  console.log(
+    `[prodHost] listening on http://0.0.0.0:${port} (NODE_ENV=${process.env.NODE_ENV ?? 'unset'}, mode=${mode}, OTP upstream=${getOtpUpstreamBaseForLog(env)})`,
+  );
 });
