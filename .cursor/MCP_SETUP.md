@@ -146,6 +146,51 @@ cp .cursor/mcp.example.json .cursor/mcp.json
 
 **Never commit the edited `mcp.json`** — it is gitignored for this reason.
 
+## 4.05 — 123CheckMe MCP (hosted identity / SaaS tools — **remote URL**)
+
+**123CheckMe** product and HTTP OTP APIs live at **[123checkme.com](https://123checkme.com/)** / **[www.123checkme.com](https://www.123checkme.com/)**. Vibe coders authenticate through the **normal SaaS account** and operator tools there; they do **not** need to install a separate desktop app to use CheckMe-backed flows. The **Model Context Protocol** surface is a **separate HTTP endpoint** (Streamable HTTP or SSE per [Cursor MCP — remote server](https://cursor.com/docs/context/mcp)) that must be mounted by your CheckMe MCP deployment (see [Build an MCP server](https://modelcontextprotocol.io/docs/develop/build-server)).
+
+**Verified in this workspace (2026-04-26):** `GET https://www.123checkme.com/mcp` returns the SPA shell (`text/html`); `POST https://www.123checkme.com/mcp` returns `Cannot POST /mcp`. So the **root site does not yet expose a working JSON-RPC MCP listener on `/mcp`**. Operators should use the MCP base URL issued from the **123CheckMe SaaS / operator dashboard** (or deploy the Gateway identity MCP behind nginx and paste that URL) until the public host serves MCP on a documented path.
+
+### Cursor `mcp.json` (manual)
+
+1. Copy [`mcp.example.json`](mcp.example.json) to `.cursor/mcp.json` if needed.
+2. Under `mcpServers`, set **`123checkme.url`** to the **exact** MCP URL from the dashboard (must accept MCP `initialize` over HTTP as in the protocol doc above).
+3. Prefer **Bearer token via env interpolation** (no secrets in git):
+
+```json
+"123checkme": {
+  "url": "https://YOUR_MCP_HOST/mcp",
+  "headers": {
+    "Authorization": "Bearer ${env:CHECKME_MCP_TOKEN}"
+  }
+}
+```
+
+4. **OAuth-only** SaaS: omit `headers` and use **`CHECKME_MCP_AUTH=oauth`** with the merge script below, then in Cursor use **Connect** on that server ([static OAuth](https://cursor.com/docs/context/mcp) if the provider gives a client id).
+
+### Merge script (repo root)
+
+```bash
+export CHECKME_MCP_URL='https://YOUR_MCP_HOST/mcp'
+export CHECKME_MCP_TOKEN='...'   # shell env; mcp.json stays Bearer ${env:CHECKME_MCP_TOKEN}
+npm run cursor:mcp:123checkme
+```
+
+Or OAuth:
+
+```bash
+export CHECKME_MCP_URL='https://YOUR_MCP_HOST/mcp'
+export CHECKME_MCP_AUTH=oauth
+npm run cursor:mcp:123checkme
+```
+
+Reload the window. Confirm under **Settings → MCP** that **123checkme** connects; use **MCP Logs** if initialization fails.
+
+### Rust `skills` CLI
+
+Treat **123CheckMe** as a **Cursor/agent skill** (this repo: `.cursor/skills/123checkme-rust-saas-integration/SKILL.md`) plus optional packages under your `skills` source tree: run **`skills validate`** / **`skills push`** per [Rust `skills` crate](https://crates.io/crates/skills) and [Cursor skills](https://cursor.sh/docs/skills). The skill describes env vars, `checkmeClient.ts`, and MCP wiring; it does **not** embed secrets.
+
 ## 4.1 — Shadcn MCP (component registries — **use stdio in Cursor**)
 
 **Governance:** Design-time / operator / `ui_agent` only — not the Gemini voice hot path or customer runtime. See [`docs-governance/canonical/SHADCN_MCP_PLANE_BOUNDARY_V1.md`](../docs-governance/canonical/SHADCN_MCP_PLANE_BOUNDARY_V1.md). Runtime canvas uses registered views and `@/ui-core` promotion per `.cursor/skills/shadcn-ui-agent/SKILL.md`.

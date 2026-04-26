@@ -26,6 +26,12 @@
     },
     "serpapi": {
       "url": "https://mcp.serpapi.com/mcp?api_key=YOUR_SERP_API_KEY"
+    },
+    "123checkme": {
+      "url": "https://REPLACE_WITH_MCP_BASE_FROM_SAAS_DASHBOARD/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:CHECKME_MCP_TOKEN}"
+      }
     }
   }
 }
