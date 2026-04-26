@@ -1,24 +1,28 @@
-import { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ComponentPropsWithoutRef, ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { BRAND } from '../config/brand';
 
-interface SovereignButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface SovereignButtonProps extends Omit<ComponentPropsWithoutRef<'button'>, 'children'> {
   children: ReactNode;
   variant?: 'primary' | 'secondary' | 'ghost';
+  intent?: 'primary' | 'secondary' | 'ghost';
   isLoading?: boolean;
 }
 
 export function SovereignButton({
   children,
-  variant = 'primary',
+  intent,
+  variant,
   isLoading = false,
   className = '',
   disabled,
   ...props
 }: SovereignButtonProps) {
+  const resolvedVariant = variant ?? intent ?? 'primary';
+
   const getVariantClasses = () => {
-    switch (variant) {
+    switch (resolvedVariant) {
       case 'primary':
         return `${BRAND.colors.primary} ${BRAND.colors.primaryBorder} ${BRAND.colors.primaryHover} ${BRAND.colors.primaryActive} border`;
       case 'secondary':

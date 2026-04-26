@@ -1,6 +1,7 @@
 /**
  * Primary voice control — compact pill with ambient glow.
  * Sizing: 40% of footer width × 50% of --shell-footer-height.
+ * Colors and glow: `src/index.css` (--shell-ptt-* + .voice-ptt-btn*).
  */
 
 import type { PointerEvent } from 'react';
@@ -20,7 +21,7 @@ const isActive = (s: CommandRailState['systemStatus']) =>
   s === 'listening' || s === 'processing' || s === 'speaking';
 
 export function VoicePttButton({ rail, isPTTActive, onPointerDown, onPointerUp }: Props) {
-  const busy    = isActive(rail.systemStatus);
+  const busy = isActive(rail.systemStatus);
   const glowKey = isPTTActive ? 'press' : busy ? 'busy' : 'idle';
 
   return (
@@ -33,28 +34,11 @@ export function VoicePttButton({ rail, isPTTActive, onPointerDown, onPointerUp }
         onPointerCancel={onPointerUp}
         onLostPointerCapture={onPointerUp}
         className={cn(
-          'flex h-[calc(var(--shell-footer-height)*0.52)] w-full items-center justify-center gap-2 overflow-hidden rounded-xl border px-4 text-white transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
-          isPTTActive
-            ? 'border-emerald-300/80 bg-emerald-400'
-            : 'border-emerald-700/30 bg-emerald-600 hover:bg-emerald-500',
+          'voice-ptt-btn flex h-[calc(var(--shell-footer-height)*0.52)] w-full items-center justify-center gap-2 overflow-hidden rounded-xl px-4 transition-colors',
+          glowKey === 'idle' && 'voice-ptt-btn--idle',
+          glowKey === 'busy' && 'voice-ptt-btn--busy',
+          glowKey === 'press' && 'voice-ptt-btn--pressed',
         )}
-        animate={
-          glowKey === 'press'
-            ? { boxShadow: '0 0 0 1px rgba(52,211,153,0.5), 0 0 32px 4px rgba(52,211,153,0.55), 0 0 64px 8px rgba(16,185,129,0.35)' }
-            : glowKey === 'busy'
-              ? { boxShadow: '0 0 0 1px rgba(16,185,129,0.35), 0 0 24px 2px rgba(16,185,129,0.4)' }
-              : { boxShadow: [
-                    '0 0 0 1px rgba(16,185,129,0.2), 0 0 18px 0 rgba(16,185,129,0.25)',
-                    '0 0 0 1px rgba(52,211,153,0.35), 0 0 28px 4px rgba(52,211,153,0.35)',
-                    '0 0 0 1px rgba(16,185,129,0.2), 0 0 18px 0 rgba(16,185,129,0.25)',
-                  ] }
-        }
-        transition={
-          glowKey === 'idle'
-            ? { duration: 2.4, repeat: Infinity, ease: 'easeInOut' }
-            : { duration: 0.25, ease: 'easeOut' }
-        }
         whileTap={{ scale: 0.97 }}
       >
         <Mic

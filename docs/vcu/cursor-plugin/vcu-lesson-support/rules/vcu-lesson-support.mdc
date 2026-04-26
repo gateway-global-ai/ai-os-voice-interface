@@ -1,0 +1,33 @@
+---
+description: VCU lesson support no-mock and source-citation gate
+alwaysApply: true
+---
+
+# VCU Lesson Support
+
+Relevant docs:
+- Cursor plugins: https://cursor.com/docs/plugins.md
+- Cursor plugin reference: https://cursor.com/docs/reference/plugins
+- Cursor rules and AGENTS.md: https://cursor.sh/docs/rules
+- Cursor skills: https://cursor.sh/docs/skills
+- VCU source registry: docs/vcu/api-docs.md
+
+## No-Mock Gate
+
+Do not create mock lessons, mock installs, mock tests, fake logs, simulated exit codes, placeholder evidence, fabricated reviews, or unsupported source claims. Missing evidence must be `blocked` or `unverified`.
+
+## Trigger Scenarios
+
+Apply when running, reviewing, or installing VCU lessons, Rust SDK exercises, MCP UI/App Bridge exercises, Cursor rules, skills, commands, or agent prompts.
+
+## May Change
+
+- Lesson workspaces, review notes, commands, and evidence manifests requested by the user.
+
+## May Not Change
+
+- Source docs, publish status, completed task status, Supabase rows, or evidence claims without real verification.
+
+## Verifiable Output
+
+Return source URLs, files inspected, commands run, environment, exit codes, important output, and remaining `blocked` or `unverified` items.

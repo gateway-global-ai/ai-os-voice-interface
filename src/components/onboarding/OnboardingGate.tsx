@@ -11,6 +11,7 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
+import type { ReactNode } from 'react';
 import { Sparkles, LogIn, Rocket } from 'lucide-react';
 import { SovereignButton } from '../../ui-core';
 import { UserIntent, SystemIntent } from '../../shell/intentManager';
@@ -108,7 +109,7 @@ type IconStyle = 'accent' | 'muted';
 type CtaVariant = 'primary' | 'secondary';
 
 type IntentCardProps = {
-  icon: React.ReactNode;
+  icon: ReactNode;
   iconStyle: IconStyle;
   badge?: string;
   title: string;

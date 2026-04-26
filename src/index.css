@@ -18,6 +18,9 @@
   --z-shell-chrome: 40;
   --z-shell-footer: 70;
   --z-shell-workspace-canvas: 60;
+  /* Between workspace canvas and modal layer — desktop welcome sits here so shell menus (65+) stay on top. */
+  --z-shell-desktop-welcome-backdrop: 62;
+  --z-shell-desktop-welcome: 63;
   --z-shell-modal-backdrop: 65;
   --z-shell-system-controls: 75;
   --shell-overlay-width: 95vw;
@@ -35,14 +38,120 @@
   --panel-border:         rgba(255,255,255,0.15);
   --panel-text:           rgba(255,255,255,0.92);
   --panel-text-muted:     rgba(255,255,255,0.45);
-  --panel-accent-bg:      rgba(16,185,129,0.15);
-  --panel-accent-border:  rgba(52,211,153,0.4);
-  --panel-accent-text:    rgba(167,243,208,1);
+  --panel-accent-bg:      rgba(59,130,246,0.16);
+  --panel-accent-border:  rgba(96,165,250,0.58);
+  --panel-accent-text:    rgba(191,219,254,1);
   --panel-surface:        rgba(255,255,255,0.05);
   --panel-surface-hover:  rgba(255,255,255,0.09);
   --panel-heading:        rgba(255,255,255,1);
   --panel-input-bg:       rgba(255,255,255,0.08);
   --panel-input-border:   rgba(255,255,255,0.18);
+
+  /* Footer PTT — blue glow (VoicePttButton); do not hardcode blues in TSX */
+  --shell-ptt-bg:              rgba(37, 99, 235, 0.92);
+  --shell-ptt-bg-hover:        rgba(59, 130, 246, 0.95);
+  --shell-ptt-bg-pressed:      rgba(96, 165, 250, 1);
+  --shell-ptt-bg-busy:         rgba(37, 99, 235, 0.88);
+  --shell-ptt-border:          rgba(59, 130, 246, 0.45);
+  --shell-ptt-border-pressed:    rgba(147, 197, 253, 0.85);
+  --shell-ptt-text:            rgba(255, 255, 255, 0.96);
+  --shell-ptt-glow-soft:       0 0 0 1px rgba(59, 130, 246, 0.22), 0 0 18px 0 rgba(59, 130, 246, 0.28);
+  --shell-ptt-glow-strong:     0 0 0 1px rgba(96, 165, 250, 0.38), 0 0 28px 4px rgba(59, 130, 246, 0.38);
+  --shell-ptt-glow-press:      0 0 0 1px rgba(147, 197, 253, 0.55), 0 0 32px 4px rgba(96, 165, 250, 0.55),
+    0 0 64px 8px rgba(59, 130, 246, 0.38);
+  --shell-ptt-glow-busy:       0 0 0 1px rgba(59, 130, 246, 0.4), 0 0 24px 2px rgba(59, 130, 246, 0.45);
+  --shell-ptt-focus-ring:      rgba(96, 165, 250, 0.65);
+  --shell-ptt-focus-offset:    rgba(2, 6, 23, 0.35);
+
+  /* VCU landing hero (ShellVoiceIdlePanel) */
+  --vcu-hero-video-scrim: radial-gradient(
+    circle at center,
+    rgba(15, 23, 42, 0.2) 0%,
+    rgba(2, 6, 23, 0.62) 58%,
+    rgba(2, 6, 23, 0.88) 100%
+  );
+  --vcu-hero-heading-shadow: 0 0 28px rgba(15, 23, 42, 0.32);
+  --vcu-hero-play-gradient: linear-gradient(
+    135deg,
+    rgba(15, 118, 110, 0.9) 0%,
+    rgba(8, 145, 178, 0.92) 48%,
+    rgba(37, 99, 235, 0.92) 100%
+  );
+  --vcu-hero-play-border: rgba(125, 211, 252, 0.28);
+  --vcu-hero-play-shadow: 0 0 36px rgba(34, 211, 238, 0.24), 0 0 84px rgba(37, 99, 235, 0.15);
+
+  /* “Joining the Community” light overlay card (on dark hero) */
+  --vcu-community-backdrop: rgba(2, 6, 23, 0.55);
+  --vcu-community-card-bg: rgba(255, 255, 255, 0.97);
+  /* Audience path detail (Students / Professors / Guest Speakers) — sits on solid backdrop */
+  --vcu-community-detail-card-bg: rgba(255, 255, 255, 0.8);
+  --vcu-community-card-border: rgba(15, 23, 42, 0.1);
+  --vcu-community-heading: rgb(15, 23, 42);
+  --vcu-community-text: rgb(51, 65, 85);
+  --vcu-community-text-muted: rgb(100, 116, 139);
+  --vcu-community-tile-bg: rgb(248, 250, 252);
+  --vcu-community-tile-bg-hover: rgb(241, 245, 249);
+  --vcu-community-tile-border: rgba(59, 130, 246, 0.35);
+  --vcu-community-accent-bg: rgba(37, 99, 235, 0.1);
+  --vcu-community-accent-border: rgba(37, 99, 235, 0.45);
+  --vcu-community-accent-text: rgb(30, 64, 175);
+}
+
+@keyframes shell-ptt-glow-pulse {
+  0%,
+  100% {
+    box-shadow: var(--shell-ptt-glow-soft);
+  }
+  50% {
+    box-shadow: var(--shell-ptt-glow-strong);
+  }
+}
+
+.voice-ptt-btn {
+  border-width: 1px;
+  border-style: solid;
+  color: var(--shell-ptt-text);
+  box-shadow: var(--shell-ptt-glow-soft);
+}
+
+.voice-ptt-btn--idle {
+  background: var(--shell-ptt-bg);
+  border-color: var(--shell-ptt-border);
+  animation: shell-ptt-glow-pulse 2.4s ease-in-out infinite;
+}
+
+.voice-ptt-btn--idle:hover {
+  background: var(--shell-ptt-bg-hover);
+}
+
+.voice-ptt-btn--busy {
+  background: var(--shell-ptt-bg-busy);
+  border-color: var(--shell-ptt-border);
+  box-shadow: var(--shell-ptt-glow-busy);
+  animation: none;
+}
+
+.voice-ptt-btn--pressed {
+  background: var(--shell-ptt-bg-pressed);
+  border-color: var(--shell-ptt-border-pressed);
+  box-shadow: var(--shell-ptt-glow-press);
+  animation: none;
+}
+
+.voice-ptt-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shell-ptt-glow-strong), 0 0 0 2px var(--shell-ptt-focus-ring);
+}
+
+.vcu-community-tile {
+  background: var(--vcu-community-tile-bg);
+  border: 1px solid var(--vcu-community-tile-border);
+  color: var(--vcu-community-heading);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.vcu-community-tile:hover {
+  background: var(--vcu-community-tile-bg-hover);
 }
 
 .custom-scrollbar {
@@ -69,3 +178,11 @@
    base text/bg purely from that attribute — no prop drilling required. */
 [data-color-scheme="dark"]  { color: rgba(255,255,255,0.92); }
 [data-color-scheme="light"] { color: rgb(24,24,27); }
+
+[data-color-scheme="light"] {
+  --shell-ptt-bg: rgba(37, 99, 235, 0.9);
+  --shell-ptt-bg-hover: rgba(29, 78, 216, 0.92);
+  --shell-ptt-bg-pressed: rgba(59, 130, 246, 1);
+  --shell-ptt-bg-busy: rgba(37, 99, 235, 0.85);
+  --shell-ptt-focus-offset: rgba(255, 255, 255, 0.85);
+}

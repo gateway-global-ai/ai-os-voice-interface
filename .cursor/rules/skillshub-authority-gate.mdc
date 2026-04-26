@@ -1,0 +1,45 @@
+---
+description: Skillshub tap discovery and AI OS skill/tool authority gate
+globs: .cursor/skills/**/SKILL.md,src/shell/**/*Authority*.ts,src/shell/IntentIngestionController.ts,src/components/shell/VibeCodingUniversityPanel.tsx,docs/vcu/**/*.md,supabase/migrations/*skill*.sql,scripts/import-skillshub-registry.ts
+alwaysApply: false
+---
+
+# Skillshub Authority Gate
+
+Relevant docs:
+- `skillshub` crate: https://crates.io/crates/skillshub
+- `skillshub` repository: https://github.com/EYH0602/skillshub
+- Rust `skills` crate: https://crates.io/crates/skills
+- Rust skills rule knowledgebase: https://github.com/leonardomso/rust-skills
+- Cursor skills: https://cursor.sh/docs/skills
+- AI OS shell governance: `docs/vcu/ai-os-shell-state-governance.md`
+
+## Trigger Scenarios
+
+Apply when editing skill taps, `SKILL.md` frontmatter, `allowed-tools`, shell authority gates, skill registry UI, skill install/link flows, or Supabase rows for skill authority.
+
+## Required Controls
+
+- Treat `skillshub` as the discovery/linking/allowed-tools metadata protocol.
+- Treat Rust `skills` as the native validation/sync protocol where appropriate.
+- Treat `leonardomso/rust-skills` as a reusable Rust rule knowledgebase, not proof of installed skills.
+- Gate requested tools by role, scope, shell state, system prompt, and `allowed-tools`.
+- Record real command evidence before claiming installed, linked, validated, or discovered status.
+
+## No-Mock Gate
+
+Do not create or accept mock tap discovery, mock installs, fake skill lists, simulated exit codes, fabricated authority decisions, or placeholder linked-agent state. Missing evidence is `blocked` or `unverified`.
+
+## May Change
+
+- Skill authority rules, skill registry importers, governing docs, review-stage Supabase schema, and Cursor operating guidance.
+
+## May Not Change
+
+- Do not grant unrestricted tools to a skill.
+- Do not use system prompts alone as authority.
+- Do not run destructive `skillshub clean` commands without explicit user approval.
+
+## Verifiable Output
+
+Return source URLs, files inspected, `allowed-tools` metadata, authority decision, commands run, exit codes, important output, and remaining `blocked` or `unverified` items.

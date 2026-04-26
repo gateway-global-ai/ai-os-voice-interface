@@ -1,0 +1,15 @@
+---
+description: VCU no-mock acceptance gate for lessons, installs, tests, triangulation, and coding-agent work
+alwaysApply: true
+---
+
+# VCU No-Mock Acceptance Gate
+
+For Vibe Coding University, MCP curriculum, Rust coding-agent, Supabase lesson, project/task, and Gemini Voice AI work:
+
+- Do not create or accept mock data, mock lessons, mock triangulation, mock installs, mock tests, fake logs, simulated exit codes, placeholder evidence, or fabricated review results.
+- Use real source documents, real code paths, real Supabase migration/seed drafts, real commands, real command outputs, and real reviewer findings.
+- If a source, install, test, review, or database operation cannot be verified, mark it `blocked` or `unverified` with the exact reason.
+- Never publish a lesson or mark work accepted until a reviewer explicitly verifies the no-mock gate.
+
+Acceptance requires cited primary docs, reproducible commands, actual outputs or logs, exact file paths, and review notes tied to the changed artifact.

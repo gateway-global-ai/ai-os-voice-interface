@@ -44,6 +44,13 @@
               "description": "Create and manage Rust MCP projects, then open the MCP Inspector.",
               "action_id": "open_coding_agent",
               "icon": "disc"
+            },
+            {
+              "item_id": "shell-open-vcu",
+              "label": "Vibe Coding University",
+              "description": "Open the university menu for introduction, coursework, lab, Cursor help, and access.",
+              "action_id": "open_menu_vcu",
+              "icon": "knowledge"
             }
           ]
         },
@@ -149,6 +156,88 @@
       "disclosure_requirements": [
         "footer_secondary",
         "user_focused"
+      ]
+    }
+  },
+  "vibe-coding-university": {
+    "menu_id": "vibe-coding-university",
+    "menu_zone": "header_system",
+    "permission_class": "shell_system",
+    "data_source_ref": "shell.menu.vcu.university.v1",
+    "parent_menu_id": "shell-header-system",
+    "launched_from_action_id": "open_menu_vcu",
+    "launch_mode": "push_child",
+    "record": {
+      "menu_id": "vibe-coding-university",
+      "menu_zone": "header_system",
+      "content_type": "university",
+      "level_count": 3,
+      "levels": [
+        {
+          "level_id": "vcu-entry",
+          "level_label": "University Entry",
+          "items": [
+            {
+              "item_id": "vcu-introduction",
+              "label": "Introduction",
+              "description": "Start with the VCU overview, operating rules, source docs, and no-mock gate.",
+              "action_id": "open_vcu_intro",
+              "icon": "knowledge"
+            },
+            {
+              "item_id": "vcu-register-pay",
+              "label": "Register and payment",
+              "description": "Verify account access, review subscription status, and start Stripe checkout when configured.",
+              "action_id": "open_vcu_registration",
+              "icon": "profile"
+            }
+          ]
+        },
+        {
+          "level_id": "vcu-coursework",
+          "level_label": "Coursework",
+          "items": [
+            {
+              "item_id": "vcu-coursework-by-lesson",
+              "label": "Coursework by lesson",
+              "description": "Browse Supabase lesson rows, source docs, artifacts, and verification status.",
+              "action_id": "open_vcu_coursework",
+              "icon": "knowledge"
+            },
+            {
+              "item_id": "vcu-vibe-code-lab",
+              "label": "Vibe Code Lab",
+              "description": "Open the desktop lab for running lesson tasks with real instructions and evidence gates.",
+              "action_id": "open_vibe_code_lab",
+              "icon": "disc"
+            }
+          ]
+        },
+        {
+          "level_id": "vcu-cursor-support",
+          "level_label": "Cursor Support",
+          "items": [
+            {
+              "item_id": "vcu-cursor-instructions",
+              "label": "Cursor instructions",
+              "description": "Get Cursor rules, skills, commands, and plugin install guidance for lesson work.",
+              "action_id": "open_vcu_cursor_pack",
+              "icon": "system"
+            }
+          ]
+        }
+      ],
+      "template_family": "list",
+      "permission_class": "shell_system",
+      "data_source_ref": "shell.menu.vcu.university.v1",
+      "selection_behavior": "open_surface",
+      "disclosure_requirements": [
+        "header_attached",
+        "shell_owned",
+        "deterministic_levels",
+        "intent_first",
+        "supabase_seeded",
+        "no_mock_gate"
       ]
     }
   },
@@ -287,6 +376,13 @@
               "description": "Podcasts, transparency, and diagnostics (when enabled) without a verified session.",
               "action_id": "guest_open_public_shell_menu",
               "icon": "system"
+            },
+            {
+              "item_id": "guest-vcu-registration",
+              "label": "University registration",
+              "description": "Verify your account before opening paid VCU access and Stripe checkout.",
+              "action_id": "open_vcu_registration",
+              "icon": "knowledge"
             }
           ]
         }

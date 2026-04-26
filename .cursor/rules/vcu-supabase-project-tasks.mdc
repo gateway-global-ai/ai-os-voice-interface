@@ -1,0 +1,13 @@
+---
+description: Supabase-backed VCU lesson and project/task state rules
+globs: supabase/migrations/*.sql,src/lib/supabaseTypes.ts,src/vcu/**/*.ts,scripts/seed-supabase.ts,src/components/shell/**/*.tsx
+alwaysApply: false
+---
+
+# VCU Supabase Project And Task State
+
+- `university_lessons.publish_status = 'published'` is only valid when real install, test, triangulation, and no-mock evidence is present.
+- Seed source-backed lesson records as `review`, `blocked`, or `unverified` until evidence exists.
+- Do not store fake project or task completion evidence. `project_tasks.status = 'completed'` requires `no_mock_verified = true`.
+- Browser clients must use the anon/publishable Supabase key and rely on RLS; never expose service-role keys.
+- Use `projects` and `project_tasks` for Gemini Voice AI continuous state; preserve local Tauri SQLite project creation for on-device Rust builds.

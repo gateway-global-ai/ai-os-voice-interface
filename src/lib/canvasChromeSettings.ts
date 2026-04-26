@@ -144,3 +144,37 @@ export function normalizeChromeInput(
       return {};
   }
 }
+
+// ── Supabase Sync ──────────────────────────────────────────────────────────────
+
+import { supabase } from './supabaseClient';
+
+export async function syncCanvasChromeToSupabase(userId: string, settings: CanvasChromeSettings): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { error } = await supabase
+      .from('shell_preferences')
+      .upsert(
+        { user_id: userId, canvas_chrome: settings as unknown as Record<string, unknown> } as never,
+        { onConflict: 'user_id' },
+      );
+    if (error) console.warn('[canvasChromeSettings] sync failed:', error.message);
+  } catch { /* offline */ }
+}
+
+export async function loadCanvasChromeFromSupabase(userId: string): Promise<CanvasChromeSettings | null> {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('shell_preferences')
+      .select('canvas_chrome')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as { canvas_chrome: Partial<CanvasChromeSettings> | null };
+    if (!row.canvas_chrome) return null;
+    return mergeChrome(row.canvas_chrome);
+  } catch {
+    return null;
+  }
+}

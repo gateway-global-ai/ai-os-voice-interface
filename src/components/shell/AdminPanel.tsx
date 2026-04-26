@@ -5,7 +5,8 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { Fragment, useState, useCallback, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft, RotateCcw, ChevronDown, ChevronUp, Save } from 'lucide-react';
 import { LESSONS, ONBOARDING_TASKS } from '../../onboarding/lessons';
@@ -158,37 +159,39 @@ export function AdminPanel({ onBack }: Props) {
       {/* Lessons */}
       <Section label="Lessons">
         {lessons.map((entry) => (
-          <NarrationEntry
-            key={entry.id}
-            entry={entry}
-            isExpanded={expandedId === entry.id}
-            onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
-            onChange={handleChange}
-            onSave={handleSave}
-            onReset={handleReset}
-          />
+          <Fragment key={entry.id}>
+            <NarrationEntry
+              entry={entry}
+              isExpanded={expandedId === entry.id}
+              onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
+              onChange={handleChange}
+              onSave={handleSave}
+              onReset={handleReset}
+            />
+          </Fragment>
         ))}
       </Section>
 
       {/* Onboarding Tasks */}
       <Section label="Onboarding Tasks">
         {tasks.map((entry) => (
-          <NarrationEntry
-            key={entry.id}
-            entry={entry}
-            isExpanded={expandedId === entry.id}
-            onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
-            onChange={handleChange}
-            onSave={handleSave}
-            onReset={handleReset}
-          />
+          <Fragment key={entry.id}>
+            <NarrationEntry
+              entry={entry}
+              isExpanded={expandedId === entry.id}
+              onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
+              onChange={handleChange}
+              onSave={handleSave}
+              onReset={handleReset}
+            />
+          </Fragment>
         ))}
       </Section>
     </motion.div>
   );
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="mb-4">
       <p className="mb-2 text-[9px] font-bold uppercase tracking-widest text-zinc-600">{label}</p>

@@ -1,0 +1,46 @@
+---
+description: Source-backed MCP UI, MCP Apps, and App Bridge review gate
+globs: docs/vcu/**/*.md,.cursor/skills/mcp-ui-*/SKILL.md,.cursor/commands/mcp-ui-check.md,.cursor/agents/mcp-ui-agent.md,src/**/*.ts,src/**/*.tsx
+alwaysApply: false
+---
+
+# MCP UI App Bridge Development
+
+Relevant docs:
+- MCP Apps: https://modelcontextprotocol.io/extensions/apps/overview
+- MCP UI: https://github.com/MCP-UI-Org/mcp-ui
+- App Bridge API: https://apps.extensions.modelcontextprotocol.io/api/modules/app-bridge.html
+- Basic Server React: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/basic-server-react
+- Basic Server Svelte: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/basic-server-svelte
+- Transcript Server: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/transcript-server
+- Video Resource Server: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/video-resource-server
+- Say Server: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/say-server
+- QR Server: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/qr-server
+- Map Server: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/map-server
+
+## Trigger Scenarios
+
+Apply when reviewing MCP UI resources, App Bridge calls, MCP Apps examples, embedded UI claims, or lesson/task plans involving app-hosted MCP UI.
+
+## Required Controls
+
+- Separate upstream MCP UI/App Bridge behavior from local implementation details.
+- Verify source URLs and local code before accepting a claim.
+- For UI changes in this repo, also follow `.cursor/rules/ui-shell-standards.mdc`.
+- Do not create screenshots, browser logs, install logs, or app output as evidence unless produced by real tools.
+
+## No-Mock Gate
+
+Do not create or accept mock installs, mock tests, fake logs, simulated exit codes, placeholder evidence, fabricated review results, or unsupported source claims. Missing evidence must be `blocked` or `unverified`.
+
+## May Change
+
+- MCP UI/App Bridge review notes, implementation plans, Cursor prompts, and operating-layer docs.
+
+## May Not Change
+
+- Runtime UI code, lesson artifacts, generated screenshots, or Supabase state unless explicitly requested and verified.
+
+## Verifiable Output
+
+Return docs cited, files inspected, checks run, compatibility findings, and blocked or unverified claims.

@@ -37,6 +37,16 @@ type Props = {
     surface: ShellMenuDetailSurfaceDefinition,
     selectedActionId: string,
   ) => ReactNode;
+  disclosureSummary?: ShellMenuDisclosureSummary;
+};
+
+export type ShellMenuDisclosureSummary = {
+  shellIntent: string;
+  availableSkills: string[];
+  desiredOutcome: string;
+  userRole: string;
+  journeyPosition: string;
+  sourceRef?: string;
 };
 
 function menuIcon(icon: ShellMenuIcon | undefined) {
@@ -177,6 +187,62 @@ function menuZoneLabel(record: ShellMenuRecord) {
   }
 }
 
+function ShellMenuDisclosureCard({ summary }: { summary: ShellMenuDisclosureSummary }) {
+  const skillsLabel = summary.availableSkills.length > 0
+    ? summary.availableSkills.join(', ')
+    : 'No structured skills declared';
+
+  return (
+    <section
+      className="rounded-2xl p-4"
+      style={{
+        background: 'var(--panel-surface)',
+        border: '1px solid var(--panel-accent-border)',
+      }}
+      aria-label="Shell agent disclosure"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: 'var(--panel-accent-text)' }}>
+          Agent Disclosure
+        </span>
+        {summary.sourceRef ? (
+          <span className="text-[10px] font-semibold" style={{ color: 'var(--panel-text-muted)' }}>
+            Source: {summary.sourceRef}
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <DisclosureValue label="Shell Intent" value={summary.shellIntent} />
+        <DisclosureValue label="Skill" value={skillsLabel} />
+        <DisclosureValue label="Outcome" value={summary.desiredOutcome} />
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <DisclosureValue label="User Role" value={summary.userRole} />
+        <DisclosureValue label="Customer Journey" value={summary.journeyPosition} />
+      </div>
+    </section>
+  );
+}
+
+function DisclosureValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      className="rounded-xl px-3 py-2.5"
+      style={{
+        background: 'var(--panel-bg)',
+        border: '1px solid var(--panel-border)',
+      }}
+    >
+      <p className="text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-semibold" style={{ color: 'var(--panel-heading)' }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
 export function ShellMenuController({
   record,
   onSelect,
@@ -189,6 +255,7 @@ export function ShellMenuController({
   onClearSelectedAction,
   onBackMenu,
   renderDetailSurface,
+  disclosureSummary,
 }: Props) {
   if (!isValidShellMenuRecord(record)) {
     return null;
@@ -281,7 +348,7 @@ export function ShellMenuController({
             style={{ borderColor: 'var(--panel-border)' }}
           >
             <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
-              Level 1
+              Shell Menu
             </p>
             <div className="space-y-2 overflow-y-auto">
               {record.levels.map((level) => (
@@ -302,9 +369,6 @@ export function ShellMenuController({
             {activeLevel ? (
               <>
                 <div className="shrink-0 pb-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
-                    Level 2
-                  </p>
                   <h3 className="mt-2 text-lg font-semibold" style={{ color: 'var(--panel-heading)' }}>
                     {selectedDetailSurface?.title ?? activeLevel.level_label}
                   </h3>
@@ -337,6 +401,9 @@ export function ShellMenuController({
                       record.template_family === 'thumbnail' ? 'grid auto-rows-min grid-cols-1 gap-3 md:grid-cols-2' : 'space-y-3',
                     )}
                   >
+                    {disclosureSummary && record.menu_id === 'shell-header-system' ? (
+                      <ShellMenuDisclosureCard summary={disclosureSummary} />
+                    ) : null}
                     {activeLevel.items.map((item) => (
                       <div key={item.item_id}>
                         <MenuItemButton

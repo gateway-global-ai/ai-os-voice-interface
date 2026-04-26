@@ -1,0 +1,38 @@
+---
+description: Coordinates VCU Cursor agents, skills, commands, prompts, hooks, and reports
+alwaysApply: true
+---
+
+# Cursor Agent Orchestration
+
+Relevant docs:
+- Cursor rules and AGENTS.md: https://cursor.sh/docs/rules
+- Cursor skills: https://cursor.sh/docs/skills
+- Cursor commands and skills workflow: https://cursor.com/docs/agent/chat/commands
+- Cursor hooks: https://cursor.com/docs/hooks
+- VCU source registry: `docs/vcu/api-docs.md`
+
+## Trigger Scenarios
+
+Apply when work touches `.cursor/rules/**`, `.cursor/skills/**`, `.cursor/commands/**`, `.cursor/agents/**`, `.cursor/hooks.json`, `AGENTS.md`, or `docs/vcu/agents/**`.
+
+## Required Controls
+
+- Cite the relevant primary docs URL in every Cursor rule, skill, command, agent prompt, hook, registry, and report.
+- Preserve the VCU no-mock gate: no mock lessons, mock installs, mock tests, fake logs, simulated exit codes, placeholder evidence, or fabricated review results.
+- If evidence cannot be verified, mark it `blocked` or `unverified`; do not present it as accepted.
+- Keep runtime roles traceable through `docs/vcu/skill-identity-registry.md` and `docs/vcu/cursor-agent-operating-layer-report.md`.
+
+## May Change
+
+- Project-level Cursor operating artifacts and VCU operating-layer documentation.
+- Reports that state verified, blocked, or unverified status with evidence.
+
+## May Not Change
+
+- Per-lesson artifacts, Supabase rows, completion states, or publish status unless explicitly requested and verified.
+- Secrets, `.env*` values, or private system prompts.
+
+## Verifiable Output
+
+Return changed paths, cited docs URLs, no-mock gate result, verification commands or static checks run, and unresolved `blocked` or `unverified` items.

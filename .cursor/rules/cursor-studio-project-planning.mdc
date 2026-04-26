@@ -1,0 +1,36 @@
+---
+description: Cursor Studio project planning and task assignment operating rules
+globs: docs/vcu/**/*.md,.cursor/skills/cursor-*/SKILL.md,.cursor/commands/cursor-*.md,.cursor/agents/cursor-*.md
+alwaysApply: false
+---
+
+# Cursor Studio Project Planning
+
+Relevant docs:
+- Cursor rules and AGENTS.md: https://cursor.sh/docs/rules
+- Cursor skills: https://cursor.sh/docs/skills
+- Cursor commands and skills workflow: https://cursor.com/docs/agent/chat/commands
+- VCU Supabase project/task rule: `.cursor/rules/vcu-supabase-project-tasks.mdc`
+
+## Trigger Scenarios
+
+Apply when turning verified VCU knowledge into project plans, task queues, assignment instructions, Cursor Studio plans, or Rust coding-agent work packets.
+
+## Required Controls
+
+- Start from accepted or explicitly review-stage source material; never invent task readiness.
+- Include objective, source docs, target files/systems, required commands, expected outputs, and no-mock acceptance checks.
+- Mark missing install/test/link/RLS evidence as `blocked` or `unverified`.
+- Keep planning outputs separate from per-lesson artifacts unless the user requests lesson generation.
+
+## May Change
+
+- Project plans, task assignment drafts, operating-layer prompts, and reports.
+
+## May Not Change
+
+- Supabase task status, project completion status, or agent execution evidence without real verification.
+
+## Verifiable Output
+
+Return task plan IDs or draft names, source URLs, acceptance checks, command requirements, and every unverified dependency.

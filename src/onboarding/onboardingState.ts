@@ -1,5 +1,9 @@
 // ─── Onboarding State ─────────────────────────────────────────────────────────
-// Persisted in localStorage. All writes are synchronous and idempotent.
+// Primary persistence: localStorage (synchronous, always available).
+// Secondary persistence: Supabase `users` table (async, requires userId from OTP).
+// Call syncProfileToSupabase(userId, profile) after OTP succeeds.
+
+import { supabase } from '../lib/supabaseClient';
 
 const LS_PROFILE_KEY = 'aios_onboarding_profile';
 const LS_COMPLETE_KEY = 'aios_onboarding_complete';
@@ -20,6 +24,37 @@ export interface OnboardingProfile {
   username?: string;
   /** Base64 data URL of the uploaded avatar image. */
   avatar_url?: string;
+}
+
+function pickPreferredString(localValue: string | undefined, remoteValue: string | undefined): string | undefined {
+  const local = localValue?.trim();
+  if (local) return local;
+  const remote = remoteValue?.trim();
+  return remote || undefined;
+}
+
+/**
+ * Conflict policy:
+ * - local onboarding state is authoritative for fields the current browser session already knows
+ * - remote fills gaps for returning users and cross-device recovery
+ */
+export function mergeOnboardingProfile(
+  localProfile: OnboardingProfile | null,
+  remoteProfile: OnboardingProfile,
+): OnboardingProfile {
+  if (!localProfile) return remoteProfile;
+  return {
+    commander_name: pickPreferredString(localProfile.commander_name, remoteProfile.commander_name) ?? 'Operator',
+    interface_mode: localProfile.interface_mode ?? remoteProfile.interface_mode,
+    arrival_type: localProfile.arrival_type ?? remoteProfile.arrival_type,
+    enrolled_at: localProfile.enrolled_at ?? remoteProfile.enrolled_at,
+    phone_number: pickPreferredString(localProfile.phone_number, remoteProfile.phone_number),
+    first_name: pickPreferredString(localProfile.first_name, remoteProfile.first_name),
+    last_name: pickPreferredString(localProfile.last_name, remoteProfile.last_name),
+    email: pickPreferredString(localProfile.email, remoteProfile.email),
+    username: pickPreferredString(localProfile.username, remoteProfile.username),
+    avatar_url: pickPreferredString(localProfile.avatar_url, remoteProfile.avatar_url),
+  };
 }
 
 // ── Profile ────────────────────────────────────────────────────────────────────
@@ -116,4 +151,72 @@ export function getAllTaskProgress(): Record<string, boolean> {
 
 export function getAllLessonProgress(): Record<string, boolean> {
   return readLessonProgress();
+}
+
+// ── Supabase Sync ──────────────────────────────────────────────────────────────
+// Call after OTP verification. Upserts the local profile into the `users` table
+// using the phone number as the unique identifier. Also syncs shell_preferences.
+
+export async function syncProfileToSupabase(phone: string, profile: OnboardingProfile): Promise<string | null> {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .upsert(
+        {
+          phone,
+          display_name: profile.commander_name,
+          first_name: profile.first_name ?? null,
+          last_name: profile.last_name ?? null,
+          email: profile.email ?? null,
+          username: profile.username ?? null,
+          avatar_url: profile.avatar_url ?? null,
+          interface_mode: profile.interface_mode,
+        } as never,
+        { onConflict: 'phone' },
+      )
+      .select('id')
+      .single();
+    if (error) {
+      console.warn('[onboardingState] syncProfileToSupabase failed:', error.message);
+      return null;
+    }
+    const userId = (data as { id: string }).id;
+    try { localStorage.setItem('aios_supabase_user_id', userId); } catch { /* ignore */ }
+    return userId;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns the Supabase user ID if available (set after OTP + sync). */
+export function getSupabaseUserId(): string | null {
+  try { return localStorage.getItem('aios_supabase_user_id'); } catch { return null; }
+}
+
+/** Fetch profile from Supabase and merge into localStorage. */
+export async function loadProfileFromSupabase(userId: string): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    if (error || !data) return;
+    const row = data as Record<string, unknown>;
+    const remoteProfile: OnboardingProfile = {
+      commander_name: (row.display_name as string | null) ?? '',
+      interface_mode: (row.interface_mode as 'voice' | 'chat') ?? 'voice',
+      arrival_type: 'returning',
+      enrolled_at: Date.now(),
+      phone_number: (row.phone as string | null) ?? undefined,
+      first_name: (row.first_name as string | null) ?? undefined,
+      last_name: (row.last_name as string | null) ?? undefined,
+      email: (row.email as string | null) ?? undefined,
+      username: (row.username as string | null) ?? undefined,
+      avatar_url: (row.avatar_url as string | null) ?? undefined,
+    };
+    writeOnboardingProfile(mergeOnboardingProfile(readOnboardingProfile(), remoteProfile));
+  } catch { /* ignore */ }
 }

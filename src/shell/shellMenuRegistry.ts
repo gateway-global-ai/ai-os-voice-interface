@@ -30,6 +30,8 @@ export const AUTHENTICATED_ONLY_SHELL_ACTION_IDS: ReadonlySet<string> = new Set(
   'system_logout',
   // CODING sub-path
   'open_coding_agent',
+  'open_vibe_code_lab',
+  'open_vcu_cursor_pack',
   // KNOWLEDGE_BASE sub-path (requires auth)
   'open_knowledge',
   'open_user_storage',
@@ -43,6 +45,7 @@ export const AUTHENTICATED_ONLY_SHELL_ACTION_IDS: ReadonlySet<string> = new Set(
 export const SHELL_MENU_DESKTOP_SUB_PATH: Readonly<Record<ShellMenuId, DesktopSubPath | null>> = {
   'shell-header-system': null,            // top-level launcher — sub-path depends on item selected
   'shell-footer-user': DesktopSubPath.KNOWLEDGE_BASE,
+  'vibe-coding-university': DesktopSubPath.LEARNING,
   'system-controls': DesktopSubPath.ACCESS_ACCOUNT,
   'guest-entry': null,
   'voice-control': DesktopSubPath.SYSTEM_SETTINGS,
@@ -129,6 +132,13 @@ export const GUEST_ENTRY_MENU: ShellMenuRegistryEntry = {
             action_id: 'guest_open_public_shell_menu',
             icon: 'system',
           },
+          {
+            item_id: 'guest-vcu-registration',
+            label: 'University registration',
+            description: 'Verify your account before opening paid VCU access and Stripe checkout.',
+            action_id: 'open_vcu_registration',
+            icon: 'knowledge',
+          },
         ],
       },
     ],
@@ -152,11 +162,25 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
     menu_id: 'shell-header-system',
     menu_zone: 'header_system',
     content_type: 'system',
-    level_count: 2,
+    level_count: 3,
     levels: [
       {
+        level_id: 'shell-state-disclosure',
+        level_label: 'Shell state disclosure',
+        items: [
+          {
+            // First-class disclosure — public identity of the active shell state.
+            item_id: 'shell-open-agent-disclosure',
+            label: 'Agent Disclosure',
+            description: 'Shell Intent: Greet Customer. Skill: Determine Intent. Outcome: Route To Destination.',
+            action_id: 'open_transparency',
+            icon: 'transparency',
+          },
+        ],
+      },
+      {
         level_id: 'shell-control-plane',
-        level_label: 'Shell control plane',
+        level_label: 'Customer routes',
         items: [
           {
             // SYSTEM_SETTINGS sub-path — auth required
@@ -190,6 +214,14 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
             action_id: 'open_coding_agent',
             icon: 'disc',
           },
+          {
+            // LEARNING sub-path — opens Supabase-backed VCU menu
+            item_id: 'shell-open-vcu',
+            label: 'Vibe Coding University',
+            description: 'Open the university menu for introduction, coursework, lab, Cursor help, and access.',
+            action_id: 'open_menu_vcu',
+            icon: 'knowledge',
+          },
         ],
       },
       {
@@ -203,14 +235,6 @@ export const SHELL_HEADER_SYSTEM_MENU: ShellMenuRegistryEntry = {
             description: 'Adjust core agent identity, intent, and desired outcome through the governed shell menu.',
             action_id: 'open_menu_agent_identity',
             icon: 'system',
-          },
-          {
-            // KNOWLEDGE_BASE sub-path — auth required
-            item_id: 'shell-open-transparency',
-            label: 'Transparency',
-            description: 'Review current route, prompts, and disclosure state.',
-            action_id: 'open_transparency',
-            icon: 'transparency',
           },
           {
             // KNOWLEDGE_BASE sub-path — auth required
@@ -300,6 +324,96 @@ export const SHELL_FOOTER_USER_MENU: ShellMenuRegistryEntry = {
     data_source_ref: 'shell.menu.footer.user.v3',
     selection_behavior: 'open_surface',
     disclosure_requirements: ['footer_secondary', 'user_focused'],
+  },
+};
+
+export const VIBE_CODING_UNIVERSITY_MENU: ShellMenuRegistryEntry = {
+  menu_id: 'vibe-coding-university',
+  menu_zone: 'header_system',
+  permission_class: 'shell_system',
+  data_source_ref: 'shell.menu.vcu.university.v1',
+  parent_menu_id: 'shell-header-system',
+  launched_from_action_id: 'open_menu_vcu',
+  launch_mode: 'push_child',
+  record: {
+    menu_id: 'vibe-coding-university',
+    menu_zone: 'header_system',
+    content_type: 'university',
+    level_count: 3,
+    levels: [
+      {
+        level_id: 'vcu-entry',
+        level_label: 'University Entry',
+        items: [
+          {
+            item_id: 'vcu-introduction',
+            label: 'Introduction',
+            description: 'Start with the VCU overview, operating rules, source docs, and no-mock gate.',
+            action_id: 'open_vcu_intro',
+            icon: 'knowledge',
+          },
+          {
+            item_id: 'vcu-register-pay',
+            label: 'Register and payment',
+            description: 'Verify account access, review subscription status, and start Stripe checkout when configured.',
+            action_id: 'open_vcu_registration',
+            icon: 'profile',
+          },
+        ],
+      },
+      {
+        level_id: 'vcu-coursework',
+        level_label: 'Coursework',
+        items: [
+          {
+            item_id: 'vcu-coursework-by-lesson',
+            label: 'Coursework by lesson',
+            description: 'Browse Supabase lesson rows, source docs, artifacts, and verification status.',
+            action_id: 'open_vcu_coursework',
+            icon: 'knowledge',
+          },
+          {
+            item_id: 'vcu-vibe-code-lab',
+            label: 'Vibe Code Lab',
+            description: 'Open the desktop lab for running lesson tasks with real instructions and evidence gates.',
+            action_id: 'open_vibe_code_lab',
+            icon: 'disc',
+          },
+        ],
+      },
+      {
+        level_id: 'vcu-cursor-support',
+        level_label: 'Cursor Support',
+        items: [
+          {
+            item_id: 'vcu-cursor-instructions',
+            label: 'Cursor instructions',
+            description: 'Get Cursor rules, skills, commands, and plugin install guidance for lesson work.',
+            action_id: 'open_vcu_cursor_pack',
+            icon: 'system',
+          },
+          {
+            item_id: 'vcu-skill-registry',
+            label: 'Skill registry',
+            description: 'Browse source-backed Rust skills, deployment phases, dependencies, and Cursor actions.',
+            action_id: 'open_skill_registry',
+            icon: 'knowledge',
+          },
+        ],
+      },
+    ],
+    template_family: 'list',
+    permission_class: 'shell_system',
+    data_source_ref: 'shell.menu.vcu.university.v1',
+    selection_behavior: 'open_surface',
+    disclosure_requirements: [
+      'header_attached',
+      'shell_owned',
+      'deterministic_levels',
+      'intent_first',
+      'supabase_seeded',
+      'no_mock_gate',
+    ],
   },
 };
 
@@ -823,6 +937,7 @@ export const AGENT_IDENTITY_MENU: ShellMenuRegistryEntry = {
 export const CENTRAL_SHELL_MENU_REGISTRY: Record<ShellMenuId, ShellMenuRegistryEntry> = {
   'shell-header-system': SHELL_HEADER_SYSTEM_MENU,
   'shell-footer-user': SHELL_FOOTER_USER_MENU,
+  'vibe-coding-university': VIBE_CODING_UNIVERSITY_MENU,
   'system-controls': SYSTEM_CONTROLS_MENU,
   'guest-entry': GUEST_ENTRY_MENU,
   'voice-control': VOICE_CONTROL_MENU,

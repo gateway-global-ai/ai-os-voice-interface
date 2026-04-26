@@ -12,7 +12,11 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-import { geminiSynthesizeSpeech, streamGeminiSpeech } from '../../api/geminiGateway';
+import {
+  GeminiGatewayHttpError,
+  geminiSynthesizeSpeech,
+  streamGeminiSpeech,
+} from '../../api/geminiGateway';
 import type { IVoiceEngine, SystemStatus } from './VoiceEngine';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -110,6 +114,32 @@ function isGeminiLinearPcm(mimeType?: string): boolean {
     normalized.includes('audio/pcm') ||
     normalized.includes('codec=pcm')
   );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+/** Auth / permission / missing model — one-shot TTS would fail the same way; go straight to browser. */
+function isGatewayAuthOrModelBlock(err: unknown): boolean {
+  if (!(err instanceof GeminiGatewayHttpError)) return false;
+  if (err.status === 401 || err.status === 403) return true;
+  const c = err.code;
+  return (
+    c === 'unauthenticated' ||
+    c === 'permission_denied' ||
+    c === 'model_or_resource_not_found'
+  );
+}
+
+function isGatewayQuota429(err: unknown): boolean {
+  if (!(err instanceof GeminiGatewayHttpError)) return false;
+  if (err.status === 429) return true;
+  if (err.code === 'resource_exhausted') return true;
+  if (err.upstreamStatus === 429) return true;
+  return false;
 }
 
 function browserTtsFallback(text: string): void {
@@ -347,10 +377,18 @@ export class GeminiVoiceEngine implements IVoiceEngine {
           return;
         }
 
+        if (isGatewayAuthOrModelBlock(streamError)) {
+          throw streamError;
+        }
+
         console.warn('[GeminiVoiceEngine] Streaming TTS failed, falling back to one-shot gateway TTS:', streamError);
         this.clearScheduledPlayback();
         this.playbackQueue = Promise.resolve();
         this.nextChunkStartTime = 0;
+
+        if (isGatewayQuota429(streamError)) {
+          await delay(2500);
+        }
 
         const response = await geminiSynthesizeSpeech({ text, voiceName });
         const arrayBuffer = base64ToArrayBuffer(response.audioData);

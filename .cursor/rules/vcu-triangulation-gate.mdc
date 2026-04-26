@@ -1,0 +1,16 @@
+---
+description: VCU triangulation and peer-review publish gate
+globs: docs/vcu/**/*.md,src/vcu/**/*.ts,supabase/migrations/*.sql,scripts/seed-supabase.ts
+alwaysApply: false
+---
+
+# VCU Triangulation Gate
+
+Before any VCU lesson, skill, or project task is accepted:
+
+- Round 1 requires at least two independent reviews against the same source manifest.
+- Revision must address every disagreement, blocked claim, or low-confidence finding.
+- Round 2 reviews only the delta and must not introduce new unreviewed scope.
+- Publish requires real install logs, real test logs, link verification, RLS/access review, and an explicit no-mock pass.
+
+If any evidence is missing, keep the lesson or task `review`, `blocked`, or `unverified`; never mark it `published` or `completed`.

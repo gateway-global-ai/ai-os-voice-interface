@@ -1,0 +1,30 @@
+---
+description: Approved API documentation sources for Vibe Coding University MCP curriculum work
+globs: AGENTS.md,.cursor/rules/*.mdc,.cursor/skills/**/SKILL.md,.cursor/commands/*.md,.cursor/agents/*.md,.cursor/hooks.json,.cursor/hooks/*.py,docs/vcu/**/*.md,src/vcu/**/*.ts,scripts/seed-supabase.ts
+alwaysApply: false
+---
+
+# VCU API Docs Sources
+
+VCU lesson, skill, rule, agent prompt, Supabase seed, and coding-agent task work must cite the applicable primary docs:
+
+- Rust SDK: https://github.com/modelcontextprotocol/rust-sdk
+- TypeScript schema 2025-11-25: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts
+- Build MCP server: https://modelcontextprotocol.io/docs/develop/build-server
+- Build MCP client: https://modelcontextprotocol.io/docs/develop/build-client
+- MCP Apps: https://modelcontextprotocol.io/extensions/apps/overview
+- MCP UI: https://github.com/MCP-UI-Org/mcp-ui
+- App Bridge: https://apps.extensions.modelcontextprotocol.io/api/modules/app-bridge.html
+- Basic Server React: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/basic-server-react
+- Basic Server Svelte: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/basic-server-svelte
+- Transcript Server: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/transcript-server
+- Video Resource Server: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/video-resource-server
+- Say Server: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/say-server
+- QR Server: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/qr-server
+- Map Server: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/map-server
+- Cursor rules and AGENTS.md: https://cursor.sh/docs/rules
+- Cursor skills: https://cursor.sh/docs/skills
+- Cursor commands and skills workflow: https://cursor.com/docs/agent/chat/commands
+- Cursor hooks: https://cursor.com/docs/hooks
+
+Do not teach claims that are not supported by these sources or verified local code.

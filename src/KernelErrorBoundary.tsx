@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import React, { type ErrorInfo, type ReactNode } from 'react';
 
 // ─── Kernel Crash Screen ──────────────────────────────────────────────────────
 // Renders a terminal-style crash log instead of a white void.
@@ -15,16 +15,15 @@ interface State {
   crashTime: string;
 }
 
-export class KernelErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = {
-      crashed: false,
-      error: null,
-      errorInfo: null,
-      crashTime: '',
-    };
-  }
+export class KernelErrorBoundary extends React.Component<Props, State> {
+  declare props: Readonly<Props>;
+  declare setState: React.Component<Props, State>['setState'];
+  state: State = {
+    crashed: false,
+    error: null,
+    errorInfo: null,
+    crashTime: '',
+  };
 
   static getDerivedStateFromError(error: Error): Partial<State> {
     return {

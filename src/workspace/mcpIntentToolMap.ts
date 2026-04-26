@@ -20,8 +20,12 @@ function isInvalidGoogleEmailPlaceholder(s: string): boolean {
 
 const GOOGLE_EMAIL_ENV_KEYS = ['VITE_AIOS_GOOGLE_USER_EMAIL', 'VITE_WORKSPACE_GOOGLE_USER_EMAIL'] as const;
 
+function readWorkspaceEnv(): Record<string, string | boolean | undefined> {
+  return ((import.meta as ImportMeta & { env?: Record<string, string | boolean | undefined> }).env ?? {});
+}
+
 export function getWorkspaceGoogleUserEmail(): string | null {
-  const env = import.meta.env as Record<string, string | boolean | undefined>;
+  const env = readWorkspaceEnv();
   for (const key of GOOGLE_EMAIL_ENV_KEYS) {
     const v = env[key];
     if (typeof v !== 'string' || !v.trim()) continue;
@@ -33,7 +37,7 @@ export function getWorkspaceGoogleUserEmail(): string | null {
 }
 
 function includeUserGoogleEmailInMcpArgs(): boolean {
-  const v = (import.meta.env as Record<string, string | undefined>).VITE_WORKSPACE_MCP_INCLUDE_USER_EMAIL;
+  const v = readWorkspaceEnv().VITE_WORKSPACE_MCP_INCLUDE_USER_EMAIL;
   return typeof v === 'string' && v.trim().toLowerCase() === 'true';
 }
 

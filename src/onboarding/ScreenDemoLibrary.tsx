@@ -9,6 +9,7 @@
  */
 
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Cpu, Zap, Target, ChevronRight } from 'lucide-react';
 import { ScreenModelArena } from './ScreenModelArena';
@@ -17,7 +18,7 @@ import { Screen3PIntro } from './Screen3PIntro';
 
 type DemoId = 'model_arena' | 'intent_demo' | 'three_p_intro';
 
-const DEMOS: { id: DemoId; title: string; subtitle: string; icon: React.ReactNode; accent: string }[] = [
+const DEMOS: { id: DemoId; title: string; subtitle: string; icon: ReactNode; accent: string }[] = [
   {
     id: 'model_arena',
     title: 'Intelligence Stack',

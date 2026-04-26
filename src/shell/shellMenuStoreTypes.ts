@@ -5,6 +5,7 @@ import type {
   ProtectedShellMenuPermissionClass,
   ProtectedShellMenuZone,
 } from './shellAuthority';
+import type { SkillIntentAuthorityDecision } from './skillIntentAuthority';
 
 export type ShellMenuLaunchMode =
   | 'replace_active'
@@ -135,6 +136,13 @@ export interface IntentReviewHandoffEnvelope {
     created_at: string;
     created_by: string;
   };
+  skill_authority?: {
+    role: string;
+    scope: string;
+    requested_skills: string[];
+    requested_tools: string[];
+    decision: SkillIntentAuthorityDecision;
+  };
   shortcut_report?: ShortcutDetectionReport;
   educational_lessons?: EducationalLesson[];
 }
@@ -153,6 +161,7 @@ export interface ShellMenuIntentIngestionState {
   last_error: string | null;
   mvp_success_probability: number | null;
   probability_disclosed: boolean | null;
+  last_skill_authority_decision?: SkillIntentAuthorityDecision | null;
 }
 
 export interface ShellMenuStoreState {

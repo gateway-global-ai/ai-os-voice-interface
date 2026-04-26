@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "matcher": "Write|Edit|MultiEdit|TabWrite",
+        "command": "python3 .cursor/hooks/vcu_artifact_gate.py"
+      }
+    ]
+  }
+}

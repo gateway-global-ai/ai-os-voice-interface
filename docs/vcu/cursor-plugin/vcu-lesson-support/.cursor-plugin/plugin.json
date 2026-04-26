@@ -1,0 +1,14 @@
+{
+  "name": "vcu-lesson-support",
+  "displayName": "VCU Lesson Support",
+  "description": "Verified Cursor rules, skills, agents, and commands for source-backed Vibe Coding University lesson work.",
+  "version": "0.1.0",
+  "author": { "name": "Gateway Global AI" },
+  "homepage": "https://www.gatewayglobal.ai",
+  "license": "UNLICENSED",
+  "keywords": ["vcu", "mcp", "rust-sdk", "cursor", "no-mock"],
+  "rules": "rules",
+  "skills": "skills",
+  "agents": "agents",
+  "commands": "commands"
+}

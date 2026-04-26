@@ -6,6 +6,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import type { ChangeEvent } from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, Camera, UserPlus } from 'lucide-react';
 import {
@@ -46,7 +47,7 @@ export function UserProfilePanel({ onBack, powerState, onSave, onCreateAccount }
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();

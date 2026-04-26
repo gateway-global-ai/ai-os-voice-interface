@@ -122,7 +122,7 @@ export function CommandRail({
                   border: '1px solid var(--panel-input-border)',
                   color: 'var(--panel-text)',
                 }}
-                className="min-w-0 flex-1 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:opacity-40"
+                className="min-w-0 flex-1 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:opacity-40"
               />
               <button
                 type="button"
@@ -148,7 +148,7 @@ export function CommandRail({
               </button>
               <button
                 type="submit"
-                className="shrink-0 rounded-xl bg-emerald-500 p-2.5 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 transition"
+                className="shrink-0 rounded-xl bg-blue-500 p-2.5 shadow-lg shadow-blue-500/20 transition hover:bg-blue-400"
                 aria-label="Send"
               >
                 <Send size={18} className="text-white" />

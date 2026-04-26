@@ -1,0 +1,46 @@
+---
+description: Source-backed Rust SDK and MCP server/client development gate
+globs: **/*.rs,Cargo.toml,Cargo.lock,docs/vcu/**/*.md,.cursor/skills/rust-sdk-*/SKILL.md,.cursor/commands/rust-sdk-check.md,.cursor/agents/rust-sdk-agent.md
+alwaysApply: false
+---
+
+# Rust SDK MCP Development
+
+Relevant docs:
+- Rust SDK: https://github.com/modelcontextprotocol/rust-sdk
+- Build MCP server: https://modelcontextprotocol.io/docs/develop/build-server
+- Build MCP client: https://modelcontextprotocol.io/docs/develop/build-client
+- TypeScript schema 2025-11-25: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts
+- Rust `skills` CLI crate: https://crates.io/crates/skills
+- Rust `skills` library docs: https://docs.rs/skills/latest/skills/
+- Rust skills rule knowledgebase: https://github.com/leonardomso/rust-skills
+
+## Trigger Scenarios
+
+Apply when reviewing, installing, testing, or planning Rust SDK components, MCP tools, resources, prompts, transports, server behavior, or client behavior.
+
+## Required Controls
+
+- Verify claims against upstream docs or local Rust code before teaching or accepting them.
+- When adding or deploying agent skills for Rust work, use the native `skills` CLI protocol as the deployment source of truth and consult the Rust skills rule knowledgebase before creating new rules.
+- Use real commands such as `cargo test`, `cargo check`, or repository-specific install commands only when the target exists.
+- Record command, environment, exit code, and important stdout/stderr before calling a check verified.
+- Use `blocked` or `unverified` when the Rust project, dependency, network, or install target is unavailable.
+
+## No-Mock Gate
+
+Do not create or accept mock installs, mock tests, fake logs, simulated exit codes, placeholder evidence, fabricated review results, or unsupported source claims. Missing evidence must be `blocked` or `unverified`.
+
+## May Change
+
+- Rust SDK review notes, install/test plans, component review reports, and Cursor operating artifacts for Rust workflows.
+
+## May Not Change
+
+- Upstream SDK claims without source citation.
+- Completion evidence, install logs, or test results without running the real command.
+- Per-lesson Rust artifacts unless explicitly requested.
+
+## Verifiable Output
+
+Return source URLs, local paths inspected, commands run, exit codes, findings, and remaining blocked or unverified evidence.

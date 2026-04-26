@@ -1,8 +1,11 @@
 // ─── Shell Theme Store ────────────────────────────────────────────────────────
 // Persisted in localStorage. Controls background, overlay, and color scheme.
+// Supabase sync: theme tokens stored in shell_preferences.theme_tokens JSONB.
 
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import type React from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { useSupabaseSync } from '../lib/useSupabaseSync';
 
 const LS_KEY = 'aios_shell_theme';
 
@@ -26,7 +29,7 @@ export interface ShellTheme {
   overlayGap: number;
 }
 
-const DEFAULTS: ShellTheme = {
+export const SHELL_THEME_DEFAULTS: ShellTheme = {
   backgroundType: 'canvas',
   canvasBackgroundId: 'starfield',
   customBgPath: null,
@@ -42,37 +45,70 @@ const DEFAULTS: ShellTheme = {
   overlayGap: 20,
 };
 
-function load(): ShellTheme {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return DEFAULTS;
-    return { ...DEFAULTS, ...JSON.parse(raw) } as ShellTheme;
-  } catch {
-    return DEFAULTS;
-  }
-}
-
 function save(theme: ShellTheme): void {
   localStorage.setItem(LS_KEY, JSON.stringify(theme));
 }
 
-export function useShellTheme() {
-  const [theme, setThemeState] = useState<ShellTheme>(load);
+export function useShellTheme(userId?: string | null) {
+  const [theme, setThemeState, syncing] = useSupabaseSync<ShellTheme>({
+    lsKey: LS_KEY,
+    table: 'shell_preferences',
+    userId,
+    defaults: SHELL_THEME_DEFAULTS,
+    mergePolicy: 'local-over-remote',
+    fromRow: (row) => {
+      const remote = row.theme_tokens;
+      if (!remote || typeof remote !== 'object') return {};
+      return remote as Partial<ShellTheme>;
+    },
+    toRow: (state, resolvedUserId) => ({
+      user_id: resolvedUserId,
+      theme_tokens: state as unknown as Record<string, unknown>,
+    }),
+  });
 
   const setTheme = useCallback((patch: Partial<ShellTheme>) => {
-    setThemeState((prev) => {
-      const next = { ...prev, ...patch };
-      save(next);
-      return next;
-    });
-  }, []);
+    setThemeState(patch);
+  }, [setThemeState]);
 
   const resetTheme = useCallback(() => {
-    save(DEFAULTS);
-    setThemeState(DEFAULTS);
-  }, []);
+    save(SHELL_THEME_DEFAULTS);
+    setThemeState(SHELL_THEME_DEFAULTS);
+  }, [setThemeState]);
 
-  return { theme, setTheme, resetTheme };
+  return { theme, setTheme, resetTheme, syncing };
+}
+
+// ── Supabase Sync helpers (call with userId after OTP) ─────────────────────
+
+export async function syncThemeToSupabase(userId: string, theme: ShellTheme): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { error } = await supabase
+      .from('shell_preferences')
+      .upsert(
+        { user_id: userId, theme_tokens: theme as unknown as Record<string, unknown> } as never,
+        { onConflict: 'user_id' },
+      );
+    if (error) console.warn('[useShellTheme] syncThemeToSupabase failed:', error.message);
+  } catch { /* offline */ }
+}
+
+export async function loadThemeFromSupabase(userId: string): Promise<ShellTheme | null> {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('shell_preferences')
+      .select('theme_tokens')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as { theme_tokens: Partial<ShellTheme> | null };
+    if (!row.theme_tokens) return null;
+    return { ...SHELL_THEME_DEFAULTS, ...row.theme_tokens };
+  } catch {
+    return null;
+  }
 }
 
 // ─── State → CSS Variable projection ─────────────────────────────────────────
@@ -97,9 +133,9 @@ export function themeToCssVars(theme: ShellTheme): React.CSSProperties {
       '--panel-border':        'rgba(0,0,0,0.09)',
       '--panel-text':          'rgb(24,24,27)',
       '--panel-text-muted':    'rgb(113,113,122)',
-      '--panel-accent-bg':     'rgb(236,253,245)',
-      '--panel-accent-border': 'rgba(52,211,153,0.65)',
-      '--panel-accent-text':   'rgb(6,95,70)',
+      '--panel-accent-bg':     'rgb(239,246,255)',
+      '--panel-accent-border': 'rgba(59,130,246,0.65)',
+      '--panel-accent-text':   'rgb(30,64,175)',
       '--panel-surface':       'rgba(0,0,0,0.03)',
       '--panel-surface-hover': 'rgba(0,0,0,0.06)',
       '--panel-heading':       'rgb(9,9,11)',
@@ -115,9 +151,9 @@ export function themeToCssVars(theme: ShellTheme): React.CSSProperties {
     '--panel-border':        'rgba(255,255,255,0.15)',
     '--panel-text':          'rgba(255,255,255,0.92)',
     '--panel-text-muted':    'rgba(255,255,255,0.45)',
-    '--panel-accent-bg':     'rgba(16,185,129,0.15)',
-    '--panel-accent-border': 'rgba(52,211,153,0.4)',
-    '--panel-accent-text':   'rgba(167,243,208,1)',
+    '--panel-accent-bg':     'rgba(59,130,246,0.16)',
+    '--panel-accent-border': 'rgba(96,165,250,0.58)',
+    '--panel-accent-text':   'rgba(191,219,254,1)',
     '--panel-surface':       'rgba(255,255,255,0.05)',
     '--panel-surface-hover': 'rgba(255,255,255,0.09)',
     '--panel-heading':       'rgba(255,255,255,1)',

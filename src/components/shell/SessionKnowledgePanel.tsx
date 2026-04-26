@@ -27,6 +27,8 @@ import {
   addInput,
   removeInput,
   detectContentType,
+  syncInputToSupabase,
+  removeInputFromSupabase,
   type SessionKnowledgeInput,
 } from '../../core/knowledge/sessionKnowledgeStore';
 import { geminiGenerateText } from '../../api/geminiGateway';
@@ -73,13 +75,15 @@ async function extractTextFromFile(file: File): Promise<string> {
 type Props = {
   onClose: () => void;
   initialTab?: Tab;
+  userId?: string | null;
+  sessionId?: string | null;
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 type Tab = 'library' | 'upload';
 
-export function SessionKnowledgePanel({ onClose, initialTab = 'library' }: Props) {
+export function SessionKnowledgePanel({ onClose, initialTab = 'library', userId = null, sessionId = null }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [inputs, setInputs] = useState<SessionKnowledgeInput[]>(() => getInputs());
   const [uploading, setUploading] = useState(false);
@@ -91,8 +95,11 @@ export function SessionKnowledgePanel({ onClose, initialTab = 'library' }: Props
 
   const handleDelete = useCallback((id: string) => {
     removeInput(id);
+    if (userId) {
+      void removeInputFromSupabase(id);
+    }
     refreshInputs();
-  }, []);
+  }, [userId]);
 
   const handleFileSelect = useCallback(async (file: File) => {
     if (!file) return;
@@ -105,13 +112,16 @@ export function SessionKnowledgePanel({ onClose, initialTab = 'library' }: Props
       const contentType = detectContentType(file.name);
       const summary = await classifyDocument(rawText, file.name);
 
-      addInput({
+      const saved = addInput({
         declared_name: file.name,
         source_class: 'operator_upload',
         content_summary: summary,
         content_type: contentType,
         raw_text: rawText,
       });
+      if (userId) {
+        void syncInputToSupabase(saved, userId, sessionId);
+      }
 
       refreshInputs();
       setUploadSuccess(`"${file.name}" added to session knowledge.`);
@@ -121,7 +131,7 @@ export function SessionKnowledgePanel({ onClose, initialTab = 'library' }: Props
     } finally {
       setUploading(false);
     }
-  }, []);
+  }, [sessionId, userId]);
 
   const handleDrop = useCallback((e: DragEvent) => {
     e.preventDefault();

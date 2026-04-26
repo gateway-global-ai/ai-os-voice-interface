@@ -7,12 +7,15 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import { Code2, FolderOpen, Play, Trash2 } from 'lucide-react';
 import type { CodingAgentProjectRecord } from '../../codingAgent/CodingAgentProjectRecord';
+import { supabase } from '../../lib/supabaseClient';
+import type { Database } from '../../lib/supabaseTypes';
 import { SovereignTitle, SovereignDescription } from '../../ui-core';
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
-const DOCS_URL =
-  'https://github.com/rust-mcp-stack/rust-mcp-sdk/blob/main/docs/getting-started-mcp-server.md';
+type ProjectTaskRow = Database['public']['Tables']['project_tasks']['Row'];
+
+const DOCS_URL = 'https://github.com/modelcontextprotocol/rust-sdk';
 
 export function CodingAgentPanel({ onClose }: { onClose: () => void }) {
   const [projects, setProjects] = useState<CodingAgentProjectRecord[]>([]);
@@ -21,6 +24,8 @@ export function CodingAgentPanel({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [parentPath, setParentPath] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<ProjectTaskRow[]>([]);
+  const [taskError, setTaskError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!isTauri) return;
@@ -39,6 +44,30 @@ export function CodingAgentPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const refreshTasks = useCallback(async () => {
+    if (!supabase) {
+      setTaskError('Supabase is not configured; no database-backed coding-agent tasks are available.');
+      return;
+    }
+
+    setTaskError(null);
+    const { data, error: tasksError } = await supabase
+      .from('project_tasks')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(20);
+
+    if (tasksError) {
+      setTaskError(tasksError.message);
+      return;
+    }
+    setTasks((data as ProjectTaskRow[]) ?? []);
+  }, []);
+
+  useEffect(() => {
+    void refreshTasks();
+  }, [refreshTasks]);
 
   const pickParent = async () => {
     if (!isTauri) return;
@@ -256,6 +285,51 @@ export function CodingAgentPanel({ onClose }: { onClose: () => void }) {
               ? `Parent: ${parentPath}`
               : 'Default parent: app data / coding_agent_projects (optional: choose a parent folder).'}
           </p>
+        </section>
+
+        <section className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--panel-heading)' }}>
+              Supabase task queue
+            </h3>
+            <button type="button" className={btnBase} onClick={() => void refreshTasks()} style={btnGhostStyle}>
+              Refresh tasks
+            </button>
+          </div>
+          <p className="mb-2 text-xs" style={{ color: 'var(--panel-text-muted)' }}>
+            Gemini Voice AI should create real project tasks here. Completed tasks require no-mock verification.
+          </p>
+          {taskError && (
+            <p className="mb-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--panel-border)', color: 'var(--panel-text-muted)' }}>
+              {taskError}
+            </p>
+          )}
+          {!taskError && tasks.length === 0 && (
+            <p className="text-sm" style={{ color: 'var(--panel-text-muted)' }}>
+              No Supabase coding-agent tasks returned. This panel does not create mock tasks.
+            </p>
+          )}
+          {tasks.length > 0 && (
+            <ul className="space-y-2">
+              {tasks.map((task) => (
+                <li
+                  key={task.task_id}
+                  className="rounded-lg border px-3 py-3"
+                  style={{ borderColor: 'var(--panel-border)', background: 'var(--panel-surface)' }}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-medium">{task.title}</div>
+                    <span className="text-xs" style={{ color: 'var(--panel-text-muted)' }}>
+                      {task.status} · {task.no_mock_verified ? 'no-mock verified' : 'no-mock pending'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs" style={{ color: 'var(--panel-text-muted)' }}>
+                    {task.instructions.slice(0, 180)}{task.instructions.length > 180 ? '…' : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <section>

@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import type { ReactNode } from 'react';
 import { X, Sparkles, ShieldCheck, Cpu, Mic, Workflow, Target } from 'lucide-react';
 import type { VoiceRouteId } from '../../config/voiceRoutePreference';
@@ -190,7 +191,9 @@ export function ShellTransparencyDrawer({
             <Section icon={<Cpu size={16} />} title="Prompt variables">
               <div className="grid gap-3">
                 {promptContract.variables.map((variable) => (
-                  <KeyValue key={variable.label} label={variable.label} value={variable.value} />
+                  <Fragment key={variable.label}>
+                    <KeyValue label={variable.label} value={variable.value} />
+                  </Fragment>
                 ))}
               </div>
             </Section>

@@ -45,10 +45,26 @@ import {
   Radio,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { isTauri } from './lib/tauriRuntime';
+import type {
+  AppMode,
+  DISCProfile,
+  Message,
+  ShellAudioCue,
+  ShellAudioCueSource,
+  SystemStatus,
+  VoicePlaybackEngine,
+} from './shell/appTypes';
+import { buildShellAudioCue } from './shell/shellAudioCues';
+import {
+  buildGroundedSystemPrompt,
+  buildSystemPrompt,
+  scaffoldingDensityForVerbosity,
+} from './shell/shellPromptBuilders';
+import { logGeminiGatewayFallback } from './api/geminiErrors';
+import { isVibePublicShellSurface } from './shell/vibePublicSurface';
+import { isThemeOverlayCustomized, mapThemeToCanvasChrome } from './shell/canvasChromeTheme';
 
-/** True when running inside a Tauri desktop window; false in browser dev mode. */
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const LazyShellTransparencyDrawer = lazy(() =>
   import('./components/shell/ShellTransparencyDrawer').then((module) => ({
     default: module.ShellTransparencyDrawer,
@@ -101,8 +117,10 @@ import {
 } from './components/shell/LoyaltyIntroSequence';
 import { ShellBackground } from './components/shell/ShellBackground';
 import { ShellOverlayFrame } from './components/shell/ShellOverlayFrame';
-import { getContextBlock } from './core/knowledge/sessionKnowledgeStore';
-import { useShellTheme, themeToCssVars } from './shell/useShellTheme';
+import {
+  useShellTheme,
+  themeToCssVars,
+} from './shell/useShellTheme';
 import { fetchLocalModelReadiness } from './api/localModelClient';
 import type { LocalModelReadiness } from './local-llm/types';
 import { routeShellAgentText } from './shell/shellIntentRouter';
@@ -117,13 +135,31 @@ import { useKernelTelemetry } from './kernel/useKernelTelemetry';
 import type { KernelVerbosityLevel } from './kernel/types';
 import { kernelPermits } from './kernel/types';
 import { ShellIdentityBar } from './components/shell/ShellIdentityBar';
-import { VirtualDesktopEnvironment } from './components/shell/VirtualDesktopEnvironment';
+import {
+  VirtualDesktopEnvironment,
+  type VcuUniversityView,
+} from './components/shell/VirtualDesktopEnvironment';
+import {
+  DesktopWelcomeOverlay,
+  DESKTOP_WELCOME_VOICE_SCRIPT,
+} from './components/shell/DesktopWelcomeOverlay';
+import { CrystalOverlay } from './components/shell/CrystalOverlay';
+import { DISCSettingsOverlay } from './components/shell/DISCSettingsOverlay';
+import { OrbitalVisualizer } from './components/shell/OrbitalVisualizer';
 import { ShellMenuController } from './components/shell/ShellMenuController';
 import { UserProfilePanel } from './components/shell/UserProfilePanel';
 import { AdminPanel } from './components/shell/AdminPanel';
-import { SHADCN_BACKGROUND_ITEMS } from './components/background/shadcnBackgroundCatalog';
+import { LiveBackgroundAppearancePicker } from './components/shell/LiveBackgroundAppearancePicker';
 import type { PowerChromeState } from './components/shell/ShellSystemControls';
-import { getVoiceRoute, setVoiceRoute, voiceRouteLabel, type VoiceRouteId } from './config/voiceRoutePreference';
+import {
+  getVoiceRoute,
+  setVoiceRoute,
+  voiceRouteLabel,
+  hasExplicitVoiceRouteSelection,
+  loadVoiceRouteFromSupabase,
+  syncVoiceRouteToSupabase,
+  type VoiceRouteId,
+} from './config/voiceRoutePreference';
 import { CommandRail, type CommandRailState } from './components/shell/CommandRail';
 import {
   ShellContentZone,
@@ -164,8 +200,14 @@ import {
   isOtpVerified,
   markOtpVerified,
   writeOnboardingProfile,
+  getSupabaseUserId,
+  loadProfileFromSupabase,
+  syncProfileToSupabase,
 } from './onboarding/onboardingState';
 import { buildShellPromptContract } from './shell/shellPromptContract';
+import { useShellMenuActions } from './shell/useShellMenuActions';
+import { useShellMenuRuntime } from './shell/useShellMenuRuntime';
+import { useTauriKernelBridge } from './shell/useTauriKernelBridge';
 import { useShellJourney } from './shell/useShellJourney';
 import { getLandingWelcomePlayback } from './shell/landingStartWelcomeAudio';
 import {
@@ -178,6 +220,7 @@ import {
 import type { ShellMenuId } from './shell/shellMenuContract';
 import { CENTRAL_SHELL_MENU_REGISTRY, filterShellMenuRegistryForAuth } from './shell/shellMenuRegistry';
 import type { ShellMenuRegistryEntry, ShellMenuStoreState } from './shell/shellMenuStoreTypes';
+import { useShellMenuRegistry } from './shell/shellMenuLoader';
 import { VOICEBOX_SAMPLE_PROMPTS, VOICEBOX_SAMPLE_TARGET, voiceboxPromptForCount } from './shell/voiceBoxRecordConfig';
 import { VoiceBoxRecordDetailSurface } from './components/shell/VoiceBoxRecordDetailSurface';
 import { RealityCheckReport } from './components/shell/RealityCheckReport';
@@ -186,1200 +229,20 @@ import { intentIngestionController } from './shell/IntentIngestionController';
 import { heuristicShortcutScanner } from './shell/HeuristicShortcutScanner';
 import { knowledgeRetrievalService } from './knowledge/KnowledgeRetrievalService';
 import type { ShortcutTrigger } from './knowledge/KnowledgeBaseSchema';
-
-type SystemStatus =
-  | "connected"
-  | "listening"
-  | "processing"
-  | "speaking"
-  | "error"
-  | "offline";
-
-type VoicePlaybackEngine =
-  | 'idle'
-  | 'gemini'
-  | 'voicebox'
-  | 'browser'
-  | 'browser_fallback';
-
-type ShellAudioCueSource = 'agent' | 'onboarding' | 'system' | 'landing';
-
-type ShellAudioCue = {
-  id: string;
-  text: string;
-  label: string;
-  source: ShellAudioCueSource;
-  status: 'queued' | 'playing' | 'played' | 'stopped';
-  createdAt: string;
-  overrideVoice?: string;
-};
-
-async function tryQuitApplication(): Promise<void> {
-  try {
-    const { getCurrentWindow } = await import('@tauri-apps/api/window');
-    await getCurrentWindow().close();
-  } catch {
-    try {
-      window.close();
-    } catch {
-      /* noop */
-    }
-  }
-}
-
-type AppMode =
-  | "voice"
-  | "chat"
-  | "visual"
-  | "voice_settings"
-  | "disc_settings"
-  | "intent_settings"
-  | "api_health"
-  | "appearance"
-  | "voice_control"
-  | "knowledge"
-  | "user_storage"
-  | "transparency"
-  | "podcasts"
-  | "create_account"
-  | "coding_agent";
+import {
+  getTrackedShellSessionId,
+  trackShellSession,
+} from './shell/shellBootstrap';
+import {
+  loadInputsFromSupabase,
+} from './core/knowledge/sessionKnowledgeStore';
+import {
+  loadCanvasChromeFromSupabase,
+  syncCanvasChromeToSupabase,
+} from './lib/canvasChromeSettings';
 
 /** Workspace canvas uses `workspaceCanvas` state (intent outputs), not AppMode. */
 const LOCAL_STT_PLACEHOLDER = '__LOCAL_STT_PLACEHOLDER__';
-
-function isGeminiLikelyQuotaError(err: unknown): boolean {
-  const s = err instanceof Error ? err.message : String(err);
-  return (
-    s.includes('429')
-    || s.includes('RESOURCE_EXHAUSTED')
-    || s.includes('Resource exhausted')
-    || /quota|rate limit|exhausted/i.test(s)
-  );
-}
-
-function logGeminiGatewayFallback(context: string, err: unknown): void {
-  if (isGeminiLikelyQuotaError(err)) {
-    console.info(`[Gemini ${context}] Quota or rate limit — using local model.`);
-    return;
-  }
-  console.warn(`[Gemini ${context}] failed, falling back to local model:`, err);
-}
-
-function scaffoldingDensityForVerbosity(level: KernelVerbosityLevel): number {
-  switch (level) {
-    case 'start_button':
-      return 0.15;
-    case 'sentence':
-      return 0.4;
-    case 'paragraph':
-      return 0.7;
-    default:
-      return 1.0;
-  }
-}
-
-interface Message {
-  id: string;
-  role: 'user' | 'agent';
-  text: string;
-  timestamp: Date;
-}
-
-function buildShellAudioCue(
-  text: string,
-  overrideVoice?: string,
-  label?: string,
-  source: ShellAudioCueSource = 'agent',
-): ShellAudioCue {
-  const normalizedLabel =
-    label?.trim() ||
-    text
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 72) ||
-    'Audio cue';
-
-  return {
-    id: `cue_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    text,
-    label: normalizedLabel,
-    source,
-    status: 'queued',
-    createdAt: new Date().toISOString(),
-    overrideVoice,
-  };
-}
-
-interface DISCProfile {
-  dominance: number;
-  influence: number;
-  steadiness: number;
-  conscientiousness: number;
-}
-
-interface SystemPromptContext {
-  agentName: string;
-  agentRole: string;
-  agentIntent: string;
-  userIntent: string;
-  desiredOutcome: string;
-  discProfile: DISCProfile;
-  source: 'voice' | 'chat';
-  commanderName?: string | null;
-  loyaltyPromptLines: string[];
-  /** Imported file contents injected for this interaction. */
-  fileContext?: Array<{ name: string; content: string }>;
-}
-
-function buildSystemPrompt(ctx: SystemPromptContext): string {
-  const discDesc = [
-    ctx.discProfile.dominance >= 7 ? 'direct and decisive' : null,
-    ctx.discProfile.influence >= 7 ? 'engaging and expressive' : null,
-    ctx.discProfile.steadiness >= 7 ? 'patient and supportive' : null,
-    ctx.discProfile.conscientiousness >= 7 ? 'precise and analytical' : null,
-  ]
-    .filter(Boolean)
-    .join(', ') || 'balanced';
-
-  const fileBlock =
-    ctx.fileContext && ctx.fileContext.length > 0
-      ? ctx.fileContext
-          .map((f) => `\n\n--- FILE: ${f.name} ---\n${f.content}\n--- END FILE ---`)
-          .join('')
-      : '';
-
-  const toolHint = [
-    `You have access to local file system tools. When the user asks you to read, list, or open a file,`,
-    `respond ONLY with a JSON tool-call on its own line in this exact format:`,
-    `{"tool":"read_file","path":"<absolute-path>"}`,
-    `{"tool":"list_directory","path":"<absolute-path>"}`,
-    `{"tool":"pick_file"}`,
-    `{"tool":"trigger_account_creation"}`,
-    `Do not include any other text on that line. After receiving the file content, answer the user's question.`,
-  ].join(' ');
-
-  return [
-    `You are ${ctx.agentName}, a sovereign AI OS ${ctx.agentRole} running fully locally on the user's machine.`,
-    `The active commander is ${ctx.commanderName?.trim() || 'not yet identified by account creation'}.`,
-    `You operate inside a voice and chat interface. ${ctx.source === 'voice' ? 'The user is speaking to you via local speech-to-text. Respond in natural spoken language — no markdown, bullet points, or code blocks unless specifically requested.' : 'The user is typing to you. Keep responses concise and clear.'}`,
-    `Agent directive: ${ctx.agentIntent}`,
-    `User's goal: ${ctx.userIntent}`,
-    `Desired outcome: ${ctx.desiredOutcome}`,
-    getContextBlock() || '',
-    ctx.loyaltyPromptLines.join(' '),
-    `CRITICAL CONVERSATIONAL RULE (THE INVISIBLE ARCH PROTOCOL):
-You must process the user's intent using the Acknowledge, Reflect, Context, Handoff (ARCH) protocol, but you must do so INVISIBLY. 
-
-- DO NOT use explicit labels, headers, or tags like "Reflecting core goal:", "Context:", or "Handoff:" in your spoken output. 
-- DO NOT announce the steps of the protocol. 
-- Weave the ARCH elements smoothly into natural, highly competent human sentences.
-
-BAD EXAMPLE (Do not do this):
-"Reflecting core goal: You asked for a meeting. Context: I have checked your calendar. Handoff: What time works for you?"
-
-GOOD EXAMPLE (Do this):
-"I have your meeting request. Looking at your calendar, your afternoon is clear. What time works best for you?"`,
-    `Adapt your communication style to be ${discDesc}.`,
-    `Never refer to yourself as a text-based assistant or claim you cannot hear — you are integrated into a real-time local voice pipeline.`,
-    `Keep responses concise (1–3 sentences for voice, slightly longer for chat). Lead with the answer.`,
-    toolHint,
-    fileBlock,
-  ].join(' ');
-}
-
-function buildGroundedSystemPrompt(
-  commanderName: string | null,
-  loyaltyPromptLines: string[],
-  _hasFrame: boolean,
-): string {
-  const name = commanderName?.trim() || 'Commander';
-  return [
-    `You are the AIOS Governor, the governing intelligence layer of AI OS, speaking directly to ${name}.`,
-    `An image of ${name}'s current screen is attached to this message.`,
-    ``,
-    `You MUST follow the ARCH Communication Protocol for EVERY response:`,
-    `[A] ACKNOWLEDGE — One sentence. Validate you heard the intent.`,
-    `[R] REFLECT — One sentence. Repeat the core intent back AND explicitly reference a specific UI element visible in the screenshot (button, panel, label, etc.) so ${name} knows you see what they see.`,
-    `[C] CONTEXT — One sentence. State one relevant system fact, capability, or boundary.`,
-    `[H] HANDOFF — One sentence. End with a single closed question to advance the conversation state.`,
-    ``,
-    `THE 10-SECOND RULE: Four sentences maximum. The entire response must be speakable in under 10 seconds.`,
-    `NEVER output unsolicited lists, plans, or code blocks.`,
-    `ALWAYS end with the Handoff question.`,
-    ``,
-    `FORMATTING (response is spoken aloud via TTS):`,
-    `- Plain spoken English only. Zero markdown. No bold, no bullets, no headers.`,
-    `- No labels like "A:", "R:", "C:", "H:", "Response:", "Analysis:".`,
-    `- Write as if standing next to ${name} looking at the same screen.`,
-    ``,
-    ...loyaltyPromptLines,
-    ``,
-    `IDENTITY: You are the AIOS Governor, a governed intelligence. Do not call yourself "Google" or "Gemini."`,
-  ].join('\n');
-}
-
-/**
- * Guest shell or signed-in pre-session vibe landing — route LLM to marketing host prompts,
- * not Governor / screen-grounding prompts.
- */
-function isVibePublicShellSurface(p: {
-  authSessionActive: boolean;
-  shellSessionStarted: boolean;
-  mode: AppMode;
-  workspaceCanvas: unknown;
-  showDiagnosticsChrome: boolean;
-  status: SystemStatus;
-  showLoyaltyIntro: boolean;
-  currentAudioCue: ShellAudioCue | null;
-  isPTTActive: boolean;
-  transcription: string;
-  landingWelcomeActive: boolean;
-}): boolean {
-  if (!p.authSessionActive) {
-    return (
-      p.mode === 'voice' &&
-      !p.workspaceCanvas &&
-      !p.showDiagnosticsChrome &&
-      p.status !== 'processing' &&
-      (p.status !== 'speaking' ||
-        p.currentAudioCue?.source === 'onboarding' ||
-        p.currentAudioCue?.source === 'landing' ||
-        p.landingWelcomeActive) &&
-      !(p.isPTTActive && p.status === 'listening') &&
-      !p.transcription.trim()
-    );
-  }
-  return (
-    !p.shellSessionStarted &&
-    p.mode === 'voice' &&
-    !p.workspaceCanvas &&
-    !p.showDiagnosticsChrome &&
-    p.status !== 'processing' &&
-    (p.status !== 'speaking' || p.showLoyaltyIntro || p.currentAudioCue?.source === 'onboarding') &&
-    !(p.isPTTActive && p.status === 'listening') &&
-    !p.transcription.trim()
-  );
-}
-
-const VoiceSettingsOverlay = ({ 
-  currentVoice, 
-  onSelect, 
-  onClose 
-}: { 
-  currentVoice: string; 
-  onSelect: (voiceId: string) => void; 
-  onClose: () => void;
-}) => {
-  const [tab, setTab] = useState<'my_voices' | 'add_voice' | 'new_profile'>('my_voices');
-  const [profiles, setProfiles] = useState<VoiceProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [vbReady, setVbReady] = useState<boolean | null>(null);
-  const [newProfileName, setNewProfileName] = useState('');
-  const [activeRecordProfileId, setActiveRecordProfileId] = useState<string | null>(null);
-  const [recording, setRecording] = useState(false);
-  const [sampleCount, setSampleCount] = useState<Record<string, number>>({});
-  const [recordingStatus, setRecordingStatus] = useState('');
-  const activeSampleCount = activeRecordProfileId ? (sampleCount[activeRecordProfileId] ?? 0) : 0;
-  const currentSentenceIndex = activeSampleCount;
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const SAMPLE_TARGET = 5;
-
-  const SAMPLE_SENTENCES = [
-    "I am calibrating my voice profile for the local sovereign AI operating system.",
-    "Artificial intelligence is transforming the way we interact with technology.",
-    "Large language models process complex instructions and generate natural responses.",
-    "A truly private AI runs entirely on local hardware without sending data to the cloud.",
-    "The system is now learning the unique characteristics and intonations of my voice."
-  ];
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const ready = await VoiceboxClient.ensureVoiceboxReady();
-      if (!alive) return;
-      setVbReady(ready);
-      if (ready) {
-        try {
-          const list = await VoiceboxClient.listProfiles();
-          if (alive) {
-            setProfiles(list);
-            const counts: Record<string, number> = {};
-            list.forEach(p => { counts[p.id] = p.sample_count ?? 0; });
-            setSampleCount(counts);
-          }
-        } catch {
-          // Voicebox returned an error; show empty state gracefully
-        }
-      }
-      setLoading(false);
-    })();
-    return () => { alive = false; };
-  }, []);
-
-  const handleCreateProfile = async () => {
-    const name = newProfileName.trim();
-    if (!name) return;
-    try {
-      const profile = await VoiceboxClient.createProfile(name);
-      setProfiles(prev => [...prev, profile]);
-      setSampleCount(prev => ({ ...prev, [profile.id]: 0 }));
-      setNewProfileName('');
-      setActiveRecordProfileId(profile.id);
-      setTab('add_voice');
-    } catch (err) {
-      console.error('Create profile failed:', err);
-    }
-  };
-
-  const startRecording = async () => {
-    if (!activeRecordProfileId) return;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
-      const recorder = new MediaRecorder(stream);
-      const chunks: Blob[] = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        setRecordingStatus('Processing…');
-        try {
-          if (chunks.length === 0) {
-            throw new Error("No audio captured. Hold the button longer.");
-          }
-          const blob = new Blob(chunks, { type: recorder.mimeType });
-          const arrayBuffer = await blob.arrayBuffer();
-          
-          // Decode WebM to PCM
-          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-          const audioCtx = new AudioContextClass({ sampleRate: 16000 });
-          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-          const pcmData = audioBuffer.getChannelData(0);
-          
-          // Encode to WAV bytes expected by Voicebox
-          const wavBytes = VoiceboxClient.encodeWav(pcmData, 16000);
-          
-          const refText = SAMPLE_SENTENCES[currentSentenceIndex % SAMPLE_SENTENCES.length];
-          await VoiceboxClient.addSample(activeRecordProfileId!, wavBytes, refText);
-          setSampleCount(prev => ({
-            ...prev,
-            [activeRecordProfileId!]: (prev[activeRecordProfileId!] ?? 0) + 1,
-          }));
-          setRecordingStatus('Sample saved!');
-          setTimeout(() => setRecordingStatus(''), 1500);
-        } catch (err: any) {
-          setRecordingStatus(`Upload failed: ${err?.message || String(err)}`);
-          console.error(err);
-        }
-      };
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setRecording(true);
-      setRecordingStatus('Recording… speak clearly');
-    } catch {
-      setRecordingStatus('Microphone access denied.');
-    }
-  };
-
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
-    setRecording(false);
-  };
-  
-  return (
-    <SovereignCard className="relative z-20 w-full mx-0">
-      {/* Header */}
-      <div className="text-center mb-6">
-        <div className="inline-flex items-center justify-center p-3 bg-emerald-500/10 rounded-2xl mb-4">
-          <Volume2 className="w-6 h-6 text-emerald-600" />
-        </div>
-        <SovereignTitle level={2}>Voice Settings</SovereignTitle>
-        <SovereignDescription>
-          {vbReady === false ? 'Voicebox offline — using system TTS fallback' : 'Sovereign voice cloning · local · private'}
-        </SovereignDescription>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex rounded-xl overflow-hidden border border-white/10 mb-6">
-        {(['my_voices', 'add_voice', 'new_profile'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex-1 py-2.5 text-sm font-semibold transition-all ${
-              tab === t ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            {t === 'my_voices' ? 'My Voices' : t === 'add_voice' ? 'Add Samples' : 'New Profile'}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab: My Voices */}
-      {tab === 'my_voices' && (
-        <div>
-          {loading ? (
-            <p className="text-center text-gray-500 py-8">Loading profiles…</p>
-          ) : profiles.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500 mb-4">No voice profiles yet.</p>
-              <SovereignButton
-                onClick={() => setTab('new_profile')}
-                variant="primary"
-              >
-                <Plus className="w-4 h-4 mr-2" /> Create your first voice
-              </SovereignButton>
-            </div>
-          ) : (
-            <SovereignGrid columns={2} className="gap-3">
-              {profiles.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => onSelect(p.id)}
-                  className={`w-full flex flex-col items-start gap-1 p-5 rounded-2xl border transition-all ${
-                    currentVoice === p.id
-                      ? 'bg-emerald-500/20 border-emerald-500/50'
-                      : 'bg-white/5 border-white/10 hover:bg-white/10'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className={`font-bold text-base ${currentVoice === p.id ? 'text-emerald-400' : 'text-gray-200'}`}>
-                      {p.name}
-                    </span>
-                    {currentVoice === p.id && (
-                      <div className="bg-emerald-500 rounded-full p-1">
-                        <Check className="w-3 h-3 text-white" />
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-500">
-                    {(sampleCount[p.id] ?? p.sample_count ?? 0)} sample{(sampleCount[p.id] ?? p.sample_count ?? 0) === 1 ? '' : 's'}
-                  </span>
-                </button>
-              ))}
-            </SovereignGrid>
-          )}
-        </div>
-      )}
-
-      {/* Tab: Add Samples */}
-      {tab === 'add_voice' && (
-        <div className="flex flex-col items-center gap-5">
-          {/* Profile selector */}
-          {profiles.length > 0 && (
-            <select
-              className="w-full border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-200 bg-white/5 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-              value={activeRecordProfileId ?? ''}
-              onChange={(e) => setActiveRecordProfileId(e.target.value || null)}
-            >
-              <option value="" className="bg-zinc-900">— select a profile —</option>
-              {profiles.map(p => (
-                <option key={p.id} value={p.id} className="bg-zinc-900">{p.name}</option>
-              ))}
-            </select>
-          )}
-
-          {profiles.length === 0 && (
-            <p className="text-gray-500 text-sm text-center">
-              Create a profile first, then record samples here.
-            </p>
-          )}
-
-          {activeRecordProfileId && (
-            <>
-              {/* Progress bar */}
-              <div className="w-full">
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>Samples recorded</span>
-                  <span>{activeSampleCount} / {SAMPLE_TARGET} recommended</span>
-                </div>
-                <div className="w-full bg-white/10 rounded-full h-2">
-                  <div
-                    className="bg-emerald-500 h-2 rounded-full transition-all"
-                    style={{ width: `${Math.min(100, (activeSampleCount / SAMPLE_TARGET) * 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Record button */}
-              <button
-                onPointerDown={startRecording}
-                onPointerUp={stopRecording}
-                onPointerLeave={stopRecording}
-                disabled={!activeRecordProfileId}
-                className={`flex flex-col items-center justify-center gap-2 w-28 h-28 rounded-full border-4 transition-all select-none touch-none ${
-                  recording
-                    ? 'bg-red-500/20 border-red-500/50 text-red-400 scale-95'
-                    : 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:scale-105'
-                }`}
-              >
-                {recording ? <StopCircle className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
-                <span className="text-xs font-bold">{recording ? 'Release' : 'Hold'}</span>
-              </button>
-
-              {recordingStatus && (
-                <p className="text-sm text-gray-400">{recordingStatus}</p>
-              )}
-
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 w-full text-center">
-                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2">Read this aloud</p>
-                <p className="text-sm text-gray-200 font-medium">"{SAMPLE_SENTENCES[currentSentenceIndex % SAMPLE_SENTENCES.length]}"</p>
-              </div>
-
-              <p className="text-xs text-gray-500 text-center max-w-xs">
-                Hold the button and speak naturally. Record at least {SAMPLE_TARGET} samples for best quality.
-              </p>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Tab: New Profile */}
-      {tab === 'new_profile' && (
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-gray-500">Give your voice profile a name (e.g. "My Voice", "Formal Mode").</p>
-          <SovereignTextInput
-            value={newProfileName}
-            onChange={(e) => setNewProfileName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void handleCreateProfile(); }}
-            placeholder="Profile name"
-          />
-          <SovereignButton
-            onClick={() => void handleCreateProfile()}
-            disabled={!newProfileName.trim()}
-            variant="primary"
-          >
-            Create Profile
-          </SovereignButton>
-        </div>
-      )}
-
-      <div className="mt-8 pt-6 border-t border-white/10">
-        <SovereignButton onClick={onClose} variant="secondary" className="w-full">
-          Done
-        </SovereignButton>
-      </div>
-    </SovereignCard>
-  );
-};
-
-const DISCSettingsOverlay = ({ 
-  profile, 
-  onChange, 
-  onClose 
-}: { 
-  profile: DISCProfile; 
-  onChange: (key: keyof DISCProfile, value: number) => void; 
-  onClose: () => void;
-}) => {
-  const traits: { key: keyof DISCProfile; label: string; color: string; description: string }[] = [
-    { key: 'dominance', label: 'Dominance', color: '#10B981', description: 'Direct, results-oriented, and firm' },
-    { key: 'influence', label: 'Influence', color: '#34D399', description: 'Outgoing, enthusiastic, and optimistic' },
-    { key: 'steadiness', label: 'Steadiness', color: '#059669', description: 'Patient, accommodating, and humble' },
-    { key: 'conscientiousness', label: 'Conscientiousness', color: '#6EE7B7', description: 'Analytical, reserved, and precise' },
-  ];
-
-  // Simple Radar Chart Calculation
-  const size = 200;
-  const center = size / 2;
-  const radius = size * 0.4;
-  
-  const getPoint = (value: number, angle: number) => {
-    const r = (value / 10) * radius;
-    const x = center + r * Math.cos(angle);
-    const y = center + r * Math.sin(angle);
-    return `${x},${y}`;
-  };
-
-  const points = traits.map((t, i) => getPoint(profile[t.key], (i * Math.PI * 2) / 4 - Math.PI / 2)).join(' ');
-
-  return (
-    <SovereignCard className="relative z-20 w-full mx-0 flex flex-col md:flex-row gap-10 max-h-[90vh] overflow-y-auto custom-scrollbar">
-      <div className="flex-1">
-        <div className="mb-8">
-          <div className="inline-flex items-center justify-center p-3 bg-emerald-500/10 rounded-2xl mb-4">
-            <Activity className="w-6 h-6 text-emerald-600" />
-          </div>
-          <SovereignTitle level={2}>DISC Profile</SovereignTitle>
-          <SovereignDescription>Adjust my behavioral personality traits</SovereignDescription>
-        </div>
-
-        <div className="space-y-6">
-          {traits.map((trait) => (
-            <div key={trait.key} className="space-y-2">
-              <div className="flex justify-between items-end">
-                <div>
-                  <span className="font-bold text-gray-200">{trait.label}</span>
-                  <p className="text-[10px] text-gray-500 leading-none mt-1">{trait.description}</p>
-                </div>
-                <span className="text-sm font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">{profile[trait.key]}</span>
-              </div>
-              <input 
-                type="range" 
-                min="1" 
-                max="10" 
-                step="1"
-                value={profile[trait.key]}
-                onChange={(e) => onChange(trait.key, parseInt(e.target.value))}
-                className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-              />
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-10 pt-6 border-t border-white/10">
-          <SovereignButton onClick={onClose} variant="primary" className="w-full">
-            Save Profile
-          </SovereignButton>
-        </div>
-      </div>
-
-      <div className="w-full md:w-80 flex flex-col items-center justify-center bg-black/20 rounded-[2rem] p-8 border border-white/5">
-        <div className="relative w-full aspect-square flex items-center justify-center">
-          <svg width={size} height={size} className="overflow-visible">
-            {/* Background Circles */}
-            {[2, 4, 6, 8, 10].map((v) => (
-              <circle 
-                key={v} 
-                cx={center} 
-                cy={center} 
-                r={(v / 10) * radius} 
-                fill="none" 
-                stroke="rgba(255,255,255,0.1)" 
-                strokeWidth="1" 
-              />
-            ))}
-            {/* Axis Lines */}
-            {traits.map((_, i) => {
-              const angle = (i * Math.PI * 2) / 4 - Math.PI / 2;
-              return (
-                <line 
-                  key={i}
-                  x1={center}
-                  y1={center}
-                  x2={center + radius * Math.cos(angle)}
-                  y2={center + radius * Math.sin(angle)}
-                  stroke="rgba(255,255,255,0.1)"
-                  strokeWidth="1"
-                />
-              );
-            })}
-            {/* Data Polygon */}
-            <polygon 
-              points={points} 
-              fill="rgba(16, 185, 129, 0.2)" 
-              stroke="#10b981" 
-              strokeWidth="3" 
-              strokeLinejoin="round"
-            />
-            {/* Labels */}
-            {traits.map((t, i) => {
-              const angle = (i * Math.PI * 2) / 4 - Math.PI / 2;
-              const x = center + (radius + 25) * Math.cos(angle);
-              const y = center + (radius + 25) * Math.sin(angle);
-              return (
-                <text 
-                  key={t.key}
-                  x={x}
-                  y={y}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className="text-[10px] font-black uppercase tracking-tighter fill-gray-500"
-                >
-                  {t.label[0]}
-                </text>
-              );
-            })}
-          </svg>
-        </div>
-        <div className="mt-8 grid grid-cols-2 gap-4 w-full">
-          {traits.map(t => (
-            <div key={t.key} className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{t.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </SovereignCard>
-  );
-};
-
-const IntentSettingsOverlay = ({ 
-  agentIntent, 
-  userIntent, 
-  desiredOutcome,
-  agentName,
-  agentCompany,
-  agentRole,
-  onAgentIntentChange, 
-  onUserIntentChange, 
-  onDesiredOutcomeChange,
-  onAgentNameChange,
-  onAgentCompanyChange,
-  onAgentRoleChange,
-  onClose 
-}: { 
-  agentIntent: string; 
-  userIntent: string; 
-  desiredOutcome: string;
-  agentName: string;
-  agentCompany: string;
-  agentRole: string;
-  onAgentIntentChange: (val: string) => void; 
-  onUserIntentChange: (val: string) => void; 
-  onDesiredOutcomeChange: (val: string) => void;
-  onAgentNameChange: (val: string) => void;
-  onAgentCompanyChange: (val: string) => void;
-  onAgentRoleChange: (val: string) => void;
-  onClose: () => void;
-}) => {
-  const [activeSection, setActiveSection] = useState<'identity' | 'agent_intent' | 'user_intent' | 'desired_outcome'>('identity');
-
-  return (
-    <div
-      className="mx-auto flex w-full max-w-[72rem] overflow-hidden rounded-[2rem]"
-      style={{
-        background: 'var(--panel-bg)',
-        border: '1px solid var(--panel-border)',
-        boxShadow: '0 24px 80px rgba(2,6,23,0.35)',
-      }}
-    >
-      <div
-        className="w-[18rem] shrink-0 border-r p-4"
-        style={{ borderColor: 'var(--panel-border)', background: 'var(--panel-surface)' }}
-      >
-        <div className="mb-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--panel-text-muted)' }}>
-            System configuration
-          </p>
-          <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--panel-text-muted)' }}>
-            Choose the configuration intent first, then edit only that Level 2 pane.
-          </p>
-        </div>
-        <div className="space-y-2">
-          {[
-            ['identity', 'Agent Identity', 'Name, company, and role.'],
-            ['agent_intent', 'Agent Intent', 'Define the operating goal.'],
-            ['user_intent', 'User Intent', 'Capture what the user wants.'],
-            ['desired_outcome', 'Desired Outcome', 'Declare what success looks like.'],
-          ].map(([id, label, description]) => {
-            const active = activeSection === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setActiveSection(id as typeof activeSection)}
-                className="w-full rounded-2xl px-4 py-3 text-left transition-opacity hover:opacity-95"
-                style={{
-                  background: active ? 'var(--panel-accent-bg)' : 'var(--panel-bg)',
-                  border: `1px solid ${active ? 'var(--panel-accent-border)' : 'var(--panel-border)'}`,
-                }}
-              >
-                <p className="text-sm font-semibold" style={{ color: active ? 'var(--panel-accent-text)' : 'var(--panel-heading)' }}>
-                  {label}
-                </p>
-                <p className="mt-1 text-xs leading-relaxed" style={{ color: active ? 'var(--panel-accent-text)' : 'var(--panel-text-muted)' }}>
-                  {description}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        <div className="flex items-start justify-between gap-3 border-b pb-4" style={{ borderColor: 'var(--panel-border)' }}>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
-              Level 2
-            </p>
-            <h2 className="mt-1 text-xl font-semibold" style={{ color: 'var(--panel-heading)' }}>
-              {activeSection === 'identity'
-                ? 'Agent Identity'
-                : activeSection === 'agent_intent'
-                  ? 'Agent Intent'
-                  : activeSection === 'user_intent'
-                    ? 'User Intent'
-                    : 'Desired Outcome'}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl transition-opacity hover:opacity-90"
-            style={{
-              background: 'var(--panel-surface)',
-              border: '1px solid var(--panel-border)',
-              color: 'var(--panel-text-muted)',
-            }}
-            aria-label="Close system configuration"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="mt-4 space-y-4">
-          {activeSection === 'identity' ? (
-            <div
-              className="rounded-2xl p-4"
-              style={{
-                background: 'var(--panel-surface)',
-                border: '1px solid var(--panel-border)',
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <Target className="h-4 w-4" style={{ color: 'var(--panel-accent-text)' }} />
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
-                  Agent identity
-                </p>
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
-                    Name
-                  </label>
-                  <input
-                    value={agentName}
-                    onChange={(e) => onAgentNameChange(e.target.value)}
-                    placeholder="Agent Name"
-                    className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
-                    style={{
-                      background: 'var(--panel-input-bg)',
-                      border: '1px solid var(--panel-input-border)',
-                      color: 'var(--panel-text)',
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
-                    Company
-                  </label>
-                  <input
-                    value={agentCompany}
-                    onChange={(e) => onAgentCompanyChange(e.target.value)}
-                    placeholder="Company"
-                    className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
-                    style={{
-                      background: 'var(--panel-input-bg)',
-                      border: '1px solid var(--panel-input-border)',
-                      color: 'var(--panel-text)',
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
-                    Role
-                  </label>
-                  <input
-                    value={agentRole}
-                    onChange={(e) => onAgentRoleChange(e.target.value)}
-                    placeholder="Role"
-                    className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
-                    style={{
-                      background: 'var(--panel-input-bg)',
-                      border: '1px solid var(--panel-input-border)',
-                      color: 'var(--panel-text)',
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {activeSection === 'agent_intent' ? (
-            <div
-              className="rounded-2xl p-4"
-              style={{
-                background: 'var(--panel-surface)',
-                border: '1px solid var(--panel-border)',
-              }}
-            >
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
-                Agent intent
-              </p>
-              <textarea 
-                value={agentIntent}
-                onChange={(e) => onAgentIntentChange(e.target.value)}
-                placeholder="What is the agent's primary goal?"
-                className="mt-4 h-36 w-full rounded-2xl px-4 py-4 text-sm outline-none"
-                style={{
-                  background: 'var(--panel-input-bg)',
-                  border: '1px solid var(--panel-input-border)',
-                  color: 'var(--panel-text)',
-                }}
-              />
-            </div>
-          ) : null}
-
-          {activeSection === 'user_intent' ? (
-            <div
-              className="rounded-2xl p-4"
-              style={{
-                background: 'var(--panel-surface)',
-                border: '1px solid var(--panel-border)',
-              }}
-            >
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
-                User intent
-              </p>
-              <textarea 
-                value={userIntent}
-                onChange={(e) => onUserIntentChange(e.target.value)}
-                placeholder="What is the user trying to achieve?"
-                className="mt-4 h-36 w-full rounded-2xl px-4 py-4 text-sm outline-none"
-                style={{
-                  background: 'var(--panel-input-bg)',
-                  border: '1px solid var(--panel-input-border)',
-                  color: 'var(--panel-text)',
-                }}
-              />
-            </div>
-          ) : null}
-
-          {activeSection === 'desired_outcome' ? (
-            <div
-              className="rounded-2xl p-4"
-              style={{
-                background: 'var(--panel-surface)',
-                border: '1px solid var(--panel-border)',
-              }}
-            >
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--panel-text-muted)' }}>
-                Desired outcome
-              </p>
-              <textarea 
-                value={desiredOutcome}
-                onChange={(e) => onDesiredOutcomeChange(e.target.value)}
-                placeholder="What is the definition of success for this session?"
-                className="mt-4 h-36 w-full rounded-2xl px-4 py-4 text-sm outline-none"
-                style={{
-                  background: 'var(--panel-input-bg)',
-                  border: '1px solid var(--panel-input-border)',
-                  color: 'var(--panel-text)',
-                }}
-              />
-            </div>
-          ) : null}
-        </div>
-
-        <div className="mt-6 flex flex-col gap-3 border-t pt-4 md:flex-row" style={{ borderColor: 'var(--panel-border)' }}>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-2xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-95"
-            style={{
-              background: 'var(--panel-surface)',
-              border: '1px solid var(--panel-border)',
-              color: 'var(--panel-text)',
-            }}
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-2xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-95"
-            style={{
-              background: 'var(--panel-accent-bg)',
-              border: '1px solid var(--panel-accent-border)',
-              color: 'var(--panel-accent-text)',
-            }}
-          >
-            Apply Configuration
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- Components ---
-
-/** Voice pipeline: emerald = listening + speaking; amber/yellow = reasoning (processing). */
-function OrbitalPalette(status: SystemStatus): {
-  barMuted: string;
-  barPeak: string;
-  glow: string;
-  logoBg: string;
-  logoText: string;
-  statusLabel: string;
-  statusDetail: string;
-  statusHeadingClass: string;
-} {
-  switch (status) {
-    case 'listening':
-      return {
-        barMuted: '#34d399',
-        barPeak: '#059669',
-        glow: 'rgba(16, 185, 129, 0.18)',
-        logoBg: 'bg-emerald-500',
-        logoText: 'text-white',
-        statusLabel: 'Listening',
-        statusDetail: 'Capturing your voice',
-        statusHeadingClass: 'text-emerald-600',
-      };
-    case 'processing':
-      return {
-        barMuted: '#fde047',
-        barPeak: '#eab308',
-        glow: 'rgba(234, 179, 8, 0.2)',
-        logoBg: 'bg-amber-400',
-        logoText: 'text-amber-950',
-        statusLabel: 'Reasoning',
-        statusDetail: 'Model is thinking',
-        statusHeadingClass: 'text-amber-600',
-      };
-    case 'speaking':
-      return {
-        barMuted: '#34d399',
-        barPeak: '#059669',
-        glow: 'rgba(16, 185, 129, 0.2)',
-        logoBg: 'bg-emerald-500',
-        logoText: 'text-white',
-        statusLabel: 'Speaking',
-        statusDetail: 'Voice response',
-        statusHeadingClass: 'text-emerald-600',
-      };
-    case 'error':
-      return {
-        barMuted: '#fca5a5',
-        barPeak: '#ef4444',
-        glow: 'rgba(239, 68, 68, 0.15)',
-        logoBg: 'bg-red-500',
-        logoText: 'text-white',
-        statusLabel: 'Error',
-        statusDetail: 'Something went wrong',
-        statusHeadingClass: 'text-red-600',
-      };
-    case 'offline':
-      return {
-        barMuted: '#a1a1aa',
-        barPeak: '#71717a',
-        glow: 'rgba(113, 113, 122, 0.12)',
-        logoBg: 'bg-zinc-400',
-        logoText: 'text-white',
-        statusLabel: 'Offline',
-        statusDetail: 'Voice unavailable',
-        statusHeadingClass: 'text-zinc-500',
-      };
-    default:
-      return {
-        barMuted: '#6ee7b7',
-        barPeak: '#10b981',
-        glow: 'rgba(16, 185, 129, 0.08)',
-        logoBg: 'bg-emerald-500',
-        logoText: 'text-white',
-        statusLabel: 'Ready',
-        statusDetail: 'Tap and hold to speak',
-        statusHeadingClass: 'text-emerald-600',
-      };
-  }
-}
-
-const OrbitalVisualizer = ({ isActive, status }: { isActive: boolean; status: SystemStatus }) => {
-  const bars = 48;
-  const palette = OrbitalPalette(status);
-
-  return (
-    <div className="relative w-32 h-40 md:w-40 md:h-48 shrink-0">
-      {/* Central Logo + live system state — pinned to true center (matches bar hub) */}
-      <div className="absolute left-1/2 top-1/2 z-10 w-full -translate-x-1/2 -translate-y-1/2 pointer-events-none flex flex-col items-center justify-center text-center px-0.5">
-        <div className="flex flex-col items-center gap-1">
-          <div className="flex items-center justify-center gap-0.5">
-            <span className="text-zinc-400 font-bold text-xs md:text-sm tracking-widest">AI</span>
-            <div
-              className={`${palette.logoBg} ${palette.logoText} px-1 py-px rounded text-xs md:text-sm font-bold transition-colors duration-300`}
-            >
-              O
-            </div>
-            <div
-              className={`${palette.logoBg} ${palette.logoText} px-1 py-px rounded text-xs md:text-sm font-bold transition-colors duration-300`}
-            >
-              S
-            </div>
-          </div>
-          <div className="flex flex-col items-center text-center max-w-[9rem] md:max-w-[11rem] mx-auto">
-            <span
-              className={`inline-block pl-[0.15em] text-[8px] md:text-[10px] font-black uppercase tracking-[0.18em] tabular-nums ${palette.statusHeadingClass}`}
-            >
-              {palette.statusLabel}
-            </span>
-            <span className="text-[8px] md:text-[9px] text-zinc-500 mt-px leading-tight font-medium px-0.5">
-              {palette.statusDetail}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Animated Bars — hub at container center */}
-      <div className="absolute inset-0 z-[1] overflow-visible">
-        {Array.from({ length: bars }).map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute w-0.5 md:w-1 rounded-full left-1/2 bottom-1/2"
-            style={{
-              height: '24%',
-              transform: `translateX(-50%) rotate(${(i * 360) / bars}deg) translateY(-108%)`,
-              transformOrigin: 'bottom center',
-            }}
-            animate={isActive ? {
-              height: [
-                '24%',
-                `${24 + Math.random() * 28}%`,
-                '24%'
-              ],
-              opacity: [0.45, 1, 0.45],
-              backgroundColor: [palette.barMuted, palette.barPeak, palette.barMuted],
-            } : {
-              height: '24%',
-              opacity: 0.18,
-              backgroundColor: palette.barMuted,
-            }}
-            transition={{
-              duration: 0.5 + Math.random() * 0.5,
-              repeat: Infinity,
-              ease: "easeInOut"
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Glow Effect — centered on hub, behind bars */}
-      <motion.div
-        className="absolute left-1/2 top-1/2 z-0 h-[72%] w-[72%] -translate-x-1/2 -translate-y-1/2 rounded-full blur-xl pointer-events-none"
-        style={{ backgroundColor: palette.glow }}
-        animate={isActive ? {
-          scale: [1, 1.06, 1],
-          opacity: [0.28, 0.65, 0.28]
-        } : {
-          scale: 1,
-          opacity: 0.2
-        }}
-        transition={{ duration: 2, repeat: Infinity }}
-      />
-    </div>
-  );
-};
-
-const CrystalOverlay = ({ onClose }: { onClose: () => void }) => (
-  <SovereignCard className="relative z-20 w-full mx-0 text-center">
-    <div className="mb-8 flex justify-center">
-      <div className="w-16 h-1 bg-emerald-500/20 rounded-full" />
-    </div>
-    <SovereignTitle level={2} className="mb-4">Visual mode</SovereignTitle>
-    <SovereignDescription className="mb-4 max-w-lg mx-auto text-base">
-      The shell is voice-first: speak or type here, use Menu for settings, and open Google Workspace only when you
-      need it — it stays subordinate to the shell.
-    </SovereignDescription>
-    <SovereignDescription variant="muted" className="mb-8 max-w-lg mx-auto">
-      This screen is optional. Use it when you want a larger layout; most day-to-day use stays in the voice shell.
-      If your browser cannot use the microphone, switch to <strong className="text-white">Chat</strong> (bottom
-      left) to type instead.
-    </SovereignDescription>
-    <SovereignButton onClick={onClose} variant="primary" className="px-10">
-      Continue in voice
-    </SovereignButton>
-  </SovereignCard>
-);
 
 export default function App({
   speakTextRef,
@@ -1403,7 +266,7 @@ export default function App({
     applyAgentIntent,
   } = useWorkspaceCanvas();
 
-  const { showOperatorShellChrome, showDeveloperHud, setSurfaceMode } = useShellState();
+  const { surfaceMode, showOperatorShellChrome, showDeveloperHud, setSurfaceMode } = useShellState();
   const { osState: kernelState } = useKernelState();
   const {
     beginInteraction,
@@ -1416,7 +279,13 @@ export default function App({
   const showDiagnosticsChrome = showOperatorShellChrome;
 
   const [mode, setMode] = useState<AppMode>("voice");
-  const { theme, setTheme, resetTheme } = useShellTheme();
+  const [vcuLaunchRequest, setVcuLaunchRequest] = useState<{
+    view: VcuUniversityView;
+    revision: number;
+  } | null>(null);
+  const [supabaseUserId, setSupabaseUserId] = useState<string | null>(() => getSupabaseUserId());
+  const [trackedShellSessionId, setTrackedShellSessionId] = useState<string | null>(() => getTrackedShellSessionId());
+  const { theme, setTheme, resetTheme } = useShellTheme(supabaseUserId);
   const [voiceRoute, setVoiceRouteState] = useState<VoiceRouteId>(() => getVoiceRoute());
   const [voicePlaybackEngine, setVoicePlaybackEngine] = useState<VoicePlaybackEngine>('idle');
   const [voicePlaybackDetail, setVoicePlaybackDetail] = useState<string | undefined>(undefined);
@@ -1426,6 +295,10 @@ export default function App({
   const [queuedAudioCues, setQueuedAudioCues] = useState<ShellAudioCue[]>([]);
   /** True once the user explicitly picks Voice or Chat from the idle panel — hides the panel. */
   const [shellSessionStarted, setShellSessionStarted] = useState(false);
+  /** Centered desktop welcome card after session starts (Vibe Coding University workspace). */
+  const [desktopWelcomeOpen, setDesktopWelcomeOpen] = useState(false);
+  const [desktopWelcomeDismissed, setDesktopWelcomeDismissed] = useState(false);
+  const desktopWelcomeAudioFiredRef = useRef(false);
   /** True while the first-time Loyalty intro sequence is displayed. */
   const [showLoyaltyIntro, setShowLoyaltyIntro] = useState(false);
   const [knowledgePanelInitialTab, setKnowledgePanelInitialTab] = useState<'library' | 'upload'>('library');
@@ -1490,63 +363,6 @@ export default function App({
   const [transcription, setTranscription] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
 
-  // Hydrate conversation history from SQLite on boot (Tauri only; browser has no kernel DB).
-  useEffect(() => {
-    if (!isTauri) {
-      setMessages([
-        {
-          id: '1',
-          role: 'agent',
-          text: 'Welcome to AI OS. How can I help you today?',
-          timestamp: new Date(),
-        },
-      ]);
-      return;
-    }
-    Promise.all([
-      invoke<Array<{ message_id: string; role: string; text: string; timestamp_ms: number }>>('get_conversation_history').catch(() => []),
-      invoke<Record<string, string>>('get_active_intent_state').catch(() => ({})),
-    ]).then(([history, intentState]) => {
-      if (intentState.agentIntent) setAgentIntent(intentState.agentIntent);
-      if (intentState.userIntent) setUserIntent(intentState.userIntent);
-
-      const greeting = intentState.greetingMessage || 'Welcome to AI OS. How can I help you today?';
-
-      if (history.length > 0) {
-        setMessages(
-          history.map((m) => ({
-            id: m.message_id,
-            role: m.role as 'user' | 'agent',
-            text: m.text,
-            timestamp: new Date(m.timestamp_ms),
-          })),
-        );
-      } else {
-        setMessages([
-          {
-            id: '1',
-            role: 'agent',
-            text: greeting,
-            timestamp: new Date(),
-          },
-        ]);
-      }
-    });
-  }, []);
-
-  /** Fire-and-forget: persist a finalised message to SQLite. No-op in browser mode. */
-  function persistMessage(msg: Message) {
-    if (!isTauri) return;
-    void invoke('append_conversation_message', {
-      message: {
-        message_id: msg.id,
-        role: msg.role,
-        text: msg.text,
-        timestamp_ms: msg.timestamp.getTime(),
-      },
-    }).catch(() => { /* DB write failed — not critical */ });
-  }
-
   const [chatInput, setChatInput] = useState("");
   const [workspaceConnecting, setWorkspaceConnecting] = useState(false);
   /** Files imported by the user — injected into the next LLM system prompt. */
@@ -1557,6 +373,7 @@ export default function App({
   const [onboardingProfile, setOnboardingProfile] = useState(
     () => readOnboardingProfile(),
   );
+  const { registry: authoritativeMenuRegistry } = useShellMenuRegistry();
 
   const applyVoiceRoute = useCallback((route: VoiceRouteId) => {
     setVoiceRoute(route);
@@ -1579,100 +396,86 @@ export default function App({
     setVoiceRouteState(getVoiceRoute());
   }, []);
 
-  const openShellMenuById = useCallback((menuId: ShellMenuId) => {
-    setShellMenuStore((prev) => {
-      const entry = prev.registry_by_id[menuId];
-      if (!entry) {
-        return prev;
+  useEffect(() => {
+    if (!authSessionActive) {
+      hydratedRemoteShellStateUserRef.current = null;
+      setSupabaseUserId(null);
+      return;
+    }
+    setSupabaseUserId(getSupabaseUserId());
+  }, [authSessionActive]);
+
+  const hydratedRemoteShellStateUserRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!authSessionActive || !supabaseUserId) return;
+    if (hydratedRemoteShellStateUserRef.current === supabaseUserId) return;
+    hydratedRemoteShellStateUserRef.current = supabaseUserId;
+    let cancelled = false;
+
+    (async () => {
+      await Promise.all([
+        loadProfileFromSupabase(supabaseUserId),
+        loadInputsFromSupabase(supabaseUserId),
+      ]);
+      if (cancelled) return;
+      setOnboardingProfile(readOnboardingProfile());
+
+      await loadVoiceRouteFromSupabase(supabaseUserId);
+      if (!cancelled) {
+        setVoiceRouteState(getVoiceRoute());
       }
-      const nextLevelId =
-        prev.ui.active_level_id_by_menu_id[menuId] ?? entry.record.levels[0]?.level_id ?? '';
-      return {
-        ...prev,
-        ui: {
-          ...prev.ui,
-          active_menu_id: menuId,
-          menu_stack:
-            entry.parent_menu_id && entry.launch_mode === 'push_child'
-              ? [...prev.ui.menu_stack.filter((id) => id !== menuId), menuId]
-              : [menuId],
-          is_open_by_menu_id: { [menuId]: true },
-          active_level_id_by_menu_id: {
-            ...prev.ui.active_level_id_by_menu_id,
-            [menuId]: nextLevelId,
-          },
-        },
-        revision: prev.revision + 1,
-      };
+
+      const remoteCanvasChrome = await loadCanvasChromeFromSupabase(supabaseUserId);
+      if (
+        !cancelled
+        && remoteCanvasChrome
+        && !isThemeOverlayCustomized(theme)
+      ) {
+        setTheme({
+          overlayColor: remoteCanvasChrome.bgOverlayColor,
+          overlayOpacity: remoteCanvasChrome.bgOverlayOpacity,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authSessionActive, supabaseUserId, setTheme, theme]);
+
+  useEffect(() => {
+    void trackShellSession(surfaceMode, supabaseUserId, sessionEntryClassification).then((sessionId) => {
+      if (sessionId) {
+        setTrackedShellSessionId(sessionId);
+      }
     });
-  }, []);
+  }, [sessionEntryClassification, supabaseUserId, surfaceMode]);
 
-  const closeShellMenus = useCallback(() => {
-    setShellMenuStore((prev) => ({
-      ...prev,
-      ui: {
-        ...prev.ui,
-        active_menu_id: null,
-        menu_stack: [],
-        is_open_by_menu_id: {},
-      },
-      recording:
-        prev.recording.capture_status === 'recording'
-          ? prev.recording
-          : {
-              ...prev.recording,
-              capture_status: 'idle',
-              ptt_binding_enabled: false,
-            },
-      revision: prev.revision + 1,
-    }));
-  }, []);
+  useEffect(() => {
+    if (!supabaseUserId) return;
+    void syncVoiceRouteToSupabase(supabaseUserId, voiceRoute);
+  }, [supabaseUserId, voiceRoute]);
 
-  const setHeaderMenuOpen = useCallback(
-    (next: boolean | ((current: boolean) => boolean)) => {
-      const current = shellMenuStore.ui.is_open_by_menu_id['shell-header-system'] === true;
-      const value = typeof next === 'function' ? next(current) : next;
-      if (value) {
-        openShellMenuById('shell-header-system');
-        return;
-      }
-      closeShellMenus();
-    },
-    [closeShellMenus, openShellMenuById, shellMenuStore.ui.is_open_by_menu_id],
-  );
+  useEffect(() => {
+    if (!supabaseUserId) return;
+    void syncCanvasChromeToSupabase(supabaseUserId, mapThemeToCanvasChrome(theme));
+  }, [supabaseUserId, theme]);
 
-  const setFooterMenuOpen = useCallback(
-    (next: boolean | ((current: boolean) => boolean)) => {
-      const current = shellMenuStore.ui.is_open_by_menu_id['shell-footer-user'] === true;
-      const value = typeof next === 'function' ? next(current) : next;
-      if (value) {
-        openShellMenuById('shell-footer-user');
-        return;
-      }
-      closeShellMenus();
-    },
-    [closeShellMenus, openShellMenuById, shellMenuStore.ui.is_open_by_menu_id],
-  );
-
-  const headerMenuOpen = shellMenuStore.ui.is_open_by_menu_id['shell-header-system'] === true;
-  const footerMenuOpen = shellMenuStore.ui.is_open_by_menu_id['shell-footer-user'] === true;
-  const setShellMenuRecordingState = useCallback(
-    (
-      updater:
-        | Partial<ShellMenuStoreState['recording']>
-        | ((recording: ShellMenuStoreState['recording']) => ShellMenuStoreState['recording']),
-    ) => {
-      setShellMenuStore((prev) => ({
-        ...prev,
-        recording:
-          typeof updater === 'function'
-            ? updater(prev.recording)
-            : { ...prev.recording, ...updater },
-        revision: prev.revision + 1,
-      }));
-    },
-    [],
-  );
+  const {
+    activeShellMenuEntry,
+    activeShellMenuId,
+    clearShellMenuSelectedAction,
+    closeShellMenus,
+    footerMenuOpen,
+    headerMenuOpen,
+    markShellMenuActionSelected,
+    openShellMenuById,
+    setFooterMenuOpen,
+    setHeaderMenuOpen,
+    setShellMenuLevel,
+    setShellMenuRecordingState,
+  } = useShellMenuRuntime(shellMenuStore, setShellMenuStore);
 
   const selectVoiceboxRecordingProfile = useCallback(
     (profileId: string | null) => {
@@ -1752,6 +555,7 @@ export default function App({
   const latestFrameRef = useRef<string | null>(null);
   const handleLogout = useCallback(() => {
     resetOnboarding();
+    setSupabaseUserId(null);
     setAuthSessionActive(false);
     window.location.reload();
   }, []);
@@ -1763,15 +567,22 @@ export default function App({
     const existing = readOnboardingProfile();
     const openProjectBuilder = postAuthOpenProjectBuilderRef.current;
     postAuthOpenProjectBuilderRef.current = false;
-    writeOnboardingProfile({
+    const nextProfile: import('./onboarding/onboardingState').OnboardingProfile = {
       commander_name: existing?.commander_name?.trim() || 'Operator',
       interface_mode: guestPreferredInterfaceRef.current || existing?.interface_mode || 'voice',
       arrival_type: openProjectBuilder ? 'new' : 'returning',
       enrolled_at: existing?.enrolled_at ?? Date.now(),
       phone_number: phone,
-    });
+    };
+    writeOnboardingProfile(nextProfile);
+    setOnboardingProfile(nextProfile);
     setGuestJoinSurfaceOpen(false);
     setShellSessionStarted(true);
+    void syncProfileToSupabase(phone, nextProfile).then((userId) => {
+      if (userId) {
+        setSupabaseUserId(userId);
+      }
+    });
     if (openProjectBuilder) {
       queueMicrotask(() => setMode('coding_agent'));
     }
@@ -1804,6 +615,13 @@ export default function App({
     postAuthOpenProjectBuilderRef.current = false;
     openGuestJoinSurface();
   }, [openGuestJoinSurface]);
+
+  /** Guest hero “skip intro” — stop welcome audio only; ShellVoiceIdlePanel opens the 3-path community menu. */
+  const handleGuestSkipIntroToCommunityMenu = useCallback(() => {
+    postAuthOpenProjectBuilderRef.current = false;
+    stopLandingStartWelcome();
+    setLandingIntroPlaying(false);
+  }, []);
 
   const handleGuestSelectMode = useCallback(
     (selectedMode: 'voice' | 'chat') => {
@@ -1849,37 +667,6 @@ export default function App({
     setShellSessionStarted(true);
     void loadData('workspace_onboarding', undefined, { transitionMode: 'intent' });
   }, [kernelState, workspaceCanvas, loadData, engageSessionEntry]);
-
-  /**
-   * Ask the Rust kernel to snapshot the webview and store the result.
-   * Fire-and-forget — failures are silently swallowed; the frame ref stays stale rather than crashing.
-   */
-  const captureFrame = useCallback(() => {
-    if (!isTauri) return;
-    invoke<string>('capture_visual_context')
-      .then((b64) => { latestFrameRef.current = b64; })
-      .catch(() => { /* window minimised */ });
-  }, []);
-
-  // Re-capture whenever the active canvas view changes (new workspace surface opened).
-  useEffect(() => {
-    captureFrame();
-  }, [workspaceCanvas?.view, captureFrame]);
-
-  useEffect(() => {
-    if (!isTauri) return undefined;
-    let cancelled = false;
-    let unlisten: (() => void) | undefined;
-    void (async () => {
-      unlisten = await listen('open_coding_agent', () => {
-        if (!cancelled) setMode('coding_agent');
-      });
-    })();
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
 
   const shellApplyHandlers = useMemo<ShellApplyHandlers>(
     () => ({
@@ -2026,7 +813,7 @@ export default function App({
 
   /** Focused appearance controls (multi-level menu actions; not full-page dump forms). */
   const [appearanceTune, setAppearanceTune] = useState<
-    null | 'overlay_color' | 'overlay_opacity' | 'overlay_width' | 'canvas_padding'
+    null | 'overlay_color' | 'overlay_opacity' | 'overlay_width' | 'canvas_padding' | 'live_background'
   >(null);
 
   // Intent State
@@ -2038,6 +825,15 @@ export default function App({
   const [agentRole, setAgentRole] = useState("Assistant");
   const kernelVerbosityLevel: KernelVerbosityLevel =
     kernelState?.current_verbosity_level ?? 'book';
+  const { captureFrame, persistMessage } = useTauriKernelBridge({
+    activeAgentMessageIdRef,
+    latestFrameRef,
+    setAgentIntent,
+    setMessages,
+    setMode,
+    setUserIntent,
+    workspaceCanvasView: workspaceCanvas?.view,
+  });
 
   useEffect(() => {
     setScaffolding(scaffoldingDensityForVerbosity(kernelVerbosityLevel));
@@ -2068,67 +864,6 @@ export default function App({
     };
   }, []);
 
-  // Tauri IPC Listener for real-time LLM token streaming from Rust kernel
-  // This enables the "lightning fast" streaming UX described in the blueprint
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    const setupListener = async () => {
-      // Check if the Tauri IPC bridge exists on the window object
-      const isTauriRuntime = '__TAURI_IPC__' in window;
-
-      if (!isTauriRuntime) {
-        console.warn("Browser Mode Detected: Skipping Tauri event listener setup.");
-        return;
-      }
-
-      try {
-        const unlistenFn = await listen<string>('llm_token', (event) => {
-          console.log("New LLM token from kernel:", event.payload);
-          
-          // Append token to the latest agent message for streaming effect
-          setMessages(prev => {
-            const targetId = activeAgentMessageIdRef.current;
-            if (!targetId) return prev;
-            const targetIndex = prev.findIndex((msg) => msg.id === targetId && msg.role === 'agent');
-            if (targetIndex === -1) return prev;
-            const targetMessage = prev[targetIndex];
-            const updatedTarget = {
-              ...targetMessage,
-              text: targetMessage.text.replace('Thinking with local Ollama kernel...', '') + event.payload
-            };
-            return [
-              ...prev.slice(0, targetIndex),
-              updatedTarget,
-              ...prev.slice(targetIndex + 1),
-            ];
-          });
-        });
-
-        if (cancelled) {
-          // Cleanup already ran before the await resolved — remove listener immediately
-          activeAgentMessageIdRef.current = null;
-          unlistenFn();
-        } else {
-          unlisten = () => {
-            activeAgentMessageIdRef.current = null;
-            unlistenFn();
-          };
-        }
-      } catch (err) {
-        console.error('Failed to setup Tauri event listener:', err);
-      }
-    };
-
-    setupListener();
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
- 
   const runShellIntentPipeline = useCallback((agentText: string) => {
     const { action, delegateWorkspaceCanvas } = routeShellAgentText(agentText);
     const auth = readInterimShellAuthority();
@@ -2245,6 +980,43 @@ export default function App({
   }, [playAudioCue, speakerEnabled]);
 
   speakTextRef.current = speakText;
+
+  useEffect(() => {
+    if (!authSessionActive) {
+      setDesktopWelcomeDismissed(false);
+      setDesktopWelcomeOpen(false);
+      desktopWelcomeAudioFiredRef.current = false;
+    }
+  }, [authSessionActive]);
+
+  useEffect(() => {
+    if (!authSessionActive || !shellSessionStarted) return;
+    if (workspaceCanvas) return;
+    if (mode !== 'voice' && mode !== 'chat') return;
+    if (desktopWelcomeDismissed) return;
+    setDesktopWelcomeOpen(true);
+  }, [
+    authSessionActive,
+    shellSessionStarted,
+    workspaceCanvas,
+    mode,
+    desktopWelcomeDismissed,
+  ]);
+
+  useEffect(() => {
+    if (!desktopWelcomeOpen) {
+      desktopWelcomeAudioFiredRef.current = false;
+      return;
+    }
+    if (desktopWelcomeAudioFiredRef.current) return;
+    desktopWelcomeAudioFiredRef.current = true;
+    void speakText(DESKTOP_WELCOME_VOICE_SCRIPT, undefined, 'Desktop welcome', 'landing');
+  }, [desktopWelcomeOpen, speakText]);
+
+  const handleDesktopWelcomeContinue = useCallback(() => {
+    setDesktopWelcomeDismissed(true);
+    setDesktopWelcomeOpen(false);
+  }, []);
 
   const stopSpeech = useCallback(() => {
     stopLandingStartWelcome();
@@ -3038,11 +1810,8 @@ export default function App({
             const baseline = intentIngestionController.bindIntentToProjectBaseline(payload);
             const handoff = intentIngestionController.buildIntentReviewHandoff(payload, baseline);
 
-            // Run deterministic shortcut scanner
-            const shortcutReport = await heuristicShortcutScanner.scanProject(baseline, {
-              'src/App.tsx': '<div style={{ marginTop: "43px" }} />', // Simulated file content
-              'src/api.ts': 'catch (e) {}', // Simulated file content
-            });
+            // No mock scanner evidence: real project files are not attached to this voice capture.
+            const shortcutReport = await heuristicShortcutScanner.scanProject(baseline, {});
             handoff.shortcut_report = shortcutReport;
 
             // Map shortcut report to triggers
@@ -3371,11 +2140,8 @@ export default function App({
     const baseline = intentIngestionController.bindIntentToProjectBaseline(payload);
     const handoff = intentIngestionController.buildIntentReviewHandoff(payload, baseline);
 
-    // Run deterministic shortcut scanner
-    const shortcutReport = await heuristicShortcutScanner.scanProject(baseline, {
-      'src/App.tsx': '<div style={{ marginTop: "43px" }} />', // Simulated file content
-      'src/api.ts': 'catch (e) {}', // Simulated file content
-    });
+    // No mock scanner evidence: real project files are not attached to this chat capture.
+    const shortcutReport = await heuristicShortcutScanner.scanProject(baseline, {});
     handoff.shortcut_report = shortcutReport;
 
     // Map shortcut report to triggers
@@ -3534,17 +2300,17 @@ export default function App({
 
   const shellTheme = useMemo<ShellGlassTheme>(
     () => ({
-      chromeClassName: 'bg-slate-950/58 backdrop-blur-md',
-      panelClassName: 'border-white/15 shadow-[0_24px_80px_-24px_rgba(15,23,42,0.85)]',
-      accentBadgeClassName: 'border border-emerald-300/25 bg-emerald-400/20 text-emerald-100',
-      textClassName: 'text-slate-50',
-      mutedTextClassName: 'text-slate-300/70',
-      statusOkClassName: 'text-emerald-300',
-      statusMutedClassName: 'text-slate-300/60',
+      chromeClassName: 'bg-[var(--panel-bg)] backdrop-blur-md',
+      panelClassName: 'border-[var(--panel-border)] bg-[var(--panel-bg)] shadow-[0_24px_80px_-24px_rgba(15,23,42,0.85)]',
+      accentBadgeClassName: 'border border-[var(--panel-accent-border)] bg-[var(--panel-accent-bg)] text-[var(--panel-accent-text)]',
+      textClassName: 'text-[var(--panel-text)]',
+      mutedTextClassName: 'text-[var(--panel-text-muted)]',
+      statusOkClassName: 'text-[var(--panel-accent-text)]',
+      statusMutedClassName: 'text-[var(--panel-text-muted)]',
       statusErrorClassName: 'text-rose-300',
-      inputClassName: 'border border-white/15 bg-slate-950/55 text-slate-50 placeholder:text-slate-400/60 backdrop-blur-md',
-      primaryButtonClassName: 'border border-emerald-300/35 bg-emerald-500/85 text-white backdrop-blur-md hover:bg-emerald-400/90',
-      secondaryButtonClassName: 'border border-white/15 bg-white/8 text-slate-100 backdrop-blur-md hover:bg-white/12',
+      inputClassName: 'border border-[var(--panel-input-border)] bg-[var(--panel-input-bg)] text-[var(--panel-text)] placeholder:text-[var(--panel-text-muted)] backdrop-blur-md',
+      primaryButtonClassName: 'border border-[var(--panel-accent-border)] bg-[var(--panel-accent-bg)] text-[var(--panel-accent-text)] backdrop-blur-md hover:opacity-90',
+      secondaryButtonClassName: 'border border-[var(--panel-border)] bg-[var(--panel-surface)] text-[var(--panel-text)] backdrop-blur-md hover:opacity-90',
     }),
     [],
   );
@@ -3564,32 +2330,18 @@ export default function App({
   /** Guest landing always shows governed header menus; authenticated still follows kernel contract. */
   const headerMenuChromeAllowed = !authSessionActive || headerMenuPermitted;
   const footerMenuPermitted = kernelAllowsComponent('shell_footer_user_menu');
-  const [dynamicMenuRegistry, setDynamicMenuRegistry] = useState<Record<ShellMenuId, ShellMenuRegistryEntry>>(CENTRAL_SHELL_MENU_REGISTRY);
-
-  useEffect(() => {
-    if (!isTauri) return;
-    invoke<Record<ShellMenuId, ShellMenuRegistryEntry>>('resolve_intent_menu')
-      .then((registry) => {
-        if (registry && Object.keys(registry).length > 0) {
-          setDynamicMenuRegistry(registry);
-        }
-      })
-      .catch((err) => {
-        console.warn('Failed to resolve intent menu from backend, falling back to central registry:', err);
-      });
-  }, [authSessionActive]); // Re-resolve when OTP session changes
 
   const shellMenuRegistry = useMemo<Record<ShellMenuId, ShellMenuRegistryEntry>>(() => {
     const headerSystemMenu =
-      dynamicMenuRegistry['shell-header-system'] ?? CENTRAL_SHELL_MENU_REGISTRY['shell-header-system'];
+      authoritativeMenuRegistry['shell-header-system'] ?? CENTRAL_SHELL_MENU_REGISTRY['shell-header-system'];
     const footerUserMenu =
-      dynamicMenuRegistry['shell-footer-user'] ?? CENTRAL_SHELL_MENU_REGISTRY['shell-footer-user'];
+      authoritativeMenuRegistry['shell-footer-user'] ?? CENTRAL_SHELL_MENU_REGISTRY['shell-footer-user'];
     const systemControlsMenu =
-      dynamicMenuRegistry['system-controls'] ?? CENTRAL_SHELL_MENU_REGISTRY['system-controls'];
+      authoritativeMenuRegistry['system-controls'] ?? CENTRAL_SHELL_MENU_REGISTRY['system-controls'];
 
     let merged: Record<ShellMenuId, ShellMenuRegistryEntry> = {
       ...CENTRAL_SHELL_MENU_REGISTRY,
-      ...dynamicMenuRegistry,
+      ...authoritativeMenuRegistry,
       'shell-header-system': {
         ...headerSystemMenu,
         record: {
@@ -3672,7 +2424,7 @@ export default function App({
 
     return filterShellMenuRegistryForAuth(merged, authSessionActive ? 'authenticated' : 'guest');
   }, [
-    dynamicMenuRegistry,
+    authoritativeMenuRegistry,
     activeVoiceLabel,
     powerChromeState,
     showDiagnosticsChrome,
@@ -3762,10 +2514,6 @@ export default function App({
 
   const headerSystemMenuRecord = shellMenuStore.registry_by_id['shell-header-system'].record;
   const footerUserMenuRecord = shellMenuStore.registry_by_id['shell-footer-user'].record;
-  const activeShellMenuId = shellMenuStore.ui.active_menu_id;
-  const activeShellMenuEntry = activeShellMenuId
-    ? shellMenuStore.registry_by_id[activeShellMenuId]
-    : null;
   const shellIntentLabel =
     workspaceCanvas?.view
       ? `canvas:${workspaceCanvas.view}`
@@ -3789,287 +2537,87 @@ export default function App({
         .find((message) => message.role === 'agent' && message.text.trim())?.text,
     [messages],
   );
+  const shellMenuAgentDisclosureLine = 'Shell Intent: Greet Customer · Skill: Determine Intent · Outcome: Route To Destination';
+  const shellMenuDisclosureSummary = useMemo(
+    () => {
+      const availableSkills = kernelState?.available_skills?.filter((skill) => skill.trim()) ?? [];
+      const shellIntent = !authSessionActive && showVoiceIdleOrientation
+        ? 'Greet Customer'
+        : kernelState?.current_intent?.trim() || 'Determine Intent';
+      const desiredOutcome = !authSessionActive && showVoiceIdleOrientation
+        ? 'Route To Destination'
+        : latestAgentOutcome
+          ? stripIntentLineForDisplay(latestAgentOutcome).slice(0, 120)
+          : 'Route To Destination';
+
+      return {
+        shellIntent,
+        availableSkills: availableSkills.length > 0 ? availableSkills : ['Determine Intent'],
+        desiredOutcome,
+        userRole: authSessionActive ? 'Verified operator' : 'Guest / prospective student',
+        journeyPosition: shellJourney.primaryLabel,
+        sourceRef: headerSystemMenuRecord.data_source_ref,
+      };
+    },
+    [
+      authSessionActive,
+      headerSystemMenuRecord.data_source_ref,
+      kernelState?.available_skills,
+      kernelState?.current_intent,
+      latestAgentOutcome,
+      shellJourney.primaryLabel,
+      showVoiceIdleOrientation,
+    ],
+  );
   useEffect(() => {
     voiceboxRecordingChunksRef.current = shellMenuStore.recording.capture_chunks;
   }, [shellMenuStore.recording.capture_chunks]);
 
-  const setShellMenuLevel = useCallback((menuId: ShellMenuId, levelId: string) => {
-    setShellMenuStore((prev) => ({
-      ...prev,
-      ui: {
-        ...prev.ui,
-        active_level_id_by_menu_id: {
-          ...prev.ui.active_level_id_by_menu_id,
-          [menuId]: levelId,
-        },
-        selected_action_id_by_menu_id: {
-          ...prev.ui.selected_action_id_by_menu_id,
-          [menuId]: undefined,
-        },
-      },
-      revision: prev.revision + 1,
-    }));
-  }, []);
-
-  const clearShellMenuSelectedAction = useCallback((menuId: ShellMenuId) => {
-    setShellMenuStore((prev) => {
-      const nextSelectedActions = { ...prev.ui.selected_action_id_by_menu_id };
-      delete nextSelectedActions[menuId];
-      return {
-        ...prev,
-        ui: {
-          ...prev.ui,
-          selected_action_id_by_menu_id: nextSelectedActions,
-        },
-        recording:
-          menuId === 'voice-box'
-            ? {
-                ...prev.recording,
-                capture_status:
-                  prev.recording.capture_status === 'recording' ? prev.recording.capture_status : 'idle',
-                ptt_binding_enabled:
-                  prev.recording.capture_status === 'recording' ? prev.recording.ptt_binding_enabled : false,
-              }
-            : prev.recording,
-        revision: prev.revision + 1,
-      };
-    });
-  }, []);
-
-  const markShellMenuActionSelected = useCallback((menuId: ShellMenuId | null, actionId: string) => {
-    if (!menuId) {
+  const openVcuDesktop = useCallback((view: VcuUniversityView) => {
+    closeShellMenus();
+    if (shellMenuStore.context.auth_status === 'guest') {
+      setAuthPanelOpen(true);
       return;
     }
-    setShellMenuStore((prev) => ({
-      ...prev,
-      ui: {
-        ...prev.ui,
-        selected_action_id_by_menu_id: {
-          ...prev.ui.selected_action_id_by_menu_id,
-          [menuId]: actionId,
-        },
-      },
-      revision: prev.revision + 1,
+    setMode('voice');
+    setVcuLaunchRequest((current) => ({
+      view,
+      revision: (current?.revision ?? 0) + 1,
     }));
-  }, []);
+  }, [closeShellMenus, setAuthPanelOpen, shellMenuStore.context.auth_status]);
 
-  const handleShellMenuAction = useCallback(
-    async (actionId: string) => {
-      engageSessionEntry();
-      setShellSessionStarted(true);
-      markShellMenuActionSelected(activeShellMenuId ?? shellMenuStore.ui.active_menu_id, actionId);
+  const { handleShellMenuAction } = useShellMenuActions({
+    activeShellMenuId,
+    activeMenuId: shellMenuStore.ui.active_menu_id,
+    authStatus: shellMenuStore.context.auth_status,
+    powerChromeState,
+    showDiagnosticsChrome,
+    engageSessionEntry,
+    closeShellMenus,
+    markShellMenuActionSelected,
+    openGuestJoinSurface,
+    openShellMenuById,
+    openVcuDesktop,
+    openWorkspaceHub,
+    handleOpenPodcasts,
+    handleOpenKnowledgePanel,
+    handleLogout,
+    applyVoiceRoute,
+    refreshVoiceboxRecordingState,
+    selectVoiceboxRecordingProfile,
+    activateVoiceboxProfile,
+    resetTheme,
+    setAppearanceTune,
+    setAuthPanelOpen,
+    setGuestNicknameDraft,
+    setGuestNicknameOverlayOpen,
+    setMessages,
+    setMode,
+    setShellMenuRecordingState,
+    setShellSessionStarted,
+    setTheme,
+  });
 
-      switch (actionId) {
-        case 'guest_verify_phone':
-          closeShellMenus();
-          setAuthPanelOpen(true);
-          return;
-        case 'guest_open_display_name':
-          closeShellMenus();
-          setGuestNicknameDraft(readVibeGuestDisplayName() ?? '');
-          setGuestNicknameOverlayOpen(true);
-          return;
-        case 'guest_explore_topics':
-          closeShellMenus();
-          openGuestJoinSurface();
-          return;
-        case 'guest_open_public_shell_menu':
-          closeShellMenus();
-          openShellMenuById('shell-header-system');
-          return;
-        case 'open_workspace':
-          openWorkspaceHub();
-          return;
-        case 'open_user_storage':
-          closeShellMenus();
-          setMode('user_storage');
-          return;
-        case 'open_voice_control':
-        case 'open_menu_voice_control':
-          setMode('voice');
-          openShellMenuById('voice-control');
-          return;
-        case 'open_menu_voice_box':
-          setMode('voice');
-          openShellMenuById('voice-box');
-          return;
-        case 'open_podcasts':
-          handleOpenPodcasts();
-          return;
-        case 'open_menu_appearance':
-          setMode('voice');
-          openShellMenuById('appearance');
-          return;
-        case 'open_menu_agent_identity':
-          setMode('voice');
-          openShellMenuById('agent-identity');
-          return;
-        case 'open_arch_protocol_reference':
-          closeShellMenus();
-          setMode('intent_settings');
-          return;
-        case 'open_disc_settings':
-          closeShellMenus();
-          setMode('disc_settings');
-          return;
-        case 'open_api_health':
-          closeShellMenus();
-          if (showDiagnosticsChrome) {
-            setMode('api_health');
-          }
-          return;
-        case 'open_knowledge':
-          handleOpenKnowledgePanel('library');
-          return;
-        case 'open_transparency':
-          closeShellMenus();
-          setMode('transparency');
-          return;
-        case 'open_coding_agent':
-          closeShellMenus();
-          setMode('coding_agent');
-          return;
-        case 'system_logout':
-          if (powerChromeState === 'signed_in') {
-            closeShellMenus();
-            handleLogout();
-          }
-          return;
-        case 'system_quit_app':
-          await tryQuitApplication();
-          return;
-        case 'set_voice_route_gemini':
-          applyVoiceRoute('gemini');
-          return;
-        case 'set_voice_route_voicebox':
-          applyVoiceRoute('voicebox');
-          return;
-        case 'set_voice_route_browser':
-          applyVoiceRoute('browser');
-          return;
-        case 'appearance_set_dark_mode':
-          setTheme({ colorScheme: 'dark' });
-          return;
-        case 'appearance_set_light_mode':
-          setTheme({ colorScheme: 'light' });
-          return;
-        case 'appearance_reset_defaults':
-          resetTheme();
-          return;
-        case 'appearance_set_background_live_effects':
-          setTheme({ backgroundType: 'canvas', customBgKind: null, customBgPath: null });
-          return;
-        case 'appearance_open_overlay_color':
-          closeShellMenus();
-          setAppearanceTune('overlay_color');
-          return;
-        case 'appearance_open_overlay_opacity':
-          closeShellMenus();
-          setAppearanceTune('overlay_opacity');
-          return;
-        case 'appearance_open_overlay_width':
-          closeShellMenus();
-          setAppearanceTune('overlay_width');
-          return;
-        case 'appearance_open_canvas_padding':
-          closeShellMenus();
-          setAppearanceTune('canvas_padding');
-          return;
-        case 'appearance_open_custom_background': {
-          if (!isTauri) return;
-          const result = await invoke<[string, string] | null>('pick_file');
-          if (!result?.[0]) return;
-          const path = result[0];
-          const ext = path.split('.').pop()?.toLowerCase() ?? '';
-          const video = ['mp4', 'webm', 'mov', 'avi'].includes(ext);
-          setTheme({
-            backgroundType: 'custom',
-            customBgPath: path,
-            customBgKind: video ? 'video' : 'image',
-          });
-          return;
-        }
-        case 'appearance_open_background_library': {
-          const idx = SHADCN_BACKGROUND_ITEMS.findIndex((i) => i.id === theme.canvasBackgroundId);
-          const next = SHADCN_BACKGROUND_ITEMS[(Math.max(0, idx) + 1) % SHADCN_BACKGROUND_ITEMS.length];
-          setTheme({
-            backgroundType: 'canvas',
-            customBgKind: null,
-            customBgPath: null,
-            canvasBackgroundId: next.id,
-          });
-          return;
-        }
-        case 'open_voicebox_profiles': {
-          await refreshVoiceboxRecordingState();
-          setMode('voice');
-          openShellMenuById('voice-box');
-          return;
-        }
-        case 'open_voicebox_create': {
-          await refreshVoiceboxRecordingState();
-          setMode('voice');
-          openShellMenuById('voice-box');
-          return;
-        }
-        case 'open_voicebox_upload': {
-          const archivePath = await VoiceboxClient.pickArchivePath();
-          if (!archivePath) return;
-          const profile = await VoiceboxClient.importProfileArchive(archivePath);
-          await refreshVoiceboxRecordingState();
-          selectVoiceboxRecordingProfile(profile.id);
-          await activateVoiceboxProfile(profile.id);
-          return;
-        }
-        case 'open_voicebox_record':
-          setShellMenuRecordingState((recording) => ({
-            ...recording,
-            capture_status: recording.active_profile_id ? 'armed' : 'idle',
-            capture_chunks: [],
-            last_error: null,
-            ptt_binding_enabled: Boolean(recording.active_profile_id),
-          }));
-          await refreshVoiceboxRecordingState();
-          return;
-        default:
-          return;
-      }
-    },
-    [
-      activateVoiceboxProfile,
-      activeShellMenuId,
-      agentCompany,
-      agentIntent,
-      agentName,
-      agentRole,
-      applyVoiceRoute,
-      closeShellMenus,
-      desiredOutcome,
-      engageSessionEntry,
-      handleLogout,
-      handleOpenKnowledgePanel,
-      handleOpenPodcasts,
-      markShellMenuActionSelected,
-      openGuestJoinSurface,
-      openShellMenuById,
-      openWorkspaceHub,
-      powerChromeState,
-      resetTheme,
-      refreshVoiceboxRecordingState,
-      setAppearanceTune,
-      selectVoiceboxRecordingProfile,
-      setTheme,
-      setAuthPanelOpen,
-      setGuestNicknameDraft,
-      setGuestNicknameOverlayOpen,
-      setShellMenuRecordingState,
-      shellMenuStore.ui.active_menu_id,
-      showDiagnosticsChrome,
-      theme,
-      userIntent,
-      isTauri,
-    ],
-  );
   const renderShellMenuDetailSurface = useCallback(
     (surfaceId: string) => {
       switch (surfaceId) {
@@ -4307,14 +2855,33 @@ export default function App({
         workspaceState={workspaceDisclosure}
         sessionEntry={sessionEntryClassification}
         eyebrow="Vibe Coding University"
-        footline={
-          authSessionActive
-            ? 'Play the welcome, tap a topic, or skip to continue.'
-            : 'You are on the guest landing — play the welcome, explore topics, or skip to join.'
-        }
         introAudioPlaying={landingIntroPlaying}
         onIntroPlayPause={() => void handleLandingIntroPlayPause()}
         onSkipIntro={authSessionActive ? handleAuthenticatedSkipIntro : handleGuestSkipIntro}
+        onSkipIntroFromHero={
+          authSessionActive ? handleAuthenticatedSkipIntro : handleGuestSkipIntroToCommunityMenu
+        }
+        openCommunityMenuOnHeroSkip={!authSessionActive}
+        onCreateAccount={() => {
+          engageSessionEntry();
+          postAuthOpenProjectBuilderRef.current = false;
+          stopLandingStartWelcome();
+          setLandingIntroPlaying(false);
+          setGuestJoinSurfaceOpen(false);
+          setAuthPanelOpen(true);
+        }}
+        onLogin={() => {
+          engageSessionEntry();
+          postAuthOpenProjectBuilderRef.current = false;
+          stopLandingStartWelcome();
+          setLandingIntroPlaying(false);
+          setGuestJoinSurfaceOpen(false);
+          setAuthPanelOpen(true);
+        }}
+        onRequestAudiencePath={() => {
+          engageSessionEntry();
+          openGuestJoinSurface();
+        }}
         onOpenMenu={() => {
           engageSessionEntry();
           setFooterMenuOpen(false);
@@ -4377,7 +2944,7 @@ export default function App({
 
   return (
     <div
-      className="fixed inset-0 font-sans overflow-hidden selection:bg-emerald-500/30"
+      className="fixed inset-0 font-sans overflow-hidden selection:bg-blue-500/30"
       style={themeToCssVars(theme)}
       data-color-scheme={theme.colorScheme}
       data-kernel-verbosity={kernelVerbosityLevel}
@@ -4427,10 +2994,16 @@ export default function App({
       {shellMenuStore.context.auth_status === 'authenticated' && !activeShellMenuEntry && (
         <div className="absolute inset-0 z-[var(--z-shell-workspace-canvas)] pointer-events-none">
           <div className="pointer-events-auto h-full w-full">
-            <VirtualDesktopEnvironment authStatus={shellMenuStore.context.auth_status} />
+            <VirtualDesktopEnvironment
+              authStatus={shellMenuStore.context.auth_status}
+              launchUniversityView={vcuLaunchRequest?.view ?? null}
+              launchRevision={vcuLaunchRequest?.revision ?? 0}
+            />
           </div>
         </div>
       )}
+
+      <DesktopWelcomeOverlay open={desktopWelcomeOpen} onContinue={handleDesktopWelcomeContinue} />
 
       <ShellContentZone
         theme={shellTheme}
@@ -4476,6 +3049,7 @@ export default function App({
                 onActiveLevelChange={(levelId) => setShellMenuLevel(activeShellMenuEntry.menu_id, levelId)}
                 selectedActionId={shellMenuStore.ui.selected_action_id_by_menu_id[activeShellMenuEntry.menu_id]}
                 onClearSelectedAction={() => clearShellMenuSelectedAction(activeShellMenuEntry.menu_id)}
+                disclosureSummary={shellMenuDisclosureSummary}
                 onBackMenu={
                   shellMenuStore.ui.menu_stack.length > 1
                     ? () => {
@@ -4504,7 +3078,8 @@ export default function App({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-md z-[var(--z-shell-chrome)]"
+            className="absolute inset-0 flex items-center justify-center backdrop-blur-md z-[var(--z-shell-chrome)]"
+            style={{ background: 'color-mix(in srgb, var(--panel-bg) 72%, transparent)' }}
           >
             <CrystalOverlay onClose={() => setMode('voice')} />
           </motion.div>
@@ -4565,13 +3140,36 @@ export default function App({
             onClose={() => setAppearanceTune(null)}
             align="center"
           >
-            <SovereignCard className="max-w-md w-full border border-[var(--panel-border)] bg-[var(--panel-bg)] p-6 shadow-2xl">
+            <SovereignCard
+              className={`w-full border border-[var(--panel-border)] bg-[var(--panel-bg)] p-6 shadow-2xl ${
+                appearanceTune === 'live_background' ? 'max-w-2xl' : 'max-w-md'
+              }`}
+            >
               <SovereignTitle level={2} className="text-[var(--panel-heading)]">
                 {appearanceTune === 'overlay_color' && 'Overlay tint color'}
                 {appearanceTune === 'overlay_opacity' && 'Overlay opacity'}
                 {appearanceTune === 'overlay_width' && 'Overlay width'}
                 {appearanceTune === 'canvas_padding' && 'Canvas padding'}
+                {appearanceTune === 'live_background' && 'Live shell backgrounds'}
               </SovereignTitle>
+              {appearanceTune === 'live_background' && (
+                <>
+                  <p className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--panel-text-muted)' }}>
+                    Choose a governed canvas effect. The shell updates immediately; use Done when you are finished.
+                  </p>
+                  <LiveBackgroundAppearancePicker
+                    activeId={theme.canvasBackgroundId}
+                    onPick={(id) =>
+                      setTheme({
+                        backgroundType: 'canvas',
+                        customBgKind: null,
+                        customBgPath: null,
+                        canvasBackgroundId: id,
+                      })
+                    }
+                  />
+                </>
+              )}
               {appearanceTune === 'overlay_color' && (
                 <div className="mt-4 flex flex-col gap-3">
                   <input
@@ -4657,9 +3255,6 @@ export default function App({
                 <button onClick={() => setMode('voice')} className="px-4 py-2 text-[var(--panel-text-muted)] hover:text-[var(--panel-text)]">Cancel</button>
                 <button 
                   onClick={() => {
-                    if (isTauri) {
-                      void invoke('initialize_smart_contract').catch(console.warn);
-                    }
                     markOtpVerified();
                     setAuthSessionActive(true);
                     setMode('voice');
@@ -4701,7 +3296,12 @@ export default function App({
 
         {mode === 'knowledge' && (
           <Suspense fallback={null}>
-            <LazySessionKnowledgePanel initialTab={knowledgePanelInitialTab} onClose={() => setMode('voice')} />
+            <LazySessionKnowledgePanel
+              initialTab={knowledgePanelInitialTab}
+              onClose={() => setMode('voice')}
+              userId={supabaseUserId}
+              sessionId={trackedShellSessionId}
+            />
           </Suspense>
         )}
 
@@ -4745,7 +3345,8 @@ export default function App({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 flex items-start sm:items-center justify-center bg-zinc-900/[0.05] backdrop-blur-[2px] overflow-y-auto pt-[calc(var(--shell-header-height)+0.75rem)] pb-[var(--shell-footer-height)] z-[var(--z-shell-workspace-canvas)] min-h-0"
+            className="absolute inset-0 flex items-start sm:items-center justify-center backdrop-blur-[2px] overflow-y-auto pt-[calc(var(--shell-header-height)+0.75rem)] pb-[var(--shell-footer-height)] z-[var(--z-shell-workspace-canvas)] min-h-0"
+            style={{ background: 'color-mix(in srgb, var(--panel-bg) 5%, transparent)' }}
             onClick={dismissBackdrop}
           >
             <div onClick={(e) => e.stopPropagation()} className="w-full flex justify-center px-2">
@@ -4871,7 +3472,7 @@ export default function App({
         onPTTUp={(e) => void handlePTTUp(e)}
         displayStatus={statusDisplay}
         displayStatusDetail={displayStatusDetail}
-        footerJourneyLine={shellJourney.footerLine}
+        footerJourneyLine={headerMenuOpen ? shellMenuAgentDisclosureLine : undefined}
         loyaltySummary={loyaltyBadgeLabel}
         statusTone={status === 'error' ? 'error' : status === 'offline' ? 'muted' : 'ok'}
         showDiagnosticsChrome={showDiagnosticsChrome}
@@ -4911,7 +3512,12 @@ export default function App({
         <button
           onClick={() => void handleImportFile()}
           title="Import a file into AI context"
-          className="fixed bottom-[calc(var(--shell-footer-height)+0.6rem)] right-6 z-[var(--z-shell-chrome)] flex items-center justify-center w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400 hover:text-cyan-300 transition-all"
+          className="fixed bottom-[calc(var(--shell-footer-height)+0.6rem)] right-6 z-[var(--z-shell-chrome)] flex items-center justify-center w-9 h-9 rounded-full border transition-all hover:opacity-90"
+          style={{
+            background: 'var(--panel-surface)',
+            borderColor: 'var(--panel-border)',
+            color: 'var(--panel-text-muted)',
+          }}
         >
           <Paperclip size={16} />
         </button>

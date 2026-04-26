@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
+import { VibeCodingUniversityPanel, type VcuUniversityView } from './VibeCodingUniversityPanel';
 
 // --- Types ---
-type AppId = 'university' | 'coder' | 'community' | 'knowledge' | 'onboarding';
+type AppId = 'university';
 
 interface DesktopWindow {
   id: AppId;
@@ -21,77 +22,19 @@ interface Notification {
   time: string;
 }
 
-// --- Mock App Content ---
-const AppContent: Record<AppId, React.ReactNode> = {
-  university: (
-    <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <h2>🎓 Vibe Coding University</h2>
-      <p>Educational hub explaining LLMs as statistical machines and platform economics.</p>
-      <ul>
-        <li>Understanding Statistical Machines</li>
-        <li>Platform Economics & Open Source</li>
-        <li>The Fallacy of "Vibe Coding"</li>
-      </ul>
-    </div>
-  ),
-  coder: (
-    <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <h2>💻 Let's Build! (The Vibe Coder)</h2>
-      <p>Project intake portal emphasizing AI OS governance and Triangulated Code Reviews.</p>
-      <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-        <button style={{ padding: '0.5rem 1rem', background: 'var(--panel-accent-bg)', color: 'var(--panel-accent-text)', border: '1px solid var(--panel-accent-border)', borderRadius: '0.5rem' }}>New Project</button>
-        <button style={{ padding: '0.5rem 1rem', background: 'var(--panel-surface)', color: 'var(--panel-text)', border: '1px solid var(--panel-border)', borderRadius: '0.5rem' }}>Upload .zip</button>
-        <button style={{ padding: '0.5rem 1rem', background: 'var(--panel-surface)', color: 'var(--panel-text)', border: '1px solid var(--panel-border)', borderRadius: '0.5rem' }}>Connect GitHub Repo</button>
-      </div>
-    </div>
-  ),
-  community: (
-    <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <h2>🌐 Join The Community</h2>
-      <p>Scaffolded community hub for peer-to-peer messaging and profiles.</p>
-      <div style={{ padding: '1rem', background: 'var(--panel-surface)', border: '1px solid var(--panel-border)', borderRadius: '0.5rem' }}>
-        <p>Connecting to message boards...</p>
-      </div>
-    </div>
-  ),
-  knowledge: <div style={{ padding: '1rem' }}>📚 Knowledge Base. Querying governed documentation and architectural standards...</div>,
-  onboarding: (
-    <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem', alignItems: 'center', height: '100%', overflowY: 'auto' }}>
-      <div style={{ textAlign: 'center', maxWidth: '600px' }}>
-        <h2>Welcome to AI OS</h2>
-        <p style={{ color: 'var(--panel-text-muted)', marginTop: '0.5rem' }}>You are currently unauthenticated. Please ask the AI agent to create an account or sign you in to unlock the full Virtual Desktop Environment.</p>
-      </div>
-      
-      {/* SaaS Pricing Component */}
-      <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: '800px' }}>
-        <div style={{ flex: '1 1 300px', padding: '2rem', background: 'var(--panel-surface)', border: '1px solid var(--panel-border)', borderRadius: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <h3 style={{ margin: 0 }}>Primary Tier</h3>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>$49.95<span style={{ fontSize: '1rem', color: 'var(--panel-text-muted)', fontWeight: 'normal' }}>/month</span></div>
-          <div style={{ color: 'var(--panel-accent-text)', fontWeight: 'bold' }}>30 Days Free Trial</div>
-          <ul style={{ paddingLeft: '1.5rem', margin: 0, color: 'var(--panel-text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <li>Full access to Vibe Coding University</li>
-            <li>Unlimited Community Hub access</li>
-            <li>Triangulated Code Reviews</li>
-          </ul>
-        </div>
-        
-        <div style={{ flex: '1 1 300px', padding: '2rem', background: 'var(--panel-surface)', border: '2px solid var(--panel-accent-border)', borderRadius: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
-          <div style={{ position: 'absolute', top: '-12px', right: '2rem', background: 'var(--panel-accent-bg)', color: 'var(--panel-accent-text)', padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 'bold' }}>Early Bird</div>
-          <h3 style={{ margin: 0 }}>Early Bird Tier</h3>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>$20.00<span style={{ fontSize: '1rem', color: 'var(--panel-text-muted)', fontWeight: 'normal' }}>/month</span></div>
-          <div style={{ color: 'var(--panel-text-muted)' }}>Limited time offer for early adopters</div>
-          <ul style={{ paddingLeft: '1.5rem', margin: 0, color: 'var(--panel-text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <li>Everything in Primary Tier</li>
-            <li>Priority support</li>
-            <li>Exclusive early access features</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  ),
-};
+export type { VcuUniversityView };
 
-export const VirtualDesktopEnvironment: React.FC<{ authStatus: 'guest' | 'authenticated' }> = ({ authStatus }) => {
+function createAppContent(universityView: VcuUniversityView = 'intro'): Record<AppId, React.ReactNode> {
+  return {
+    university: <VibeCodingUniversityPanel initialView={universityView} />,
+  };
+}
+
+export const VirtualDesktopEnvironment: React.FC<{
+  authStatus: 'guest' | 'authenticated';
+  launchUniversityView?: VcuUniversityView | null;
+  launchRevision?: number;
+}> = ({ authStatus, launchUniversityView = null, launchRevision = 0 }) => {
   // --- State: Window Management ---
   const [openWindows, setOpenWindows] = useState<DesktopWindow[]>([]);
   const [highestZIndex, setHighestZIndex] = useState(10);
@@ -101,70 +44,52 @@ export const VirtualDesktopEnvironment: React.FC<{ authStatus: 'guest' | 'authen
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   // --- State: Notifications ---
-  const [notifications] = useState<Notification[]>([
-    { id: '1', message: 'Triangulation Review Complete: 85% Confidence Score', time: 'Just now' },
-    { id: '2', message: 'Rust MCP Agent connected successfully.', time: '2m ago' }
-  ]);
+  const [notifications] = useState<Notification[]>([]);
   const [showTray, setShowTray] = useState(false);
 
-  // --- Enforce Guest Restrictions ---
+  const getAppContent = useCallback((id: AppId, universityView: VcuUniversityView = 'intro') => {
+    return createAppContent(universityView)[id];
+  }, []);
+
   useEffect(() => {
     if (authStatus === 'guest') {
-      // Close restricted apps
-      setOpenWindows(prev => prev.filter(w => w.id === 'onboarding'));
-      // Ensure onboarding is open
-      setOpenWindows(prev => {
-        if (!prev.find(w => w.id === 'onboarding')) {
-          return [...prev, {
-            id: 'onboarding',
-            title: 'Greeting Agent / Onboarding',
-            zIndex: highestZIndex + 1,
-            content: AppContent['onboarding'],
-            x: 100,
-            y: 100,
-            width: 600,
-            height: 400,
-            isMaximized: false
-          }];
-        }
-        return prev;
-      });
-      setHighestZIndex(prev => prev + 1);
-    } else {
-      // If authenticated, close onboarding
-      setOpenWindows(prev => prev.filter(w => w.id !== 'onboarding'));
+      setOpenWindows([]);
     }
-  }, [authStatus]); // highestZIndex omitted to avoid loop
+  }, [authStatus]);
 
   // --- Handlers ---
-  const openApp = (id: AppId, title: string) => {
-    if (authStatus === 'guest' && id !== 'onboarding') {
-      // Prevent opening restricted apps
+  const openApp = useCallback((id: AppId, title: string, universityView: VcuUniversityView = 'intro') => {
+    if (authStatus === 'guest') {
       return;
     }
 
-    const existingWindow = openWindows.find(w => w.id === id);
-    const newZIndex = highestZIndex + 1;
-    setHighestZIndex(newZIndex);
+    setHighestZIndex(prevZIndex => {
+      const newZIndex = prevZIndex + 1;
+      setOpenWindows(prev => {
+        const existingWindow = prev.find(w => w.id === id);
+        if (existingWindow) {
+          return prev.map(w => w.id === id ? { ...w, zIndex: newZIndex, content: getAppContent(id, universityView) } : w);
+        }
+        return [...prev, {
+          id,
+          title,
+          zIndex: newZIndex,
+          content: getAppContent(id, universityView),
+          x: 200 + (prev.length * 30),
+          y: 100 + (prev.length * 30),
+          width: id === 'university' ? 900 : 600,
+          height: id === 'university' ? 620 : 400,
+          isMaximized: false,
+        }];
+      });
+      return newZIndex;
+    });
+  }, [authStatus, getAppContent]);
 
-    if (existingWindow) {
-      // Bring to front
-      setOpenWindows(prev => prev.map(w => w.id === id ? { ...w, zIndex: newZIndex } : w));
-    } else {
-      // Open new window
-      setOpenWindows(prev => [...prev, { 
-        id, 
-        title, 
-        zIndex: newZIndex, 
-        content: AppContent[id],
-        x: 200 + (prev.length * 30),
-        y: 100 + (prev.length * 30),
-        width: 600,
-        height: 400,
-        isMaximized: false
-      }]);
-    }
-  };
+  useEffect(() => {
+    if (authStatus !== 'authenticated' || !launchUniversityView) return;
+    openApp('university', 'Vibe Coding University', launchUniversityView);
+  }, [authStatus, launchRevision, launchUniversityView, openApp]);
 
   const focusWindow = (id: AppId) => {
     const newZIndex = highestZIndex + 1;
@@ -235,14 +160,11 @@ export const VirtualDesktopEnvironment: React.FC<{ authStatus: 'guest' | 'authen
         zIndex: 1 // Keep icons behind windows
       }}>
         {[
-          { id: 'university', title: 'Vibe Coding University', icon: '🎓' },
-          { id: 'coder', title: 'The Vibe Coder', icon: '💻' },
-          { id: 'community', title: 'Community Hub', icon: '🌐' },
-          { id: 'knowledge', title: 'Knowledge Base', icon: '📚' },
+          { id: 'university' as const, title: 'Vibe Coding University', icon: 'VCU' },
         ].map(app => (
           <button 
             key={app.id}
-            onClick={() => openApp(app.id as AppId, app.title)}
+            onClick={() => openApp(app.id, app.title)}
             disabled={authStatus === 'guest'}
             style={{
               background: 'transparent',
@@ -265,13 +187,16 @@ export const VirtualDesktopEnvironment: React.FC<{ authStatus: 'guest' | 'authen
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '2rem',
+              fontSize: '1rem',
+              fontWeight: 800,
+              letterSpacing: '0.08em',
+              color: 'var(--panel-heading)',
               boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
               position: 'relative'
             }}>
               {app.icon}
               {authStatus === 'guest' && (
-                <div style={{ position: 'absolute', bottom: -5, right: -5, fontSize: '1.2rem' }}>🔒</div>
+                <div style={{ position: 'absolute', bottom: -5, right: -5, fontSize: '0.65rem', color: 'var(--panel-text-muted)' }}>LOCK</div>
               )}
             </div>
             <span style={{ 
@@ -410,7 +335,7 @@ export const VirtualDesktopEnvironment: React.FC<{ authStatus: 'guest' | 'authen
             boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
           }}
         >
-          🔔 <span style={{ background: 'var(--panel-accent-bg)', color: 'var(--panel-accent-text)', padding: '0.1rem 0.4rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 'bold' }}>{notifications.length}</span>
+          Alerts <span style={{ background: 'var(--panel-accent-bg)', color: 'var(--panel-accent-text)', padding: '0.1rem 0.4rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 'bold' }}>{notifications.length}</span>
         </button>
 
         {/* Tray Popover (Bounded within desktop) */}
@@ -429,6 +354,11 @@ export const VirtualDesktopEnvironment: React.FC<{ authStatus: 'guest' | 'authen
             <h4 style={{ color: 'var(--panel-heading)', margin: 0, fontSize: '0.875rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
               System Notifications
             </h4>
+            {notifications.length === 0 && (
+              <div style={{ color: 'var(--panel-text-muted)', fontSize: '0.8rem' }}>
+                No verified system notifications.
+              </div>
+            )}
             {notifications.map(notif => (
               <div key={notif.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                 <span style={{ color: 'var(--panel-text)', fontSize: '0.875rem' }}>{notif.message}</span>

@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { Fragment } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { cn } from '../../lib/cn';
 
 export type ShellGlassTheme = {
@@ -28,7 +29,7 @@ type Props = {
   messages: ShellTranscriptMessage[];
   transcription?: string;
   centerStage?: ReactNode;
-  chatEndRef?: React.RefObject<HTMLDivElement | null>;
+  chatEndRef?: RefObject<HTMLDivElement | null>;
   renderMessage?: (message: ShellTranscriptMessage) => ReactNode;
   /**
    * Voice landing / idle hero: drop main horizontal + chrome padding so a full-bleed
@@ -53,8 +54,8 @@ function DefaultMessageRow({
           'max-w-[85%] md:max-w-2xl rounded-3xl border px-4 py-3 shadow-lg md:px-5 md:py-4',
           theme.panelClassName,
           isUser
-            ? 'border-emerald-300/30 bg-emerald-500/24'
-            : 'border-white/12 bg-slate-950/42',
+            ? 'border-[var(--panel-accent-border)] bg-[var(--panel-accent-bg)]'
+            : 'border-[var(--panel-border)] bg-[var(--panel-bg)]',
         )}
       >
         <div className="flex items-center justify-between gap-3">
@@ -98,7 +99,13 @@ export function ShellContentZone({
           <div className="flex-1 overflow-y-auto px-1 py-3 md:px-3 md:py-4">
             <div className="mx-auto flex max-w-4xl flex-col gap-3">
               {messages.map((message) =>
-                renderMessage ? renderMessage(message) : <DefaultMessageRow key={message.id} message={message} theme={theme} />,
+                renderMessage ? (
+                  renderMessage(message)
+                ) : (
+                  <Fragment key={message.id}>
+                    <DefaultMessageRow message={message} theme={theme} />
+                  </Fragment>
+                ),
               )}
               <div ref={chatEndRef} />
             </div>

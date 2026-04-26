@@ -4,6 +4,7 @@ import type {
   ProjectBaselineSource,
   IntentReviewHandoffEnvelope
 } from './shellMenuStoreTypes';
+import { evaluateSkillIntentAuthority } from './skillIntentAuthority';
 
 export class IntentIngestionController {
   
@@ -39,12 +40,12 @@ export class IntentIngestionController {
       return existingBaseline;
     }
 
-    // Fallback to workspace_session
+    // No-mock fallback: preserve the intent while marking project evidence as unverified.
     return {
-      source: 'workspace_session',
-      project_id: 'fallback_project',
-      session_id: 'fallback_session',
-      directory_map_summary: 'Fallback workspace session baseline'
+      source: 'unknown',
+      project_id: 'unverified_project_baseline',
+      session_id: intent.id,
+      directory_map_summary: 'No verified project files, repository, or zip were attached to this shell intent.'
     };
   }
 
@@ -58,6 +59,25 @@ export class IntentIngestionController {
   ): IntentReviewHandoffEnvelope {
     console.log('[IntentIngestionController] buildIntentReviewHandoff', intent.id);
     
+    const requestedSkills = Array.isArray(sessionContext.requestedSkills)
+      ? sessionContext.requestedSkills.filter((item): item is string => typeof item === 'string')
+      : [];
+    const requestedTools = Array.isArray(sessionContext.requestedTools)
+      ? sessionContext.requestedTools.filter((item): item is string => typeof item === 'string')
+      : [];
+    const role = typeof sessionContext.role === 'string' ? sessionContext.role : 'authenticated_user';
+    const scope = typeof sessionContext.scope === 'string' ? sessionContext.scope : 'ordinary user-facing shell actions';
+    const systemPrompt = typeof sessionContext.systemPrompt === 'string' ? sessionContext.systemPrompt : null;
+    const skillAuthorityDecision = evaluateSkillIntentAuthority({
+      activeSurfaceMode: role === 'operator' ? 'operator' : role.includes('developer') ? 'developer' : 'primary',
+      authStatus: 'authenticated',
+      desktopSubPath: null,
+      agentRole: role,
+      requestedSkill: requestedSkills[0] ?? null,
+      requestedTools,
+      systemPrompt,
+    });
+
     return {
       id: `handoff_${Date.now()}`,
       user_intent: intent,
@@ -69,7 +89,14 @@ export class IntentIngestionController {
       audit: {
         created_at: new Date().toISOString(),
         created_by: 'system'
-      }
+      },
+      skill_authority: {
+        role,
+        scope,
+        requested_skills: requestedSkills,
+        requested_tools: requestedTools,
+        decision: skillAuthorityDecision,
+      },
     };
   }
 }

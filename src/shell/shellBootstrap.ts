@@ -62,3 +62,58 @@ export function resolveInitialSurfaceMode(): ShellSurfaceMode {
   const auth = readInterimShellAuthority();
   return clampSurfaceModeToInterimAuthority(raw, auth);
 }
+
+// ── Supabase Session Tracking ──────────────────────────────────────────────────
+// Creates / updates a shell_sessions row so the admin panel can see active sessions.
+
+import { aiOsSupabase } from '../lib/supabaseClient';
+
+const SS_SESSION_ID_KEY = 'aios_supabase_session_id';
+
+function readSessionId(): string | null {
+  try { return sessionStorage.getItem(SS_SESSION_ID_KEY); } catch { return null; }
+}
+
+function writeSessionId(id: string): void {
+  try { sessionStorage.setItem(SS_SESSION_ID_KEY, id); } catch { /* ignore */ }
+}
+
+export function getTrackedShellSessionId(): string | null {
+  return readSessionId();
+}
+
+/** Call on app mount: upserts/creates a shell session row in Supabase. */
+export async function trackShellSession(
+  surfaceMode: ShellSurfaceMode,
+  userId: string | null,
+  entryMode: 'new' | 'returning',
+): Promise<string | null> {
+  if (!aiOsSupabase) return null;
+  try {
+    const existing = readSessionId();
+    if (existing) {
+      await aiOsSupabase
+        .from('shell_sessions')
+        .update({
+          last_active_at: new Date().toISOString(),
+          surface_mode: surfaceMode,
+          user_id: userId ?? null,
+          entry_mode: entryMode,
+        } as never)
+        .eq('id', existing);
+      return existing;
+    }
+    const token = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const { data, error } = await aiOsSupabase
+      .from('shell_sessions')
+      .insert({ user_id: userId ?? null, session_token: token, entry_mode: entryMode, surface_mode: surfaceMode } as never)
+      .select('id')
+      .single();
+    if (!error && data) {
+      const id = (data as { id: string }).id;
+      writeSessionId(id);
+      return id;
+    }
+  } catch { /* offline */ }
+  return null;
+}

@@ -1,5 +1,5 @@
 {
-  "name": "AI OS - Voice Interface",
-  "description": "An intent-driven application primarily driven by voice with a polished PTT interface.",
+  "name": "The Vibe Coding University | AIOS",
+  "description": "The Vibe Coding University — a coding platform and community powered by Clear Voice AI. Voice-first AIOS interface.",
   "requestFramePermissions": ["microphone"]
 }

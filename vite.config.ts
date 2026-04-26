@@ -67,6 +67,8 @@ export default defineConfig(({mode}) => {
       'process.env.TWILIO_ACCOUNT_SID': JSON.stringify(env.TWILIO_ACCOUNT_SID ?? ''),
       'process.env.TWILIO_AUTH_TOKEN': JSON.stringify(env.TWILIO_AUTH_TOKEN ?? ''),
       'process.env.TWILIO_PHONE_NUMBER': JSON.stringify(env.TWILIO_PHONE_NUMBER ?? ''),
+      'import.meta.env.AI_OS_SUPABASE_URL': JSON.stringify(env.AI_OS_SUPABASE_URL ?? ''),
+      'import.meta.env.AI_OS_SUPABASE_PUBLIC_KEY': JSON.stringify(env.AI_OS_SUPABASE_PUBLIC_KEY ?? ''),
     },
     resolve: {
       dedupe: ['react', 'react-dom'],

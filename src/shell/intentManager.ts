@@ -114,9 +114,16 @@ export enum DesktopSubPath {
 export const ACTION_ID_TO_DESKTOP_SUB_PATH: Readonly<Record<string, DesktopSubPath>> = {
   // LEARNING
   open_podcasts: DesktopSubPath.LEARNING,
+  open_menu_vcu: DesktopSubPath.LEARNING,
+  open_vcu_intro: DesktopSubPath.LEARNING,
+  open_vcu_coursework: DesktopSubPath.LEARNING,
+  open_skill_registry: DesktopSubPath.LEARNING,
+  open_vcu_registration: DesktopSubPath.ACCESS_ACCOUNT,
 
   // CODING
   open_coding_agent: DesktopSubPath.CODING,
+  open_vibe_code_lab: DesktopSubPath.CODING,
+  open_vcu_cursor_pack: DesktopSubPath.CODING,
 
   // KNOWLEDGE_BASE
   open_knowledge: DesktopSubPath.KNOWLEDGE_BASE,

@@ -52,6 +52,20 @@ function save(inputs: SessionKnowledgeInput[]): void {
   }
 }
 
+function mergeInputs(
+  localInputs: SessionKnowledgeInput[],
+  remoteInputs: SessionKnowledgeInput[],
+): SessionKnowledgeInput[] {
+  const merged = new Map<string, SessionKnowledgeInput>();
+  for (const input of localInputs) {
+    merged.set(input.id, input);
+  }
+  for (const input of remoteInputs) {
+    merged.set(input.id, input);
+  }
+  return Array.from(merged.values()).sort((a, b) => a.declared_at.localeCompare(b.declared_at));
+}
+
 export function getInputs(): SessionKnowledgeInput[] {
   return load();
 }
@@ -95,4 +109,50 @@ export function detectContentType(filename: string): SessionKnowledgeInput['cont
   if (ext === 'md' || ext === 'markdown') return 'markdown';
   if (['txt', 'text', 'log', 'csv', 'json', 'xml', 'yaml', 'yml'].includes(ext)) return 'text';
   return 'other';
+}
+
+// ── Supabase Sync ──────────────────────────────────────────────────────────────
+
+import { supabase } from '../../lib/supabaseClient';
+
+/** Persist a knowledge input to Supabase (non-blocking). */
+export async function syncInputToSupabase(input: SessionKnowledgeInput, userId: string | null, sessionId?: string | null): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { error } = await supabase.from('session_knowledge_inputs').upsert({
+      id: input.id,
+      user_id: userId ?? null,
+      session_id: sessionId ?? null,
+      declared_name: input.declared_name,
+      source_class: input.source_class,
+      content_summary: input.content_summary,
+      content_type: input.content_type,
+      raw_text: input.raw_text,
+      declared_at: input.declared_at,
+    } as never);
+    if (error) console.warn('[sessionKnowledgeStore] sync failed:', error.message);
+  } catch { /* offline */ }
+}
+
+/** Remove a knowledge input from Supabase. */
+export async function removeInputFromSupabase(id: string): Promise<void> {
+  if (!supabase) return;
+  try {
+    await supabase.from('session_knowledge_inputs').delete().eq('id', id);
+  } catch { /* offline */ }
+}
+
+/** Load knowledge inputs from Supabase and merge into localStorage. */
+export async function loadInputsFromSupabase(userId: string): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { data, error } = await supabase
+      .from('session_knowledge_inputs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('declared_at', { ascending: true });
+    if (error || !data) return;
+    const inputs = data as SessionKnowledgeInput[];
+    save(mergeInputs(load(), inputs));
+  } catch { /* offline */ }
 }

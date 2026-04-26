@@ -10,7 +10,8 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export type LoyaltyIntroSequenceProps = {
@@ -26,7 +27,7 @@ interface Slide {
   id: string;
   eyebrow: string;
   title: string;
-  body: React.ReactNode;
+  body: ReactNode;
   cta: string;
   narration: string;
 }
@@ -100,7 +101,9 @@ const SLIDES: Slide[] = [
             text: 'Present the path forward directly, then map intent to action and outcome with transparent state.',
           },
         ].map(({ heading, text }) => (
-          <CalloutCard key={heading} label={heading} text={text} />
+          <Fragment key={heading}>
+            <CalloutCard label={heading} text={text} />
+          </Fragment>
         ))}
       </div>
     ),

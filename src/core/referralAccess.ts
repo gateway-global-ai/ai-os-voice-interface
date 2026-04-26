@@ -2,7 +2,7 @@ const REFERRAL_ACCESS_LOG_KEY = 'aios_referral_access_log';
 const REFERRAL_ACCESS_ACTIVE_KEY = 'aios_referral_access_active_code';
 const REFERRAL_ACCESS_CODES_KEY = 'aios_referral_access_codes';
 
-const DEFAULT_REFERRAL_CODES = ['AIOS-ALPHA', 'PLATFORM-LOYALTY', 'EARLY-ACCESS'];
+export const DEFAULT_REFERRAL_CODES = ['AIOS-ALPHA', 'PLATFORM-LOYALTY', 'EARLY-ACCESS'];
 
 type ReferralAccessEvent = {
   code: string;

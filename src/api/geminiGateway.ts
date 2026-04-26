@@ -31,6 +31,8 @@ export type GeminiGatewayReadiness = {
   configured: boolean;
   status: 'configured' | 'missing_api_key';
   detail: string;
+  /** Present from gateway: Live / Bidi streaming TTS is off (kill switch). */
+  liveTtsDisabled?: boolean;
 };
 
 export type GeminiGatewayHealth = {

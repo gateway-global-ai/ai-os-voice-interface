@@ -1,0 +1,36 @@
+---
+description: Evidence and no-mock verification gate for VCU Cursor agents
+globs: docs/vcu/**/*.md,.cursor/rules/*.mdc,.cursor/skills/**/SKILL.md,.cursor/commands/*.md,.cursor/agents/*.md,.cursor/hooks.json,.cursor/hooks/*.py,AGENTS.md
+alwaysApply: false
+---
+
+# VCU Agent Verification
+
+Relevant docs:
+- VCU API docs registry: `docs/vcu/api-docs.md`
+- Cursor hooks: https://cursor.com/docs/hooks
+- Cursor skills: https://cursor.sh/docs/skills
+- VCU no-mock rule: `.cursor/rules/vcu-no-mock-acceptance.mdc`
+
+## Trigger Scenarios
+
+Apply when auditing, verifying, reviewing, cataloging, or reporting VCU Cursor rules, skills, commands, hooks, agent prompts, Rust SDK workflows, MCP UI workflows, project plans, or task assignments.
+
+## Required Controls
+
+- Evidence must include source URL or local path, command if applicable, environment, exit code, and important output lines.
+- Link checks must be real checks or explicitly `unverified`; do not infer reachability from a URL string.
+- Review findings must be grounded in cited files or docs.
+- If the no-mock gate cannot be verified, status is `blocked` or `unverified`, not accepted.
+
+## May Change
+
+- Verification reports, artifact inventories, review notes, and operating-layer docs.
+
+## May Not Change
+
+- Acceptance status, publish status, or completed task state without real review evidence.
+
+## Verifiable Output
+
+Return `status`, `no_mock_gate`, `sources_checked`, `commands_run`, `findings`, and `remaining_unverified`.

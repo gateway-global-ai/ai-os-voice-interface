@@ -3,7 +3,8 @@ import type { ServerResponse } from 'node:http';
 
 const DEFAULT_TEXT_MODEL = 'gemini-2.0-flash';
 const DEFAULT_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
-const DEFAULT_LIVE_TTS_MODEL = 'models/gemini-2.5-flash-native-audio-preview-12-2025';
+/** Live / Bidi session model (Developer API / API key). Matches @google/genai `live.connect` examples — not the deprecated native-audio preview snapshot. */
+const DEFAULT_LIVE_TTS_MODEL = 'gemini-live-2.5-flash-preview';
 const DEFAULT_VOICE = 'Kore';
 const LIVE_TTS_SYSTEM_INSTRUCTION =
   'You are a pure text-to-speech engine. Repeat the user provided transcript exactly as written, word for word. Do not answer questions, do not add filler, do not explain, and do not acknowledge the prompt.';
@@ -244,6 +245,36 @@ function writeNdjsonChunk(response: ServerResponse, chunk: GeminiStreamChunk): v
   response.write(`${JSON.stringify(chunk)}\n`);
 }
 
+/** `1` / `true` / `yes` / `on` → true; `0` / `false` / `no` / `off` → false; unset → undefined */
+function parseEnvBoolean(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  const t = value.trim().toLowerCase();
+  if (!t) return undefined;
+  if (['1', 'true', 'yes', 'on'].includes(t)) return true;
+  if (['0', 'false', 'no', 'off'].includes(t)) return false;
+  return undefined;
+}
+
+/**
+ * When true, `/api/gemini/tts/stream` does not open Live / Bidi; it runs the same one-shot
+ * `generateContent` path as `/api/gemini/tts` and emits one NDJSON audio chunk + `done`
+ * so `GeminiVoiceEngine` / `streamGeminiSpeech` stay unchanged.
+ */
+function isGeminiLiveTtsDisabled(env: Record<string, string>): boolean {
+  if (parseEnvBoolean(env.GEMINI_DISABLE_LIVE_TTS) === true) return true;
+  if (parseEnvBoolean(env.GEMINI_USE_LIVE_TTS_STREAM) === false) return true;
+  return false;
+}
+
+function resolveLiveTtsSessionTimeoutMs(env: Record<string, string>): number {
+  const raw = env.GEMINI_LIVE_TTS_TIMEOUT_MS?.trim();
+  const fallback = 60_000;
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(120_000, Math.max(5_000, n));
+}
+
 export function serveGeminiReadiness(env: Record<string, string>): JsonResult {
   const configured = Boolean(getGeminiApiKey(env));
   return {
@@ -254,6 +285,8 @@ export function serveGeminiReadiness(env: Record<string, string>): JsonResult {
       detail: configured
         ? 'Gemini gateway configured on app host'
         : 'GEMINI_API_KEY missing on app host',
+      /** When true, `/api/gemini/tts/stream` does not open Live / Bidi (one-shot TTS only). */
+      liveTtsDisabled: isGeminiLiveTtsDisabled(env),
     },
   };
 }
@@ -459,24 +492,55 @@ export async function streamGeminiTts(
   });
 
   try {
+    if (isGeminiLiveTtsDisabled(env)) {
+      const jsonResult = await serveGeminiTts(env, rawBody);
+      if (jsonResult.status === 200) {
+        const okBody = jsonResult.body as { audioData?: string; mimeType?: string };
+        const audioData = okBody.audioData?.trim();
+        const mimeType = okBody.mimeType?.trim() ?? 'audio/L16;rate=24000';
+        if (audioData) {
+          writeNdjsonChunk(response, { type: 'audio', data: audioData, mimeType });
+          writeNdjsonChunk(response, { type: 'done' });
+          response.end();
+          return;
+        }
+        writeNdjsonChunk(response, { type: 'error', error: 'No audio data returned from Gemini' });
+        response.end();
+        return;
+      }
+      const errBody = jsonResult.body as { error?: string; detail?: string };
+      const msg = [errBody.error, errBody.detail].filter(Boolean).join(' — ') || 'TTS failed';
+      writeNdjsonChunk(response, { type: 'error', error: msg });
+      response.end();
+      return;
+    }
+
     const ai = createGeminiClient(env);
     const voiceName = resolveVoiceName(env, body.voiceName);
     const liveModel = resolveLiveTtsModel(env, body.model);
+    const liveSessionTimeoutMs = resolveLiveTtsSessionTimeoutMs(env);
 
     await new Promise<void>(async (resolve, reject) => {
       let settled = false;
+      let sessionTimer: ReturnType<typeof setTimeout> | null = null;
 
       const finish = () => {
         if (settled) return;
         settled = true;
+        if (sessionTimer) clearTimeout(sessionTimer);
         resolve();
       };
 
       const fail = (error: unknown) => {
         if (settled) return;
         settled = true;
+        if (sessionTimer) clearTimeout(sessionTimer);
         reject(error);
       };
+
+      sessionTimer = setTimeout(() => {
+        fail(new Error(`Gemini Live TTS session exceeded ${liveSessionTimeoutMs}ms`));
+      }, liveSessionTimeoutMs);
 
       const handleMessage = (message: LiveServerMessage) => {
         const serverContent = message.serverContent;

@@ -7,6 +7,7 @@ import {
 export type ShellMenuId =
   | 'shell-header-system'
   | 'shell-footer-user'
+  | 'vibe-coding-university'
   | 'system-controls'
   | 'guest-entry'
   | 'voice-control'
@@ -19,6 +20,7 @@ export type ShellMenuTemplateFamily = 'list' | 'thumbnail' | 'custom';
 export type ShellMenuContentType =
   | 'system'
   | 'workspace'
+  | 'university'
   | 'knowledge'
   | 'podcasts'
   | 'transparency'
