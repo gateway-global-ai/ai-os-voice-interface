@@ -1,0 +1,71 @@
+{
+  "$schema": "./manifest.schema.json",
+  "appId": "sample_operator_app",
+  "title": "Sample Operator App",
+  "icon": "APP",
+  "description": "Voice-first AI OS desktop app for operator workflows.",
+  "requiredRole": "operator",
+  "proxyBase": "/__sample_operator_app_api",
+  "backendBaseEnv": "SAMPLE_OPERATOR_APP_BASE_URL",
+  "backendAuthEnv": "SAMPLE_OPERATOR_APP_ADMIN_KEY",
+  "intentPaths": [
+    {
+      "id": "dashboard",
+      "label": "Dashboard Overview",
+      "intent": "Sample App > Dashboard Overview",
+      "description": "Open verified status counts after an explicit dashboard request.",
+      "endpointId": "dashboard",
+      "loadsOnStart": false
+    },
+    {
+      "id": "admin-controls",
+      "label": "Admin Controls",
+      "intent": "Sample App > Admin Controls",
+      "description": "Open administrative controls that are backed by real write endpoints.",
+      "endpointId": "admin-controls",
+      "loadsOnStart": false
+    }
+  ],
+  "backendEndpoints": [
+    {
+      "id": "dashboard",
+      "method": "GET",
+      "path": "/dashboard",
+      "status": "unverified",
+      "purpose": "Replace with a real upstream dashboard endpoint before accepting.",
+      "writeControl": false
+    },
+    {
+      "id": "admin-controls",
+      "method": "GET",
+      "path": "/admin-controls",
+      "status": "unverified",
+      "purpose": "Replace with real upstream admin-control endpoints before accepting.",
+      "writeControl": true
+    }
+  ],
+  "mcpTools": [
+    {
+      "name": "get_dashboard",
+      "endpointId": "dashboard",
+      "status": "unverified"
+    },
+    {
+      "name": "list_admin_controls",
+      "endpointId": "admin-controls",
+      "status": "unverified"
+    }
+  ],
+  "noMockEvidence": {
+    "sourceDocs": [
+      "https://cursor.sh/docs/skills",
+      "https://modelcontextprotocol.io/docs/develop/build-server"
+    ],
+    "verificationCommands": [
+      "npm run build",
+      "cargo check",
+      "skills validate .cursor/skills/aios-desktop-app-template"
+    ],
+    "blockedPolicy": "Generated endpoints stay blocked or unverified until they are connected to real upstream APIs and smoke checked."
+  }
+}

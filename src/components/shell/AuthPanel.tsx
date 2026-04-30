@@ -4,7 +4,7 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { SovereignButton, SovereignDescription, SovereignTitle } from '../../ui-core';
 import {
@@ -12,6 +12,7 @@ import {
   verifyOtp,
   formatCheckmeUserError,
   CHECKME_SESSION_PHONE_KEY,
+  AIOS_OPERATOR_TOKEN_KEY,
 } from '../../core/io/checkmeClient';
 
 type Step = 'phone' | 'otp';
@@ -22,12 +23,14 @@ type Props = {
   onVerified: (phone: string) => void;
   /** `vibe` — warmer copy for the Vibe Coding University guest join flow. */
   variant?: 'default' | 'vibe';
+  /** Prefill phone (e.g. Tier B MCP guest UI `otp_send`). */
+  initialPhone?: string;
 };
 
 /** When VITE_OTP_SKIP_SEND=true the send step is skipped (local dev without a backend). */
 const skipSend = import.meta.env.VITE_OTP_SKIP_SEND === 'true';
 
-export function AuthPanel({ onClose, onVerified, variant = 'default' }: Props) {
+export function AuthPanel({ onClose, onVerified, variant = 'default', initialPhone }: Props) {
   const vibe = variant === 'vibe';
   const [step, setStep] = useState<Step>('phone');
   const [phoneInput, setPhoneInput] = useState('');
@@ -36,6 +39,15 @@ export function AuthPanel({ onClose, onVerified, variant = 'default' }: Props) {
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [phoneDigits, setPhoneDigits] = useState('');
+
+  useEffect(() => {
+    const v = initialPhone?.trim();
+    if (v) {
+      setPhoneInput(v);
+      setStep('phone');
+      setError(null);
+    }
+  }, [initialPhone]);
 
   const handlePhoneSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -81,6 +93,11 @@ export function AuthPanel({ onClose, onVerified, variant = 'default' }: Props) {
       try {
         const result = await verifyOtp(phone, code);
         if (!result.verified) throw new Error('Code could not be verified.');
+        if (result.operatorToken) {
+          localStorage.setItem(AIOS_OPERATOR_TOKEN_KEY, result.operatorToken);
+        } else {
+          localStorage.removeItem(AIOS_OPERATOR_TOKEN_KEY);
+        }
         sessionStorage.removeItem(CHECKME_SESSION_PHONE_KEY);
       } catch (err) {
         setError(formatCheckmeUserError(err instanceof Error ? err.message : String(err)));
@@ -96,7 +113,11 @@ export function AuthPanel({ onClose, onVerified, variant = 'default' }: Props) {
   return (
     <div
       className="fixed inset-0 z-[var(--z-shell-modal-backdrop)] flex items-center justify-center p-4"
-      style={{ background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(8px)' }}
+      style={{
+        background: vibe ? 'var(--shell-modal-backdrop)' : 'rgba(2, 6, 23, 0.72)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+      }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-panel-title"
@@ -140,7 +161,7 @@ export function AuthPanel({ onClose, onVerified, variant = 'default' }: Props) {
         </SovereignDescription>
 
         {error ? (
-          <p className="mt-3 text-sm" style={{ color: '#f87171' }}>
+          <p className="mt-3 text-sm" style={{ color: 'var(--panel-danger-text)' }}>
             {error}
           </p>
         ) : null}
@@ -156,7 +177,7 @@ export function AuthPanel({ onClose, onVerified, variant = 'default' }: Props) {
                 autoComplete="tel"
                 value={phoneInput}
                 onChange={(ev) => setPhoneInput(ev.target.value)}
-                className="mt-1 w-full rounded-xl px-4 py-3 text-sm outline-none ring-emerald-500/40 focus:ring-2"
+                className="shell-input-focus mt-1 w-full rounded-xl px-4 py-3 text-sm outline-none"
                 style={{
                   background: 'var(--panel-input-bg)',
                   border: '1px solid var(--panel-input-border)',
@@ -182,7 +203,7 @@ export function AuthPanel({ onClose, onVerified, variant = 'default' }: Props) {
                 maxLength={6}
                 value={otpInput}
                 onChange={(ev) => setOtpInput(ev.target.value.replace(/\D/g, '').slice(0, 6))}
-                className="mt-1 w-full rounded-xl px-4 py-3 text-sm tracking-[0.35em] outline-none ring-emerald-500/40 focus:ring-2"
+                className="shell-input-focus mt-1 w-full rounded-xl px-4 py-3 text-sm tracking-[0.35em] outline-none"
                 style={{
                   background: 'var(--panel-input-bg)',
                   border: '1px solid var(--panel-input-border)',

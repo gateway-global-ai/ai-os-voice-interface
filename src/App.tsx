@@ -207,6 +207,7 @@ import {
 import { buildShellPromptContract } from './shell/shellPromptContract';
 import { useShellMenuActions } from './shell/useShellMenuActions';
 import { useShellMenuRuntime } from './shell/useShellMenuRuntime';
+import { AIOS_OPERATOR_TOKEN_KEY, restoreOperatorToken } from './core/io/checkmeClient';
 import { useTauriKernelBridge } from './shell/useTauriKernelBridge';
 import { useShellJourney } from './shell/useShellJourney';
 import { getLandingWelcomePlayback } from './shell/landingStartWelcomeAudio';
@@ -307,6 +308,8 @@ export default function App({
   /** Phone OTP session — gates shell chrome until verified (persisted via onboardingState). */
   const [authSessionActive, setAuthSessionActive] = useState(() => isOtpVerified());
   const [authPanelOpen, setAuthPanelOpen] = useState(false);
+  const [authPanelInitialPhone, setAuthPanelInitialPhone] = useState<string | undefined>(undefined);
+  const useMcpCommunityUi = import.meta.env.VITE_USE_MCP_COMMUNITY_UI === 'true';
   const [guestNicknameOverlayOpen, setGuestNicknameOverlayOpen] = useState(false);
   const [guestNicknameDraft, setGuestNicknameDraft] = useState('');
   const [guestJoinSurfaceOpen, setGuestJoinSurfaceOpen] = useState(false);
@@ -404,6 +407,26 @@ export default function App({
     }
     setSupabaseUserId(getSupabaseUserId());
   }, [authSessionActive]);
+
+  useEffect(() => {
+    if (!authSessionActive) return;
+    try {
+      if (localStorage.getItem(AIOS_OPERATOR_TOKEN_KEY)) return;
+    } catch {
+      return;
+    }
+    const phone = readOnboardingProfile()?.phone_number?.trim();
+    if (!phone) return;
+    let cancelled = false;
+    void restoreOperatorToken(phone).then((token) => {
+      if (!cancelled && token) {
+        setSurfaceMode('operator');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authSessionActive, setSurfaceMode]);
 
   const hydratedRemoteShellStateUserRef = useRef<string | null>(null);
 
@@ -555,6 +578,11 @@ export default function App({
   const latestFrameRef = useRef<string | null>(null);
   const handleLogout = useCallback(() => {
     resetOnboarding();
+    try {
+      localStorage.removeItem(AIOS_OPERATOR_TOKEN_KEY);
+    } catch {
+      /* ignore storage cleanup failures */
+    }
     setSupabaseUserId(null);
     setAuthSessionActive(false);
     window.location.reload();
@@ -563,6 +591,13 @@ export default function App({
   const handleAuthVerified = useCallback((phone: string) => {
     markOtpVerified();
     setAuthSessionActive(true);
+    try {
+      if (localStorage.getItem(AIOS_OPERATOR_TOKEN_KEY)) {
+        setSurfaceMode('operator');
+      }
+    } catch {
+      /* keep the current shell surface when storage is unavailable */
+    }
     setAuthPanelOpen(false);
     const existing = readOnboardingProfile();
     const openProjectBuilder = postAuthOpenProjectBuilderRef.current;
@@ -586,7 +621,7 @@ export default function App({
     if (openProjectBuilder) {
       queueMicrotask(() => setMode('coding_agent'));
     }
-  }, []);
+  }, [setSurfaceMode]);
 
   const engageSessionEntry = useCallback(() => {
     markSessionEntryEngaged();
@@ -1935,6 +1970,10 @@ export default function App({
       return;
     }
 
+    if (speakerEnabled && voiceRoute === 'gemini') {
+      void getGeminiVoiceEngine().unlockAudioOutput();
+    }
+
     try {
       // Barge-in: user pressed mic while AI was still speaking
       const bargein = VoiceboxClient.checkAndClearBargein();
@@ -2018,13 +2057,16 @@ export default function App({
   }, [
     beginInteraction,
     captureFrame,
+    getGeminiVoiceEngine,
     micEnabled,
     recordInteraction,
     recordBargein,
     shellMenuStore.recording.ptt_binding_enabled,
     shellMenuStore.ui.active_menu_id,
     shellMenuStore.ui.selected_action_id_by_menu_id,
+    speakerEnabled,
     startVoiceboxRecordCaptureSession,
+    voiceRoute,
   ]);
 
   const handlePTTDown = async (e: PointerEvent<HTMLButtonElement>) => {
@@ -2573,18 +2615,28 @@ export default function App({
     voiceboxRecordingChunksRef.current = shellMenuStore.recording.capture_chunks;
   }, [shellMenuStore.recording.capture_chunks]);
 
+  const applyVcuShellVisuals = useCallback(() => {
+    setTheme({
+      backgroundType: 'canvas',
+      canvasBackgroundId: 'aurora',
+      customBgKind: null,
+      customBgPath: null,
+    });
+  }, [setTheme]);
+
   const openVcuDesktop = useCallback((view: VcuUniversityView) => {
     closeShellMenus();
     if (shellMenuStore.context.auth_status === 'guest') {
       setAuthPanelOpen(true);
       return;
     }
+    applyVcuShellVisuals();
     setMode('voice');
     setVcuLaunchRequest((current) => ({
       view,
       revision: (current?.revision ?? 0) + 1,
     }));
-  }, [closeShellMenus, setAuthPanelOpen, shellMenuStore.context.auth_status]);
+  }, [applyVcuShellVisuals, closeShellMenus, setAuthPanelOpen, shellMenuStore.context.auth_status]);
 
   const { handleShellMenuAction } = useShellMenuActions({
     activeShellMenuId,
@@ -2862,12 +2914,23 @@ export default function App({
           authSessionActive ? handleAuthenticatedSkipIntro : handleGuestSkipIntroToCommunityMenu
         }
         openCommunityMenuOnHeroSkip={!authSessionActive}
+        useMcpCommunityOverlay={useMcpCommunityUi}
+        onShellPilotOtpRequest={(phone) => {
+          engageSessionEntry();
+          postAuthOpenProjectBuilderRef.current = false;
+          stopLandingStartWelcome();
+          setLandingIntroPlaying(false);
+          setGuestJoinSurfaceOpen(false);
+          setAuthPanelInitialPhone(phone?.trim() || undefined);
+          setAuthPanelOpen(true);
+        }}
         onCreateAccount={() => {
           engageSessionEntry();
           postAuthOpenProjectBuilderRef.current = false;
           stopLandingStartWelcome();
           setLandingIntroPlaying(false);
           setGuestJoinSurfaceOpen(false);
+          setAuthPanelInitialPhone(undefined);
           setAuthPanelOpen(true);
         }}
         onLogin={() => {
@@ -2876,6 +2939,7 @@ export default function App({
           stopLandingStartWelcome();
           setLandingIntroPlaying(false);
           setGuestJoinSurfaceOpen(false);
+          setAuthPanelInitialPhone(undefined);
           setAuthPanelOpen(true);
         }}
         onRequestAudiencePath={() => {
@@ -2998,6 +3062,7 @@ export default function App({
               authStatus={shellMenuStore.context.auth_status}
               launchUniversityView={vcuLaunchRequest?.view ?? null}
               launchRevision={vcuLaunchRequest?.revision ?? 0}
+              onOpenUniversity={applyVcuShellVisuals}
             />
           </div>
         </div>
@@ -3607,8 +3672,10 @@ export default function App({
       {!authSessionActive && authPanelOpen ? (
         <AuthPanel
           variant="vibe"
+          initialPhone={authPanelInitialPhone}
           onClose={() => {
             postAuthOpenProjectBuilderRef.current = false;
+            setAuthPanelInitialPhone(undefined);
             setAuthPanelOpen(false);
           }}
           onVerified={handleAuthVerified}

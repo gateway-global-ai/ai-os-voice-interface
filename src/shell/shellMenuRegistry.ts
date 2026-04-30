@@ -272,7 +272,7 @@ export const SHELL_FOOTER_USER_MENU: ShellMenuRegistryEntry = {
     menu_id: 'shell-footer-user',
     menu_zone: 'footer_user',
     content_type: 'workspace',
-    level_count: 2,
+    level_count: 3,
     levels: [
       {
         level_id: 'storage-and-identity',
@@ -293,6 +293,28 @@ export const SHELL_FOOTER_USER_MENU: ShellMenuRegistryEntry = {
             description: 'Open the governed Workspace hub from the footer-owned user lane.',
             action_id: 'open_workspace',
             icon: 'workspace',
+          },
+        ],
+      },
+      {
+        level_id: 'account-session',
+        level_label: 'Account',
+        items: [
+          {
+            // ACCESS_ACCOUNT sub-path — auth required
+            item_id: 'user-profile',
+            label: 'Profile',
+            description: 'View and edit your local shell profile.',
+            action_id: 'open_system_profile',
+            icon: 'profile',
+          },
+          {
+            // ACCESS_ACCOUNT sub-path — auth required
+            item_id: 'logout',
+            label: 'Log out',
+            description: 'Clear this verified phone session and return to guest mode.',
+            action_id: 'system_logout',
+            icon: 'system',
           },
         ],
       },

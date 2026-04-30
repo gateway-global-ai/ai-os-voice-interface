@@ -150,7 +150,7 @@ cp .cursor/mcp.example.json .cursor/mcp.json
 
 **123CheckMe** product and HTTP OTP APIs live at **[123checkme.com](https://123checkme.com/)** / **[www.123checkme.com](https://www.123checkme.com/)**. Vibe coders authenticate through the **normal SaaS account** and operator tools there; they do **not** need to install a separate desktop app to use CheckMe-backed flows. The **Model Context Protocol** surface is a **separate HTTP endpoint** (Streamable HTTP or SSE per [Cursor MCP — remote server](https://cursor.com/docs/context/mcp)) that must be mounted by your CheckMe MCP deployment (see [Build an MCP server](https://modelcontextprotocol.io/docs/develop/build-server)).
 
-**Verified in this workspace (2026-04-26):** `GET https://www.123checkme.com/mcp` returns the SPA shell (`text/html`); `POST https://www.123checkme.com/mcp` returns `Cannot POST /mcp`. So the **root site does not yet expose a working JSON-RPC MCP listener on `/mcp`**. Operators should use the MCP base URL issued from the **123CheckMe SaaS / operator dashboard** (or deploy the Gateway identity MCP behind nginx and paste that URL) until the public host serves MCP on a documented path.
+**Verified in this workspace (2026-04-26):** `https://www.123checkme.com/mcp` is mounted as a Streamable HTTP MCP endpoint. Unauthenticated requests return JSON-RPC `401 Unauthorized`; authenticated `initialize` and `tools/list` succeed when Cursor sends `Authorization: Bearer ${env:CHECKME_MCP_TOKEN}` matching server-side `MCP_HTTP_BEARER_TOKEN`. Keep the 123CheckMe server env alias `CHECKME_API_KEY` aligned with `123CHECKME_KEY` so real MCP tool calls can reach the platform API.
 
 ### Cursor `mcp.json` (manual)
 
@@ -189,7 +189,7 @@ Reload the window. Confirm under **Settings → MCP** that **123checkme** connec
 
 ### Rust `skills` CLI
 
-Treat **123CheckMe** as a **Cursor/agent skill** (this repo: `.cursor/skills/123checkme-rust-saas-integration/SKILL.md`) plus optional packages under your `skills` source tree: run **`skills validate`** / **`skills push`** per [Rust `skills` crate](https://crates.io/crates/skills) and [Cursor skills](https://cursor.sh/docs/skills). The skill describes env vars, `checkmeClient.ts`, and MCP wiring; it does **not** embed secrets.
+Treat **123CheckMe** as a **Cursor/agent skill** (this repo: `.cursor/skills/123checkme-rust-saas-integration/SKILL.md`) plus optional packages under your `skills` source tree: run **`skills validate`** / **`skills push`** per [Rust `skills` crate](https://crates.io/crates/skills) and [Cursor skills](https://cursor.sh/docs/skills). The skill describes env vars, `checkmeClient.ts`, MCP wiring, and the verified MCP `allowed-tools`; it does **not** embed secrets.
 
 ## 4.1 — Shadcn MCP (component registries — **use stdio in Cursor**)
 

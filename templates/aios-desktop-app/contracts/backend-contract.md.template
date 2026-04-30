@@ -1,0 +1,42 @@
+# {{TITLE}} Backend Contract
+
+Relevant docs:
+- Cursor skills: https://cursor.sh/docs/skills
+- MCP server docs: https://modelcontextprotocol.io/docs/develop/build-server
+
+## No-Mock Gate
+
+Do not fabricate endpoint responses, rows, success statuses, or admin-control effects. Every endpoint must be marked:
+
+- `verified` when a real route and command evidence exists.
+- `blocked` when configuration, credentials, permissions, schema, or upstream availability prevents verification.
+- `unverified` when the route or data model has not been proven yet.
+
+## App Manifest
+
+- App ID: `{{APP_ID}}`
+- Title: `{{TITLE}}`
+- Required role: `{{REQUIRED_ROLE}}`
+- Proxy base: `{{PROXY_BASE}}`
+- Upstream base env: `{{BACKEND_BASE_ENV}}`
+- Upstream auth env: `{{BACKEND_AUTH_ENV}}`
+
+## Intent Paths
+
+{{INTENT_CONTRACT_MARKDOWN}}
+
+## Backend Endpoints
+
+{{ENDPOINT_CONTRACT_MARKDOWN}}
+
+## MCP Tools
+
+{{MCP_TOOLS_MARKDOWN}}
+
+## Verification Commands
+
+{{VERIFICATION_COMMANDS_MARKDOWN}}
+
+## Remaining Blocked Or Unverified Items
+
+Any endpoint, control, or MCP tool not backed by real command output must remain `blocked` or `unverified` in the UI and generated reports.

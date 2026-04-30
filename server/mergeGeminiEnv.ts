@@ -29,3 +29,37 @@ export function mergeGeminiEnvFromEnvLocal(
   delete merged.VITE_GEMINI_API_KEY;
   return merged;
 }
+
+/** Keys used by 123checkme OTP proxy + client (see `server/otpProxyForward.ts`, `checkmeClient.ts`, `vite.config.ts`). */
+const OTP_BACKFILL_KEYS = [
+  '123CHECKME_KEY',
+  'VITE_123CHECKME_KEY',
+  'VITE_OTP_API_BEARER',
+  'VITE_CHECKME_API_KEY',
+  'CHECKME_API_KEY',
+  'VITE_OTP_PROXY_TARGET',
+  'OTP_PROXY_TARGET',
+] as const;
+
+/**
+ * Same later-file-wins issue as `GEMINI_API_KEY`: a blank `123CHECKME_KEY=` in `.env.production`
+ * can wipe a real value from earlier `.env.local` after Vite's merge. Backfill missing/empty
+ * values from `.env.local` on disk so `server/prodHost` and the Vite config see the key.
+ */
+export function mergeOtpCheckmeFromEnvLocal(
+  projectRoot: string,
+  env: Record<string, string>,
+): Record<string, string> {
+  const merged = { ...env };
+  const p = resolve(projectRoot, '.env.local');
+  if (!existsSync(p)) return merged;
+  const parsed = parseDotenv(readFileSync(p, 'utf-8'));
+  for (const key of OTP_BACKFILL_KEYS) {
+    if (merged[key]?.trim()) continue;
+    const v = parsed[key];
+    if (typeof v === 'string' && v.trim()) {
+      merged[key] = v.trim();
+    }
+  }
+  return merged;
+}

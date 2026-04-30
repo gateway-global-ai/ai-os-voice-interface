@@ -21,6 +21,7 @@ function trimQuotes(s: string): string {
 
 function getOptionalBearer(): string | undefined {
   const a = import.meta.env.VITE_OTP_API_BEARER;
+  /** May be set directly or merged from `123CHECKME_KEY` in `vite.config.ts` `define`. */
   const b = import.meta.env.VITE_123CHECKME_KEY;
   const c = import.meta.env.VITE_CHECKME_API_KEY;
   const raw = (typeof a === 'string' && a.trim()) || (typeof b === 'string' && b.trim()) || (typeof c === 'string' && c.trim()) || '';
@@ -100,6 +101,24 @@ function readJsonError(data: unknown, fallback: string): string {
   return fallback;
 }
 
+/** 123checkme returns HTTP 500 + `Authenticate` when the API key is missing or rejected (see `providerCode` 20003). */
+function clarifyOtpUpstreamError(status: number, message: string, raw: unknown): string {
+  if (status !== 500 && status !== 401 && status !== 403) return message;
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+  const code = o?.providerCode;
+  const looksLikeCheckmeAuth =
+    message === 'Authenticate' ||
+    (typeof code === 'number' && code === 20003) ||
+    (o?.success === false && typeof o.error === 'string' && o.error.toLowerCase().includes('auth'));
+  if (!looksLikeCheckmeAuth) return message;
+  return (
+    `${message} — 123checkme rejected this call (usually missing or invalid API key). ` +
+    'Set `VITE_123CHECKME_KEY` or `VITE_OTP_API_BEARER` in `.env.local` and restart Vite. ' +
+    'Production: keys are baked in at `npm run build`; rebuild after changing them. ' +
+    'Twilio/Supabase on the checkme host are unrelated to whether the browser sends a valid checkme API key.'
+  );
+}
+
 async function postJson(path: string, body: Record<string, unknown>): Promise<unknown> {
   const bearer = getOptionalBearer();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -117,6 +136,7 @@ async function postJson(path: string, body: Record<string, unknown>): Promise<un
   const data: unknown = await response.json().catch(() => ({}));
   if (!response.ok) {
     let msg = readJsonError(data, response.statusText || 'Request failed');
+    msg = clarifyOtpUpstreamError(response.status, msg, data);
     if (response.status === 404) {
       msg =
         `${msg} — nothing at POST ${path}. ` +
@@ -137,6 +157,8 @@ export interface SendOtpResponse {
 
 export interface VerifyOtpResult {
   verified: boolean;
+  operatorToken?: string;
+  operatorPhone?: string;
   raw: unknown;
 }
 
@@ -177,7 +199,26 @@ export async function verifyOtp(phone: string, code: string): Promise<VerifyOtpR
 
   const raw = await postJson(verifyPath(), { phone: p, code: c });
   const verified = parseVerifySuccessPayload(raw);
-  return { verified, raw };
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const operatorToken = typeof o.operator_token === 'string' ? o.operator_token : undefined;
+  const operatorPhone = typeof o.operator_phone === 'string' ? o.operator_phone : undefined;
+  return { verified, operatorToken, operatorPhone, raw };
+}
+
+export async function restoreOperatorToken(phone: string): Promise<string | null> {
+  const p = normalizePhoneE164(phone);
+  const response = await fetch('/api/operator-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: p }),
+  });
+  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) return null;
+  const token = typeof data.operator_token === 'string' ? data.operator_token : null;
+  if (token) {
+    localStorage.setItem(AIOS_OPERATOR_TOKEN_KEY, token);
+  }
+  return token;
 }
 
 export function formatCheckmeUserError(message: string): string {
@@ -186,6 +227,7 @@ export function formatCheckmeUserError(message: string): string {
 
 /** Set after a successful send — used on the OTP step with `verifyOtp`. */
 export const CHECKME_SESSION_PHONE_KEY = 'aios_otp_pending_phone';
+export const AIOS_OPERATOR_TOKEN_KEY = 'aios_operator_token';
 
 /** @deprecated Use CHECKME_SESSION_PHONE_KEY; kept for any stale sessionStorage cleanup. */
 export const CHECKME_SESSION_VERIFICATION_ID_KEY = 'aios_checkme_verification_code_id';

@@ -31,7 +31,7 @@ export interface ShellTheme {
 
 export const SHELL_THEME_DEFAULTS: ShellTheme = {
   backgroundType: 'canvas',
-  canvasBackgroundId: 'starfield',
+  canvasBackgroundId: 'aurora',
   customBgPath: null,
   customBgKind: null,
   overlayColor: '#020617',

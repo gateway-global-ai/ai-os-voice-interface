@@ -21,7 +21,10 @@ Deno.serve(async (req) => {
   const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
   const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
   const supabaseUrl = Deno.env.get('AI_OS_SUPABASE_URL') ?? Deno.env.get('SUPABASE_URL');
-  const serviceRoleKey = Deno.env.get('AI_OS_SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const serviceRoleKey =
+    Deno.env.get('AI_OS_SUPABASE_SERVICE_ROLE_KEY') ??
+    Deno.env.get('AI_OS_SUPABASE_SECRET_KEY') ??
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!stripeKey || !webhookSecret || !supabaseUrl || !serviceRoleKey) {
     return json({ error: 'blocked_missing_server_secrets' }, 500);

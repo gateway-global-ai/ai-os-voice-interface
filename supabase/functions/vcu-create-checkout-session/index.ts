@@ -19,7 +19,10 @@ Deno.serve(async (req) => {
 
   const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
   const aiOsSupabaseUrl = Deno.env.get('AI_OS_SUPABASE_URL') ?? Deno.env.get('SUPABASE_URL');
-  const aiOsServiceRoleKey = Deno.env.get('AI_OS_SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const aiOsServiceRoleKey =
+    Deno.env.get('AI_OS_SUPABASE_SERVICE_ROLE_KEY') ??
+    Deno.env.get('AI_OS_SUPABASE_SECRET_KEY') ??
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const authSupabaseUrl = Deno.env.get('SUPABASE_URL') ?? aiOsSupabaseUrl;
   const authServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? aiOsServiceRoleKey;
   const appUrl = Deno.env.get('APP_URL') ?? 'http://localhost:5173';

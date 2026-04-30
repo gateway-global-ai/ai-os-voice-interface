@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gatewayglobal.ai/schemas/aios-desktop-app-manifest.schema.json",
+  "title": "AI OS Desktop App Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "appId",
+    "title",
+    "icon",
+    "description",
+    "requiredRole",
+    "proxyBase",
+    "backendBaseEnv",
+    "backendAuthEnv",
+    "intentPaths",
+    "backendEndpoints",
+    "mcpTools",
+    "noMockEvidence"
+  ],
+  "properties": {
+    "appId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Stable desktop app id, e.g. checkme_admin."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "icon": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 6
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requiredRole": {
+      "type": "string",
+      "enum": ["authenticated", "operator", "admin"]
+    },
+    "proxyBase": {
+      "type": "string",
+      "pattern": "^/__[a-z0-9_]+_api$"
+    },
+    "backendBaseEnv": {
+      "type": "string",
+      "pattern": "^[A-Z0-9_]+$"
+    },
+    "backendAuthEnv": {
+      "type": "string",
+      "pattern": "^[A-Z0-9_]+$"
+    },
+    "intentPaths": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "intent", "description", "endpointId"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "label": { "type": "string", "minLength": 1 },
+          "intent": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "endpointId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "loadsOnStart": { "type": "boolean", "const": false }
+        }
+      }
+    },
+    "backendEndpoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "method", "path", "status", "purpose"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "method": { "type": "string", "enum": ["GET", "POST", "PATCH", "PUT", "DELETE"] },
+          "path": { "type": "string", "pattern": "^/" },
+          "status": { "type": "string", "enum": ["verified", "blocked", "unverified"] },
+          "purpose": { "type": "string", "minLength": 1 },
+          "writeControl": { "type": "boolean" }
+        }
+      }
+    },
+    "mcpTools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "endpointId", "status"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "endpointId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "status": { "type": "string", "enum": ["verified", "blocked", "unverified"] }
+        }
+      }
+    },
+    "noMockEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceDocs", "verificationCommands", "blockedPolicy"],
+      "properties": {
+        "sourceDocs": { "type": "array", "items": { "type": "string" } },
+        "verificationCommands": { "type": "array", "items": { "type": "string" } },
+        "blockedPolicy": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

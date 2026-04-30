@@ -14,7 +14,7 @@ import express from 'express';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv } from 'vite';
-import { mergeGeminiEnvFromEnvLocal } from './mergeGeminiEnv';
+import { mergeGeminiEnvFromEnvLocal, mergeOtpCheckmeFromEnvLocal } from './mergeGeminiEnv';
 import { serveLocalModelChat, serveLocalModelReadiness } from '../src/local-llm/localModelServe';
 import {
   serveGeminiGenerate,
@@ -25,12 +25,18 @@ import {
 } from './geminiServe';
 import { createPodcastEpisode, listPodcastEpisodes } from './podcastLibraryServe';
 import { forwardOtpJson, getOtpUpstreamBaseForLog } from './otpProxyForward';
+import { handleCourseCreatorApi } from './courseCreatorServe';
+import { handleCheckmeSaasAdminApi } from './checkmeSaasAdminServe';
+import { handleOperatorSessionApi } from './operatorSessionServe';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const mode = process.env.NODE_ENV === 'production' ? 'production' : 'development';
-const env = mergeGeminiEnvFromEnvLocal(root, loadEnv(mode, root, '') as Record<string, string>);
+const env = mergeOtpCheckmeFromEnvLocal(
+  root,
+  mergeGeminiEnvFromEnvLocal(root, loadEnv(mode, root, '') as Record<string, string>),
+);
 
 const port = Number(process.env.PORT) || 5173;
 
@@ -44,6 +50,17 @@ app.post('/api/send-otp', (req, res) => {
 });
 app.post('/api/verify-otp', (req, res) => {
   void forwardOtpJson(env, req, res, '/api/verify-otp');
+});
+app.post('/api/operator-session', (req, res) => {
+  void handleOperatorSessionApi(env, req, res);
+});
+
+app.all('/__course_creator_api/*', (req, res) => {
+  void handleCourseCreatorApi(env, req, res);
+});
+
+app.all('/__checkme_saas_admin_api/*', (req, res) => {
+  void handleCheckmeSaasAdminApi(env, req, res);
 });
 
 app.get('/api/local-model/readiness', async (_req, res) => {

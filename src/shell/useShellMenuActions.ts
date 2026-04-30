@@ -130,6 +130,12 @@ export function useShellMenuActions({
           openShellMenuById('shell-header-system');
           return;
         case 'open_menu_vcu':
+          setTheme({
+            backgroundType: 'canvas',
+            canvasBackgroundId: 'aurora',
+            customBgKind: null,
+            customBgPath: null,
+          });
           setMode('voice');
           openShellMenuById('vibe-coding-university');
           return;
@@ -162,6 +168,10 @@ export function useShellMenuActions({
         case 'open_user_storage':
           closeShellMenus();
           setMode('user_storage');
+          return;
+        case 'open_system_profile':
+          openShellMenuById('system-controls');
+          markShellMenuActionSelected('system-controls', 'open_system_profile');
           return;
         case 'open_voice_control':
         case 'open_menu_voice_control':

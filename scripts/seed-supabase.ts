@@ -11,6 +11,8 @@
  *   - src/workspace/intentRegistry.ts   -> skills + workspace tool coverage
  *   - src/workspace/mcpIntentToolMap.ts -> workspace MCP tool mapping
  *   - src/vcu/vcuCurriculum.ts          -> VCU courses, lessons, behavior artifacts, agent skills, MCP registry
+ *   - docs/knowledge_base/research_studies/Deep Dive_ Vibe Coding Research Report.md -> university_course_drafts (intro)
+ *   - docs/knowledge_base/research_studies/wardley_mapping_bok_part_1.md -> university_course_drafts (Wardley Mapping)
  *
  * Local manifests retained in this file:
  *   - base AIOS tool registry rows that do not yet have a separate canonical source file
@@ -46,6 +48,19 @@ import {
   VCU_COURSES,
   VCU_LESSONS,
 } from '../src/vcu/vcuCurriculum';
+import {
+  INTRO_VIBE_CODING_DRAFT_ID,
+  INTRO_VIBE_CODING_INFOGRAPHIC_REL_PATH,
+  INTRO_VIBE_CODING_KNOWLEDGE_REL_PATH,
+  INTRO_VIBE_CODING_PODCAST_REL_PATH,
+  INTRO_VIBE_CODING_WORKING_TITLE,
+  WARDLEY_BOK_DRAFT_ID,
+  WARDLEY_BOK_KNOWLEDGE_REL_PATH,
+  WARDLEY_BOK_NOTEBOOK_URL,
+  WARDLEY_BOK_PINECONE_RUST_URL,
+  WARDLEY_BOK_RAW_NOTEBOOK_URL,
+  WARDLEY_BOK_WORKING_TITLE,
+} from '../src/vcu/courseCreatorSeeds';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -55,7 +70,11 @@ dotenv.config({ path: path.join(rootDir, '.env.local') });
 dotenv.config({ path: path.join(rootDir, '.env') });
 
 const supabaseUrl = process.env.AI_OS_SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '';
-const serviceRoleKey = process.env.AI_OS_SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const serviceRoleKey =
+  process.env.AI_OS_SUPABASE_SERVICE_ROLE_KEY ??
+  process.env.AI_OS_SUPABASE_SECRET_KEY ??
+  process.env.SUPABASE_SERVICE_ROLE_KEY ??
+  '';
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 type SeedRow = Record<string, JsonValue | undefined>;
@@ -153,7 +172,7 @@ function getClient(): SupabaseClient {
     fatal('Supabase client requested during dry-run');
   }
   if (!supabaseUrl || !serviceRoleKey) {
-    fatal('Missing AI_OS_SUPABASE_URL or AI_OS_SUPABASE_SECRET_KEY in .env.local');
+    fatal('Missing AI_OS_SUPABASE_URL or AI_OS_SUPABASE_SERVICE_ROLE_KEY in .env.local');
   }
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -542,7 +561,7 @@ function buildUniversityLessonRows(): SeedRow[] {
     test_steps: lesson.test_steps,
     example_project: lesson.example_project,
     aptitude_test: lesson.aptitude_test,
-    multimodal_assets: lesson.multimodal_assets,
+    multimodal_assets: lesson.multimodal_assets as unknown as JsonValue,
     cursor_rule_path: lesson.cursor_rule_path,
     cursor_skill_path: lesson.cursor_skill_path,
     agent_prompt_path: lesson.agent_prompt_path,
@@ -554,6 +573,46 @@ function buildUniversityLessonRows(): SeedRow[] {
     publish_status: lesson.publish_status,
     sort_order: lesson.sort_order,
   }));
+}
+
+type LessonMultimodalAssetLink = {
+  title: string;
+  uri: string;
+  notes?: string;
+  verification_status?: VerificationStatus;
+};
+
+function multimodalLinks(value: unknown): LessonMultimodalAssetLink[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is LessonMultimodalAssetLink => {
+    if (!item || typeof item !== 'object') return false;
+    const record = item as Record<string, unknown>;
+    return typeof record.title === 'string' && typeof record.uri === 'string';
+  });
+}
+
+function buildMultimodalArtifactRows(lesson: (typeof VCU_LESSONS)[number]): SeedRow[] {
+  const assets = lesson.multimodal_assets as Record<string, unknown>;
+  const sourceGroups: Array<{ key: string; artifactType: 'docs' | 'visual_aid'; uuidSegment: string }> = [
+    { key: 'research_reports', artifactType: 'docs', uuidSegment: '4004' },
+    { key: 'infographics', artifactType: 'visual_aid', uuidSegment: '4005' },
+  ];
+
+  return sourceGroups.flatMap(({ key, artifactType, uuidSegment }) =>
+    multimodalLinks(assets[key]).map((asset, index) => ({
+      artifact_id: `00000000-0000-${uuidSegment}-8000-${lesson.sort_order.toString().padStart(8, '0')}${index.toString().padStart(4, '0')}`,
+      lesson_id: lesson.lesson_id,
+      artifact_type: artifactType,
+      title: asset.title,
+      uri: asset.uri,
+      verification_status: asset.verification_status ?? 'review_pending',
+      evidence: {
+        notes: asset.notes ?? '',
+        required: 'Real source/link review and no-mock verification required before publish.',
+        source_group: key,
+      },
+    })),
+  );
 }
 
 function buildUniversityArtifactRows(): SeedRow[] {
@@ -594,6 +653,7 @@ function buildUniversityArtifactRows(): SeedRow[] {
       verification_status: 'review_pending',
       evidence: { required: 'Prompt must enforce readonly/MD-only research and no-mock evidence.' },
     },
+    ...buildMultimodalArtifactRows(lesson),
   ]);
 }
 
@@ -680,6 +740,174 @@ function buildReferralCodeRows(): SeedRow[] {
   }));
 }
 
+function readCourseKnowledgeText(relPath: string, label: string): string {
+  const full = path.join(rootDir, relPath);
+  if (!fs.existsSync(full)) {
+    fatal(
+      `course-creator: ${label} knowledge file missing`,
+      new Error(`Expected file at ${full} (from ${relPath})`),
+    );
+  }
+  return fs.readFileSync(full, 'utf8');
+}
+
+function buildUniversityCourseDraftRows(): SeedRow[] {
+  const introKnowledgeText = readCourseKnowledgeText(INTRO_VIBE_CODING_KNOWLEDGE_REL_PATH, 'intro');
+  if (!introKnowledgeText.trim()) {
+    fatal('course-creator: intro knowledge file is empty', new Error(INTRO_VIBE_CODING_KNOWLEDGE_REL_PATH));
+  }
+  const wardleyKnowledgeText = readCourseKnowledgeText(WARDLEY_BOK_KNOWLEDGE_REL_PATH, 'Wardley Mapping');
+  if (!wardleyKnowledgeText.trim()) {
+    fatal('course-creator: Wardley Mapping knowledge file is empty', new Error(WARDLEY_BOK_KNOWLEDGE_REL_PATH));
+  }
+  return [
+    {
+      draft_id: INTRO_VIBE_CODING_DRAFT_ID,
+      program_slug: 'vibe-coding-university',
+      working_title: INTRO_VIBE_CODING_WORKING_TITLE,
+      knowledge_text: introKnowledgeText,
+      guidance: {
+        courseName: INTRO_VIBE_CODING_WORKING_TITLE,
+        chapterTitles: ['The Vibe Coding Revolution', 'Purpose, Flow, And Debt', 'Turning Intent Into Profit'],
+        capstoneSummary: 'Create a source-backed purpose-to-product plan with no-mock verification gates.',
+        tableOfContents: 'Research report, podcast briefing, infographic walkthrough, verification-first capstone.',
+      } as unknown as JsonValue,
+      blueprint: {
+        assets: {
+          fileLibrary: [
+            {
+              label: 'Research report',
+              uri: INTRO_VIBE_CODING_KNOWLEDGE_REL_PATH,
+              notes: 'Canonical review-stage source text for the intro lesson.',
+            },
+            {
+              label: 'Infographic',
+              uri: INTRO_VIBE_CODING_INFOGRAPHIC_REL_PATH,
+              notes: 'Uploaded HTML infographic for lecture visual support.',
+            },
+            {
+              label: 'Podcast audio',
+              uri: INTRO_VIBE_CODING_PODCAST_REL_PATH,
+              notes: 'Uploaded audio source; playback publishing remains unverified.',
+            },
+          ],
+          externalUrls: [],
+          ideIntegrations: [],
+        },
+      } as unknown as JsonValue,
+      professor_user_id: null,
+      author_user_id: null,
+      linked_course_id: null,
+      status: 'draft',
+    },
+    {
+      draft_id: WARDLEY_BOK_DRAFT_ID,
+      program_slug: 'vibe-coding-university',
+      working_title: WARDLEY_BOK_WORKING_TITLE,
+      knowledge_text: wardleyKnowledgeText,
+      guidance: {
+        courseName: WARDLEY_BOK_WORKING_TITLE,
+        chapterTitles: [
+          'Wardley Mapping Body of Knowledge Sources',
+          'Notebook Data Collection Flow',
+          'Pinecone Rust SDK Integration Boundaries',
+          'No-Mock Runtime Verification',
+        ],
+        capstoneSummary:
+          'Design a source-backed Wardley Mapping knowledgebase runbook that separates collection, indexing, and retrieval claims from unverified runtime evidence.',
+        tableOfContents:
+          'Source manifest, Colab collection workflow, Pinecone Rust SDK reference, AI OS knowledge ingestion, runtime verification gates.',
+      } as unknown as JsonValue,
+      blueprint: {
+        introduction: {
+          tableOfContents:
+            'Source manifest, notebook workflow, Pinecone Rust client reference, AI OS Course Creator draft, no-mock verification gates.',
+        },
+        lesson: {
+          book: {
+            chapters: [
+              {
+                title: 'Part 1 Source Collection',
+                content:
+                  'Review the Colab notebook cells that mount Google Drive, collect Wardley Mapping video IDs, and prepare audio files for later processing.',
+              },
+              {
+                title: 'Rust Vector Store Path',
+                content:
+                  'Use the Pinecone Rust SDK reference as a future integration target while keeping API operations unverified until real commands run.',
+              },
+            ],
+          },
+          audio: { chapters: [] },
+          voice: { chapters: [] },
+        },
+        examples: [
+          {
+            label: 'Wardley KB no-mock runbook',
+            body:
+              'Write a runbook that records source URLs, commands, outputs, and approval gates before claiming video collection or Pinecone indexing worked.',
+          },
+        ],
+        interactiveExperiment: {
+          instructions:
+            'Upload the Wardley source notes into Session Knowledge and ask AI OS to identify verified source claims versus blocked runtime evidence.',
+        },
+        assets: {
+          fileLibrary: [
+            {
+              label: 'Wardley Mapping BOK source notes',
+              uri: WARDLEY_BOK_KNOWLEDGE_REL_PATH,
+              notes: 'Review-stage local source notes converted from the Colab notebook and Pinecone Rust client references.',
+            },
+          ],
+          externalUrls: [
+            {
+              label: 'Wardley Mapping Colab notebook',
+              url: WARDLEY_BOK_NOTEBOOK_URL,
+              notes: 'Original notebook source. Runtime execution remains unverified.',
+            },
+            {
+              label: 'Raw notebook source',
+              url: WARDLEY_BOK_RAW_NOTEBOOK_URL,
+              notes: 'Raw GitHub notebook content used for source review.',
+            },
+            {
+              label: 'Pinecone Rust client',
+              url: WARDLEY_BOK_PINECONE_RUST_URL,
+              notes: 'SDK reference for future Rust-managed vector index work; API behavior remains unverified until real tests run.',
+            },
+          ],
+          ideIntegrations: [
+            {
+              label: 'PINECONE_API_KEY',
+              notes:
+                'Environment variable is a runtime precondition. Do not read, print, commit, or expose the secret value.',
+            },
+          ],
+        },
+        lessonDiscussion: {
+          prompt:
+            'Which claims can we make from source review alone, and which require real YouTube, Google Drive, Pinecone, LangChain, or OpenAI evidence?',
+          notes: 'Use blocked or unverified for missing runtime evidence.',
+        },
+        capstone: {
+          summary:
+            'Create a no-mock Wardley Mapping knowledgebase implementation plan with explicit source, command, and evidence checkpoints.',
+          skillsToApply: 'Source review, AI OS knowledge ingest, Rust SDK planning, Pinecone safety gates, verification discipline.',
+          verificationSteps:
+            'Confirm local markdown exists; run seed dry-run; only run Pinecone list/describe/upsert/query commands after explicit approval against a test index.',
+          marketplaceNotes:
+            'A verified Wardley Mapping knowledgebase can become a strategy/planning product only after source rights, runtime outputs, and retrieval quality are reviewed.',
+        },
+      } as unknown as JsonValue,
+      professor_user_id: null,
+      author_user_id: null,
+      linked_course_id: 'wardley-mapping-knowledgebase',
+      status: 'draft',
+    },
+  ];
+}
+
 async function seedTools(): Promise<void> {
   stageHeader('Tools');
   const rows = [...BASE_TOOL_ROWS, ...buildWorkspaceToolRows()];
@@ -738,6 +966,23 @@ async function seedVcuUniversity(): Promise<void> {
   );
 }
 
+async function seedUniversityCourseDrafts(): Promise<void> {
+  stageHeader('Course Creator — intro knowledge');
+  const rows = buildUniversityCourseDraftRows();
+  if (rows.length === 0) {
+    return;
+  }
+  await upsertUniqueTable('university_course_drafts', 'draft_id', rows, false);
+  const draftSummary = rows
+    .map((row) => `${row.working_title} (${String(row.knowledge_text ?? '').length} characters)`)
+    .join('; ');
+  pushResult(
+    'vcu-course-drafts',
+    ['university_course_drafts'],
+    `university_course_drafts: ${rows.length} review-stage draft rows upserted (${draftSummary}); new drafts from operators are not deleted (deleteExtras=false)`,
+  );
+}
+
 async function seedPodcastEpisodes(): Promise<void> {
   stageHeader('Podcast Episodes');
   const rows = buildPodcastEpisodeRows();
@@ -764,6 +1009,7 @@ async function main(): Promise<void> {
   await seedShellMenus();
   await seedKnowledgeBase();
   await seedVcuUniversity();
+  await seedUniversityCourseDrafts();
   await seedPodcastEpisodes();
   await seedReferralCodes();
 

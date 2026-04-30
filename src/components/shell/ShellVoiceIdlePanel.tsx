@@ -9,6 +9,8 @@ import { motion } from 'motion/react';
 import { Pause, Play } from 'lucide-react';
 import type { SessionEntryClassification } from '../../shell/sessionEntryClassification';
 import type { WorkspaceState } from '../../shell/workspaceState';
+import { McpShellSurface } from './McpShellSurface';
+import type { ShellPilotAction } from '../../shell/mcpShellPilotActions';
 
 export type VibeTopicId = 'university' | 'community' | 'coding_platform';
 export type VcuAudiencePath = 'students' | 'professors' | 'guest_speakers';
@@ -40,6 +42,10 @@ type Props = {
   eyebrow?: string;
   /** Status line above bottom chrome (replaces kernel-ready copy when set). */
   footline?: string;
+  /** Tier B — render join funnel via MCP Apps (`AppRenderer`) instead of native overlay. */
+  useMcpCommunityOverlay?: boolean;
+  /** OTP phone forwarded from MCP guest UI (`otp_send`). */
+  onShellPilotOtpRequest?: (phone?: string) => void;
 };
 
 const VCU_AUDIENCE_PATHS: Record<VcuAudiencePath, {
@@ -83,6 +89,8 @@ export function ShellVoiceIdlePanel({
   onExplainVibeTopic,
   eyebrow = 'AI Operating System',
   footline,
+  useMcpCommunityOverlay = false,
+  onShellPilotOtpRequest,
 }: Props) {
   void _onSelectMode;
   void onExplainVibeTopic;
@@ -112,6 +120,33 @@ export function ShellVoiceIdlePanel({
     (onSkipIntroFromHero ?? onSkipIntro)();
     if (openCommunityMenuOnHeroSkip) {
       setJoinCommunityOpen(true);
+    }
+  };
+
+  const handleShellPilotHostAction = (action: ShellPilotAction) => {
+    if (action.type === 'community_professors') {
+      setJoinCommunityOpen(false);
+      setActiveAudiencePath('professors');
+      return;
+    }
+    if (action.type === 'community_guest_speakers') {
+      setJoinCommunityOpen(false);
+      setActiveAudiencePath('guest_speakers');
+      return;
+    }
+    if (action.type === 'community_create_account') {
+      closeJoinCommunityOverlay();
+      onCreateAccount?.();
+      return;
+    }
+    if (action.type === 'community_login') {
+      closeJoinCommunityOverlay();
+      onLogin?.();
+      return;
+    }
+    if (action.type === 'otp_send') {
+      onShellPilotOtpRequest?.(action.phone);
+      closeJoinCommunityOverlay();
     }
   };
 
@@ -194,12 +229,21 @@ export function ShellVoiceIdlePanel({
           </button>
 
           {joinCommunityOpen ? (
-            <JoinCommunityOverlay
-              introAudioPlaying={introAudioPlaying}
-              onIntroPlayPause={() => void onIntroPlayPause()}
-              onClose={closeJoinCommunityOverlay}
-              onSelectPath={(path) => setActiveAudiencePath(path)}
-            />
+            useMcpCommunityOverlay ? (
+              <McpShellSurface
+                open
+                toolName="aios_show_community_funnel"
+                onClose={closeJoinCommunityOverlay}
+                onShellAction={handleShellPilotHostAction}
+              />
+            ) : (
+              <JoinCommunityOverlay
+                introAudioPlaying={introAudioPlaying}
+                onIntroPlayPause={() => void onIntroPlayPause()}
+                onClose={closeJoinCommunityOverlay}
+                onSelectPath={(path) => setActiveAudiencePath(path)}
+              />
+            )
           ) : null}
 
           <AudiencePathOverlay
@@ -401,10 +445,12 @@ function AudiencePathOverlay({
           {audience.description}
         </p>
 
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className={`grid gap-3 ${activePath === 'students' ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
           <FunnelActionButton label="Create Account" onClick={onCreateAccount} />
           <FunnelActionButton label="Login" onClick={onLogin} />
-          <FunnelActionButton label={audience.actionLabel} onClick={onRequest} accent />
+          {activePath === 'students' ? null : (
+            <FunnelActionButton label={audience.actionLabel} onClick={onRequest} accent />
+          )}
         </div>
       </motion.section>
     </motion.div>

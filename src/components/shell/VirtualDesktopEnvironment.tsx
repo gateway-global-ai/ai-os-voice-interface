@@ -1,8 +1,10 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { VibeCodingUniversityPanel, type VcuUniversityView } from './VibeCodingUniversityPanel';
+import { CourseCreatorPanel } from './CourseCreatorPanel';
+import { CheckmeSaasAdminPanel } from './CheckmeSaasAdminPanel';
 
 // --- Types ---
-type AppId = 'university';
+type AppId = 'university' | 'course_creator' | 'checkme_admin';
 
 interface DesktopWindow {
   id: AppId;
@@ -24,9 +26,27 @@ interface Notification {
 
 export type { VcuUniversityView };
 
+const WORK_WINDOW_SHELL_TOKENS: React.CSSProperties = {
+  '--panel-bg': 'rgb(255 255 255)',
+  '--panel-bg-hover': 'rgb(241 245 249)',
+  '--panel-border': 'rgb(203 213 225)',
+  '--panel-text': 'rgb(30 41 59)',
+  '--panel-text-muted': 'rgb(71 85 105)',
+  '--panel-accent-bg': 'rgb(219 234 254)',
+  '--panel-accent-border': 'rgb(147 197 253)',
+  '--panel-accent-text': 'rgb(29 78 216)',
+  '--panel-surface': 'rgb(248 250 252)',
+  '--panel-surface-hover': 'rgb(241 245 249)',
+  '--panel-heading': 'rgb(15 23 42)',
+  '--panel-input-bg': 'rgb(255 255 255)',
+  '--panel-input-border': 'rgb(203 213 225)',
+} as React.CSSProperties;
+
 function createAppContent(universityView: VcuUniversityView = 'intro'): Record<AppId, React.ReactNode> {
   return {
     university: <VibeCodingUniversityPanel initialView={universityView} />,
+    course_creator: <CourseCreatorPanel />,
+    checkme_admin: <CheckmeSaasAdminPanel />,
   };
 }
 
@@ -34,7 +54,8 @@ export const VirtualDesktopEnvironment: React.FC<{
   authStatus: 'guest' | 'authenticated';
   launchUniversityView?: VcuUniversityView | null;
   launchRevision?: number;
-}> = ({ authStatus, launchUniversityView = null, launchRevision = 0 }) => {
+  onOpenUniversity?: () => void;
+}> = ({ authStatus, launchUniversityView = null, launchRevision = 0, onOpenUniversity }) => {
   // --- State: Window Management ---
   const [openWindows, setOpenWindows] = useState<DesktopWindow[]>([]);
   const [highestZIndex, setHighestZIndex] = useState(10);
@@ -48,7 +69,8 @@ export const VirtualDesktopEnvironment: React.FC<{
   const [showTray, setShowTray] = useState(false);
 
   const getAppContent = useCallback((id: AppId, universityView: VcuUniversityView = 'intro') => {
-    return createAppContent(universityView)[id];
+    const map = createAppContent(universityView);
+    return map[id];
   }, []);
 
   useEffect(() => {
@@ -62,6 +84,9 @@ export const VirtualDesktopEnvironment: React.FC<{
     if (authStatus === 'guest') {
       return;
     }
+    if (id === 'university') {
+      onOpenUniversity?.();
+    }
 
     setHighestZIndex(prevZIndex => {
       const newZIndex = prevZIndex + 1;
@@ -70,6 +95,8 @@ export const VirtualDesktopEnvironment: React.FC<{
         if (existingWindow) {
           return prev.map(w => w.id === id ? { ...w, zIndex: newZIndex, content: getAppContent(id, universityView) } : w);
         }
+        const W = id === 'university' ? 900 : id === 'course_creator' ? 960 : 1100;
+        const H = id === 'university' ? 620 : id === 'course_creator' ? 720 : 760;
         return [...prev, {
           id,
           title,
@@ -77,14 +104,14 @@ export const VirtualDesktopEnvironment: React.FC<{
           content: getAppContent(id, universityView),
           x: 200 + (prev.length * 30),
           y: 100 + (prev.length * 30),
-          width: id === 'university' ? 900 : 600,
-          height: id === 'university' ? 620 : 400,
-          isMaximized: false,
+          width: W,
+          height: H,
+          isMaximized: id === 'checkme_admin',
         }];
       });
       return newZIndex;
     });
-  }, [authStatus, getAppContent]);
+  }, [authStatus, getAppContent, onOpenUniversity]);
 
   useEffect(() => {
     if (authStatus !== 'authenticated' || !launchUniversityView) return;
@@ -161,10 +188,12 @@ export const VirtualDesktopEnvironment: React.FC<{
       }}>
         {[
           { id: 'university' as const, title: 'Vibe Coding University', icon: 'VCU' },
-        ].map(app => (
-          <button 
+          { id: 'course_creator' as const, title: 'Course Creator', icon: 'CC' },
+          { id: 'checkme_admin' as const, title: '123CheckMe Admin', icon: '123' },
+        ].map((app) => (
+          <button
             key={app.id}
-            onClick={() => openApp(app.id, app.title)}
+            onClick={() => { openApp(app.id, app.title, 'intro'); }}
             disabled={authStatus === 'guest'}
             style={{
               background: 'transparent',
@@ -230,7 +259,8 @@ export const VirtualDesktopEnvironment: React.FC<{
             flexDirection: 'column',
             boxShadow: win.isMaximized ? 'none' : '0 10px 25px rgba(0,0,0,0.2)',
             transition: draggingWindowId === win.id ? 'none' : 'width 0.2s, height 0.2s, top 0.2s, left 0.2s',
-            opacity: 1 // Ensure strictly solid background, no alpha transparency on click/drag
+            opacity: 1, // Ensure strictly solid background, no alpha transparency on click/drag
+            ...WORK_WINDOW_SHELL_TOKENS,
           }}
         >
           {/* Window Header */}
@@ -240,8 +270,8 @@ export const VirtualDesktopEnvironment: React.FC<{
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
             style={{
-              background: 'var(--panel-bg)',
-              borderBottom: '1px solid var(--panel-border)',
+              background: win.id === 'course_creator' ? 'rgb(15 47 95)' : 'var(--panel-bg)',
+              borderBottom: win.id === 'course_creator' ? '1px solid rgb(30 64 122)' : '1px solid var(--panel-border)',
               padding: '0.5rem 1rem',
               display: 'flex',
               justifyContent: 'space-between',
@@ -253,7 +283,7 @@ export const VirtualDesktopEnvironment: React.FC<{
               touchAction: 'none'
             }}
           >
-            <span style={{ color: 'var(--panel-heading)', fontWeight: 600, fontSize: '0.875rem' }}>
+            <span style={{ color: win.id === 'course_creator' ? 'rgb(239 246 255)' : 'var(--panel-heading)', fontWeight: 600, fontSize: '0.875rem' }}>
               {win.title}
             </span>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -263,7 +293,7 @@ export const VirtualDesktopEnvironment: React.FC<{
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: 'var(--panel-text-muted)',
+                  color: win.id === 'course_creator' ? 'rgb(191 219 254)' : 'var(--panel-text-muted)',
                   cursor: 'pointer',
                   fontSize: '1rem',
                   display: 'flex',
@@ -284,7 +314,7 @@ export const VirtualDesktopEnvironment: React.FC<{
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: 'var(--panel-text-muted)',
+                  color: win.id === 'course_creator' ? 'rgb(191 219 254)' : 'var(--panel-text-muted)',
                   cursor: 'pointer',
                   fontSize: '1rem',
                   display: 'flex',

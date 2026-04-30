@@ -24,7 +24,11 @@ dotenv.config({ path: path.join(rootDir, '.env.local') });
 dotenv.config({ path: path.join(rootDir, '.env') });
 
 const supabaseUrl = process.env.AI_OS_SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '';
-const serviceRoleKey = process.env.AI_OS_SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const serviceRoleKey =
+  process.env.AI_OS_SUPABASE_SERVICE_ROLE_KEY ??
+  process.env.AI_OS_SUPABASE_SECRET_KEY ??
+  process.env.SUPABASE_SERVICE_ROLE_KEY ??
+  '';
 
 const SOURCE_ID = 'cortesi-skills-cli';
 const PROTOCOL_ID = 'rust-skills-cli';
@@ -65,7 +69,7 @@ type CrateDependenciesResponse = {
 
 function getClient(): SupabaseClient {
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Missing AI_OS_SUPABASE_URL or AI_OS_SUPABASE_SECRET_KEY in .env.local');
+    throw new Error('Missing AI_OS_SUPABASE_URL or AI_OS_SUPABASE_SERVICE_ROLE_KEY in .env.local');
   }
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },

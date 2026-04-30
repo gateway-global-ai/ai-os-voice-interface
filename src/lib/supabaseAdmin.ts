@@ -10,10 +10,14 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './supabaseTypes';
 
 const supabaseUrl = process.env.AI_OS_SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '';
-const serviceRoleKey = process.env.AI_OS_SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const serviceRoleKey =
+  process.env.AI_OS_SUPABASE_SERVICE_ROLE_KEY ??
+  process.env.AI_OS_SUPABASE_SECRET_KEY ??
+  process.env.SUPABASE_SERVICE_ROLE_KEY ??
+  '';
 
 if (!supabaseUrl || !serviceRoleKey) {
-  console.warn('[supabaseAdmin] AI_OS_SUPABASE_URL or AI_OS_SUPABASE_SECRET_KEY is not set.');
+  console.warn('[supabaseAdmin] AI_OS_SUPABASE_URL or AI_OS_SUPABASE_SERVICE_ROLE_KEY is not set.');
 }
 
 export const supabaseAdmin = createClient<Database>(supabaseUrl, serviceRoleKey, {

@@ -45,3 +45,13 @@ No fake browser evidence, simulated screenshots, placeholder app output, or unsu
 ## Output Contract
 
 Return `sources_checked`, `local_paths`, `checks_run`, `compatibility_findings`, `no_mock_gate`, and `remaining_unverified`.
+
+## AI OS Tier B shell pilot (repo)
+
+When reviewing or extending the in-repo MCP Apps host:
+
+- Primary docs: [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview), [MCP UI](https://github.com/MCP-UI-Org/mcp-ui), [App Bridge](https://apps.extensions.modelcontextprotocol.io/api/modules/app-bridge.html), [Cursor skills](https://cursor.sh/docs/skills).
+- Host: `src/components/shell/McpShellSurface.tsx` (`AppRenderer`, `StreamableHTTPClientTransport`, `onFallbackRequest` for `x/aios/shell_action`).
+- Pilot server: `server/mcpShellPilotServer.ts`, HTML + theme injection: `server/mcpShellPilot/htmlUi.ts`, `server/mcpShellPilot/mcpShellThemeCss.ts`.
+- Browser token snapshot (optional generator): `src/shell/mcpShellThemeSnapshot.ts`.
+- Dev: `npm run dev:web+mcp`; production build still bundles sandbox via `npm run build:mcp-sandbox`.

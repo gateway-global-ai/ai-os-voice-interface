@@ -17,6 +17,12 @@ type SkillshubProtocolRow = Database['public']['Tables']['skillshub_protocols'][
 type SkillTapRow = Database['public']['Tables']['skill_taps']['Row'];
 type SkillAllowedToolRow = Database['public']['Tables']['skill_allowed_tools']['Row'];
 type IntentPermissionProfileRow = Database['public']['Tables']['intent_permission_profiles']['Row'];
+type LessonAssetLink = {
+  title: string;
+  uri: string;
+  notes?: string;
+  verification_status?: string;
+};
 
 export type VcuUniversityView = 'intro' | 'coursework' | 'lab' | 'cursor' | 'skills' | 'access';
 
@@ -47,6 +53,23 @@ const VIEW_LABELS: Record<VcuUniversityView, string> = {
 
 function asTextList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function asAssetLinks(value: unknown): LessonAssetLink[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is LessonAssetLink => {
+    if (!item || typeof item !== 'object') return false;
+    const record = item as Record<string, unknown>;
+    return typeof record.title === 'string' && typeof record.uri === 'string';
+  });
+}
+
+function lessonAssetGroups(assets: Record<string, unknown>) {
+  return [
+    { label: 'Research Reports', items: asAssetLinks(assets.research_reports) },
+    { label: 'Infographics', items: asAssetLinks(assets.infographics) },
+    { label: 'Podcast Audio', items: asAssetLinks(assets.podcast_audio) },
+  ].filter((group) => group.items.length > 0);
 }
 
 function StatusBadge({ label }: { label: string }) {
@@ -420,6 +443,8 @@ export function VibeCodingUniversityPanel({ initialView = 'intro' }: { initialVi
     if (!selectedLesson) {
       return <p style={{ color: 'var(--panel-text-muted)' }}>Select a real Supabase lesson row to view its source-backed manifest.</p>;
     }
+    const multimodalAssetGroups = lessonAssetGroups(selectedLesson.multimodal_assets);
+    const visualAids = asTextList(selectedLesson.multimodal_assets.visual_aids);
     return (
       <article style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div>
@@ -459,6 +484,41 @@ export function VibeCodingUniversityPanel({ initialView = 'intro' }: { initialVi
             </ul>
           </PanelCard>
         </section>
+        {(visualAids.length > 0 || multimodalAssetGroups.length > 0) && (
+          <PanelCard>
+            <h3 style={{ color: 'var(--panel-heading)', fontSize: '0.95rem', margin: 0 }}>Multimodal Curriculum Assets</h3>
+            {visualAids.length > 0 && (
+              <ul style={{ color: 'var(--panel-text-muted)', paddingLeft: '1.2rem', marginBottom: multimodalAssetGroups.length > 0 ? '0.75rem' : 0 }}>
+                {visualAids.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            )}
+            {multimodalAssetGroups.map((group) => (
+              <div key={group.label} style={{ marginTop: '0.75rem' }}>
+                <h4 style={{ color: 'var(--panel-heading)', fontSize: '0.82rem', margin: '0 0 0.4rem' }}>{group.label}</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
+                  {group.items.map((asset) => (
+                    <button
+                      type="button"
+                      key={`${group.label}-${asset.uri}`}
+                      onClick={() => window.open(asset.uri, '_blank', 'noopener,noreferrer')}
+                      style={panelButtonStyle(false)}
+                    >
+                      <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>{asset.title}</div>
+                      <div style={{ color: 'var(--panel-text-muted)', fontSize: '0.72rem', marginTop: '0.25rem' }}>
+                        {asset.verification_status ?? 'review_pending'}
+                      </div>
+                      {asset.notes && (
+                        <div style={{ color: 'var(--panel-text-muted)', fontSize: '0.72rem', marginTop: '0.35rem' }}>
+                          {asset.notes}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </PanelCard>
+        )}
         <PanelCard>
           <h3 style={{ color: 'var(--panel-heading)', fontSize: '0.95rem', margin: 0 }}>No-Mock Acceptance</h3>
           <p style={{ color: 'var(--panel-text-muted)', marginBottom: 0 }}>

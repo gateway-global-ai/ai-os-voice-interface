@@ -1,0 +1,271 @@
+/**
+ * {{TITLE}} — generated AI OS desktop app panel.
+ * Opens to a voice-first start page. Data loads only after an explicit intent selection.
+ *
+ * Source docs:
+ * - Cursor skills: https://cursor.sh/docs/skills
+ * - MCP server docs: https://modelcontextprotocol.io/docs/develop/build-server
+ *
+ * @license SPDX-License-Identifier: Apache-2.0
+ */
+
+import type { CSSProperties } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { AIOS_OPERATOR_TOKEN_KEY } from '../../core/io/checkmeClient';
+
+type ViewId = 'start' | {{VIEW_ID_UNION}};
+type LoadState = 'idle' | 'loading' | 'ready' | 'blocked' | 'error';
+
+type ProxyPayload = {
+  upstream?: {
+    status: number;
+    ok: boolean;
+    path: string;
+  };
+  data?: Record<string, unknown>;
+  error?: string;
+  status?: string;
+};
+
+type SectionState = {
+  status: LoadState;
+  message?: string;
+  payload?: ProxyPayload;
+};
+
+const intentPaths = {{INTENT_PATHS_JSON}} as const;
+
+const pageStyle: CSSProperties = {
+  minHeight: '100%',
+  background: 'var(--panel-bg)',
+  color: 'var(--panel-text)',
+  padding: '1rem',
+  paddingBottom: 'calc(var(--shell-footer-height) + 1.5rem)',
+};
+
+const cardStyle: CSSProperties = {
+  background: 'var(--panel-bg)',
+  border: '1px solid var(--panel-border)',
+  borderRadius: '0.875rem',
+  padding: '1rem',
+};
+
+const mutedStyle: CSSProperties = {
+  color: 'var(--panel-text-muted)',
+  fontSize: '0.85rem',
+  lineHeight: 1.5,
+};
+
+function readOperatorToken(): string | null {
+  try {
+    return localStorage.getItem(AIOS_OPERATOR_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function dataStatus(payload?: ProxyPayload): string {
+  const value = payload?.data?.status ?? payload?.status;
+  return typeof value === 'string' ? value : payload?.upstream?.ok ? 'verified' : 'unverified';
+}
+
+function statusColor(status?: string): string {
+  switch (status) {
+    case 'verified':
+    case 'ready':
+      return 'rgb(22 101 52)';
+    case 'unverified':
+      return 'rgb(146 64 14)';
+    case 'blocked':
+    case 'error':
+      return 'rgb(185 28 28)';
+    default:
+      return 'var(--panel-text-muted)';
+  }
+}
+
+async function appApi(token: string, path: string, init: RequestInit = {}): Promise<ProxyPayload> {
+  const response = await fetch(`{{PROXY_BASE}}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(init.headers ?? {}),
+    },
+  });
+  const data = (await response.json().catch(() => ({}))) as ProxyPayload;
+  if (!response.ok) {
+    throw new Error(
+      typeof data.error === 'string'
+        ? data.error
+        : typeof data.data?.error === 'string'
+          ? data.data.error
+          : `{{TITLE}} API failed (${response.status})`,
+    );
+  }
+  return data;
+}
+
+function PreviewRows({ value }: { value: unknown }) {
+  const rows = Array.isArray(value) ? value.slice(0, 8) : [];
+  if (rows.length === 0) return <p style={mutedStyle}>No rows returned from this endpoint.</p>;
+  return (
+    <pre
+      style={{
+        background: 'var(--panel-surface)',
+        border: '1px solid var(--panel-border)',
+        borderRadius: '0.75rem',
+        color: 'var(--panel-text)',
+        fontSize: '0.75rem',
+        overflowX: 'auto',
+        padding: '0.75rem',
+      }}
+    >
+      {JSON.stringify(rows, null, 2)}
+    </pre>
+  );
+}
+
+export function {{COMPONENT_NAME}}() {
+  const [activeView, setActiveView] = useState<ViewId>('start');
+  const [sectionState, setSectionState] = useState<Record<string, SectionState>>({});
+  const activeIntent = useMemo(
+    () => intentPaths.find((item) => item.id === activeView),
+    [activeView],
+  );
+
+  const loadIntent = useCallback(async (intent: (typeof intentPaths)[number]) => {
+    const token = readOperatorToken();
+    setActiveView(intent.id as ViewId);
+    if (!token) {
+      setSectionState((prev) => ({
+        ...prev,
+        [intent.id]: {
+          status: 'blocked',
+          message: 'Operator token is required before loading this app data.',
+        },
+      }));
+      return;
+    }
+    setSectionState((prev) => ({ ...prev, [intent.id]: { status: 'loading' } }));
+    try {
+      const payload = await appApi(token, intent.path);
+      const status = dataStatus(payload);
+      setSectionState((prev) => ({
+        ...prev,
+        [intent.id]: {
+          status: status === 'blocked' ? 'blocked' : 'ready',
+          message: status,
+          payload,
+        },
+      }));
+    } catch (error) {
+      setSectionState((prev) => ({
+        ...prev,
+        [intent.id]: {
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      }));
+    }
+  }, []);
+
+  if (activeView === 'start') {
+    return (
+      <div style={pageStyle}>
+        <section
+          style={{
+            ...cardStyle,
+            background: 'linear-gradient(135deg, rgb(239 246 255), rgb(255 255 255))',
+            marginBottom: '1rem',
+          }}
+        >
+          <p style={{ color: 'var(--panel-accent-text)', fontSize: '0.72rem', fontWeight: 800, margin: 0 }}>
+            {{APP_ID_UPPER}}
+          </p>
+          <h1 style={{ color: 'var(--panel-heading)', fontSize: '1.8rem', margin: '0.25rem 0' }}>{{TITLE}}</h1>
+          <p style={{ ...mutedStyle, maxWidth: '54rem', margin: 0 }}>{{DESCRIPTION}}</p>
+        </section>
+
+        <section style={{ ...cardStyle, marginBottom: '1rem' }}>
+          <h2 style={{ color: 'var(--panel-heading)', fontSize: '1.1rem', margin: 0 }}>Voice-first start</h2>
+          <p style={mutedStyle}>
+            Tell AI OS what you want to manage, or choose an intent below. Dashboards and endpoint results load only
+            after an explicit target is selected.
+          </p>
+        </section>
+
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(15rem, 1fr))', gap: '0.85rem' }}>
+          {intentPaths.map((intent) => (
+            <button
+              key={intent.id}
+              type="button"
+              onClick={() => void loadIntent(intent)}
+              style={{
+                ...cardStyle,
+                cursor: 'pointer',
+                textAlign: 'left',
+                background: 'var(--panel-surface)',
+              }}
+            >
+              <strong style={{ color: 'var(--panel-heading)', display: 'block', marginBottom: '0.35rem' }}>
+                {intent.label}
+              </strong>
+              <span style={mutedStyle}>{intent.description}</span>
+              <span style={{ ...mutedStyle, display: 'block', fontSize: '0.72rem', marginTop: '0.5rem' }}>
+                {intent.intent}
+              </span>
+            </button>
+          ))}
+        </section>
+      </div>
+    );
+  }
+
+  const state = sectionState[activeView] ?? { status: 'idle' };
+
+  return (
+    <div style={pageStyle}>
+      <button
+        type="button"
+        onClick={() => setActiveView('start')}
+        style={{
+          border: '1px solid var(--panel-border)',
+          background: 'var(--panel-surface)',
+          color: 'var(--panel-text)',
+          borderRadius: '999px',
+          cursor: 'pointer',
+          padding: '0.45rem 0.75rem',
+          marginBottom: '1rem',
+        }}
+      >
+        Back to intents
+      </button>
+
+      <section style={cardStyle}>
+        <h2 style={{ color: 'var(--panel-heading)', fontSize: '1.2rem', margin: 0 }}>{activeIntent?.label}</h2>
+        <p style={mutedStyle}>{activeIntent?.description}</p>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span style={{ ...mutedStyle, color: statusColor(state.status) }}>Load: {state.status}</span>
+          <span style={{ ...mutedStyle, color: statusColor(dataStatus(state.payload)) }}>
+            Data: {dataStatus(state.payload)}
+          </span>
+          {state.payload?.upstream && <span style={mutedStyle}>Upstream: {state.payload.upstream.status}</span>}
+        </div>
+        {state.message && <p style={{ ...mutedStyle, color: statusColor(state.status) }}>{state.message}</p>}
+      </section>
+
+      <section style={{ ...cardStyle, marginTop: '1rem' }}>
+        <h3 style={{ color: 'var(--panel-heading)', fontSize: '1rem', marginTop: 0 }}>Endpoint Results</h3>
+        <PreviewRows value={state.payload?.data?.rows ?? state.payload?.data?.items ?? []} />
+      </section>
+
+      <section style={{ ...cardStyle, marginTop: '1rem' }}>
+        <h3 style={{ color: 'var(--panel-heading)', fontSize: '1rem', marginTop: 0 }}>Diagnostics</h3>
+        <pre style={{ ...mutedStyle, whiteSpace: 'pre-wrap' }}>
+          {JSON.stringify(state.payload ?? { status: state.status, message: state.message }, null, 2)}
+        </pre>
+      </section>
+    </div>
+  );
+}

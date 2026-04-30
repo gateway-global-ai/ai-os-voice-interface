@@ -194,7 +194,7 @@ export function ShellIdentityBar({
               boxShadow: 'none',
             }}
           >
-            <div className="pointer-events-none absolute left-1/2 top-1/2 flex min-w-0 -translate-x-1/2 -translate-y-1/2 items-center justify-center px-4">
+            <div className="pointer-events-none absolute left-1/2 top-1/2 hidden min-w-0 -translate-x-1/2 -translate-y-1/2 items-center justify-center px-4 md:flex">
               <button
                 type="button"
                 onClick={onOpenTransparency}

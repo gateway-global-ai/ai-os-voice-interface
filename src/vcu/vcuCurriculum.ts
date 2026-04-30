@@ -6,9 +6,26 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
+import {
+  INTRO_VIBE_CODING_INFOGRAPHIC_REL_PATH,
+  INTRO_VIBE_CODING_KNOWLEDGE_REL_PATH,
+  INTRO_VIBE_CODING_PODCAST_REL_PATH,
+  WARDLEY_BOK_KNOWLEDGE_REL_PATH,
+  WARDLEY_BOK_NOTEBOOK_URL,
+  WARDLEY_BOK_PINECONE_RUST_URL,
+  WARDLEY_BOK_RAW_NOTEBOOK_URL,
+} from './courseCreatorSeeds';
+
 export type VcuCourseLevel = 'foundation' | 'intermediate' | 'advanced' | 'final_project';
 export type VcuPublishStatus = 'draft' | 'review' | 'published' | 'blocked' | 'unverified';
 export type VcuVerificationStatus = 'verified' | 'review_pending' | 'blocked' | 'unverified';
+
+export interface VcuMultimodalAssetLink {
+  title: string;
+  uri: string;
+  notes: string;
+  verification_status: VcuVerificationStatus;
+}
 
 export interface VcuCourseManifest {
   course_id: string;
@@ -45,6 +62,9 @@ export interface VcuLessonManifest {
     gemini_voice_prompt: string;
     video_outline: string[];
     visual_aids: string[];
+    research_reports?: VcuMultimodalAssetLink[];
+    infographics?: VcuMultimodalAssetLink[];
+    podcast_audio?: VcuMultimodalAssetLink[];
   };
   cursor_rule_path: string;
   cursor_skill_path: string;
@@ -163,6 +183,16 @@ const requiredMcpDocsUrls = REQUIRED_MCP_SOURCE_MANIFEST.map((source) => source.
 
 export const VCU_COURSES: VcuCourseManifest[] = [
   {
+    course_id: 'vibe-coding-foundations',
+    title: 'Vibe Coding Foundations',
+    description: 'Purpose-driven vibe coding, intent mediation, flow debt, commercialization patterns, and no-mock execution discipline.',
+    level: 'foundation',
+    sort_order: 0,
+    status: 'review',
+    final_project: false,
+    docs_url: 'https://cloud.google.com/discover/what-is-vibe-coding',
+  },
+  {
     course_id: 'mcp-foundations',
     title: 'MCP Foundations',
     description: 'Protocol, schema, server, client, and Rust SDK foundations for building truthful MCP systems.',
@@ -202,9 +232,114 @@ export const VCU_COURSES: VcuCourseManifest[] = [
     final_project: true,
     docs_url: 'https://modelcontextprotocol.io/extensions/apps/overview',
   },
+  {
+    course_id: 'wardley-mapping-knowledgebase',
+    title: 'Wardley Mapping Knowledgebase',
+    description: 'Source-backed Wardley Mapping body-of-knowledge collection, AI OS course drafting, and review-stage Pinecone Rust indexing plans.',
+    level: 'intermediate',
+    sort_order: 5,
+    status: 'review',
+    final_project: false,
+    docs_url: WARDLEY_BOK_NOTEBOOK_URL,
+  },
 ];
 
 export const VCU_LESSONS: VcuLessonManifest[] = [
+  lesson(0, {
+    lesson_id: 'intro-vibe-coding-purpose-profit',
+    course_id: 'vibe-coding-foundations',
+    title: 'The Vibe Coding Revolution: Purpose Into Profit',
+    summary: 'Use the source research, podcast, and infographic bundle to introduce intent-driven development, flow debt, purpose alignment, and commercialization discipline.',
+    docs_url: 'https://cloud.google.com/discover/what-is-vibe-coding',
+    docs_urls: [
+      'https://cloud.google.com/discover/what-is-vibe-coding',
+      'https://arxiv.org/abs/2510.17842',
+      'https://arxiv.org/pdf/2512.11922',
+      'https://developers.redhat.com/articles/2026/02/17/uncomfortable-truth-about-vibe-coding',
+      INTRO_VIBE_CODING_KNOWLEDGE_REL_PATH,
+    ],
+    learning_outcomes: [
+      'Define vibe coding as intent-driven software creation without treating generated code as automatically trustworthy',
+      'Explain how purpose, identity, and domain expertise anchor useful AI-generated applications',
+      'Identify flow debt and technical debt risks introduced by fast AI-assisted iteration',
+      'Use research, audio, and infographic assets as curriculum evidence rather than mock lesson content',
+    ],
+    prerequisites: ['Basic Cursor familiarity', 'Willingness to verify generated code and claims against real sources'],
+    install_steps: [
+      {
+        command: 'test -s "docs/knowledge_base/research_studies/Deep Dive_ Vibe Coding Research Report.md"',
+        expected: 'The source research markdown exists and is non-empty.',
+        evidence_required: 'Real shell output and exit code from the repository.',
+      },
+      {
+        command: 'test -s "user_uploads/vibe_coding_research/infographic.html"',
+        expected: 'The uploaded infographic HTML exists and is non-empty.',
+        evidence_required: 'Real shell output and exit code from the repository.',
+      },
+    ],
+    test_steps: [
+      {
+        command: 'npx tsx scripts/seed-supabase.ts --dry-run',
+        expected: 'Seed importer reports review-stage VCU rows and does not publish the lesson.',
+        evidence_required: 'Actual dry-run output and exit code.',
+      },
+    ],
+    example_project: {
+      name: 'Purpose-to-Product Vibe Coding Brief',
+      objective: 'Turn a personal domain problem into a scoped, verifiable app plan with risks, source claims, and acceptance evidence.',
+      acceptance: [
+        'Problem and audience are specific',
+        'Every market or technical claim cites the research bundle or a primary source',
+        'Flow debt and verification risks are listed before build work starts',
+      ],
+    },
+    aptitude_test: {
+      pass_threshold: 80,
+      questions: [
+        {
+          prompt: 'Why is purpose treated as a technical constraint in this lesson?',
+          answer: 'Purpose gives the AI concrete context and constraints, reducing generic output and keeping iteration tied to a real user problem.',
+        },
+        {
+          prompt: 'What evidence is still required before this lesson can be published?',
+          answer: 'Real install checks, real test output, source/link review, triangulation, and an explicit no-mock pass.',
+        },
+      ],
+    },
+    multimodal_assets: {
+      gemini_voice_prompt: 'Teach vibe coding as the orchestration of human intent through AI execution, emphasizing purpose, flow debt, verification, and commercial discipline.',
+      video_outline: ['Define vibe coding', 'Show purpose and identity as constraints', 'Walk through the infographic', 'Discuss flow debt and no-mock verification'],
+      visual_aids: [
+        'Infographic: The Vibe Coding Revolution',
+        'Level 0-3 AI development progression table',
+        'Purpose-to-profit flow map',
+      ],
+      research_reports: [
+        {
+          title: 'Deep Dive: Vibe Coding Research Report',
+          uri: INTRO_VIBE_CODING_KNOWLEDGE_REL_PATH,
+          notes: 'Canonical local research source for the intro course draft.',
+          verification_status: 'review_pending',
+        },
+      ],
+      infographics: [
+        {
+          title: 'The Vibe Coding Revolution infographic',
+          uri: INTRO_VIBE_CODING_INFOGRAPHIC_REL_PATH,
+          notes: 'Uploaded HTML infographic; requires source/link review before publish.',
+          verification_status: 'review_pending',
+        },
+      ],
+      podcast_audio: [
+        {
+          title: 'Vibe Coding And The Flow Debt Tradeoff',
+          uri: INTRO_VIBE_CODING_PODCAST_REL_PATH,
+          notes: 'Uploaded podcast audio source; runtime and playback publishing are unverified until copied into the public podcast library or uploaded through the library API.',
+          verification_status: 'unverified',
+        },
+      ],
+    },
+  }),
   lesson(1, {
     lesson_id: 'mcp-rust-sdk',
     course_id: 'mcp-foundations',
@@ -444,6 +579,105 @@ export const VCU_LESSONS: VcuLessonManifest[] = [
     example_project: { name: 'Paid MCP Utility App', objective: 'Ship a useful MCP App with a clear customer, capability, and test plan.', acceptance: ['Customer problem documented', 'MCP server/app works', 'Tests pass', 'No-mock review accepted'] },
     aptitude_test: { pass_threshold: 85, questions: [{ prompt: 'What must be true before final project work is accepted?', answer: 'The no-mock gate must pass with real install, test, and review evidence.' }] },
     multimodal_assets: { gemini_voice_prompt: 'Coach the student from product idea to verified sellable app without skipping evidence.', video_outline: ['Choose problem', 'Build MCP capability', 'Verify and package'], visual_aids: ['Product-to-MCP architecture map'] },
+  }),
+  lesson(17, {
+    lesson_id: 'wardley-bok-source-ingestion',
+    course_id: 'wardley-mapping-knowledgebase',
+    title: 'Wardley Mapping BOK Source Ingestion',
+    summary:
+      'Convert the Wardley Mapping body-of-knowledge notebook and Pinecone Rust SDK reference into AI OS knowledge, while keeping live YouTube, Google Drive, Pinecone, LangChain, and OpenAI claims unverified until real commands run.',
+    docs_url: WARDLEY_BOK_NOTEBOOK_URL,
+    docs_urls: [
+      WARDLEY_BOK_NOTEBOOK_URL,
+      WARDLEY_BOK_RAW_NOTEBOOK_URL,
+      WARDLEY_BOK_PINECONE_RUST_URL,
+      WARDLEY_BOK_KNOWLEDGE_REL_PATH,
+    ],
+    learning_outcomes: [
+      'Explain how the source notebook gathers Wardley Mapping video IDs and prepares audio downloads',
+      'Identify notebook cells that require live Google Drive, YouTube, or package-manager access',
+      'Describe how the Pinecone Rust SDK could support a later Rust-managed vector indexer',
+      'Separate source-backed documentation claims from unverified runtime evidence',
+      'Define no-mock gates for collection, indexing, upsert, query, and course publication',
+    ],
+    prerequisites: [
+      'Basic Wardley Mapping familiarity',
+      'AI OS Session Knowledge or Course Creator access',
+      'Rust and Pinecone concepts helpful for the future runtime path',
+    ],
+    install_steps: [
+      {
+        command: `test -s "${WARDLEY_BOK_KNOWLEDGE_REL_PATH}"`,
+        expected: 'The local Wardley Mapping source notes exist and are non-empty.',
+        evidence_required: 'Real shell output and exit code from the repository.',
+      },
+      {
+        command: 'test -n "$PINECONE_API_KEY"',
+        expected: 'The Pinecone API key environment variable is present without printing the secret value.',
+        evidence_required: 'A redacted environment-presence check only; never print or commit the key.',
+      },
+    ],
+    test_steps: [
+      {
+        command: 'npx tsx scripts/seed-supabase.ts --dry-run',
+        expected: 'Seed importer reports review-stage VCU rows and Wardley course draft rows without publishing the lesson.',
+        evidence_required: 'Actual dry-run output and exit code.',
+      },
+      {
+        command: 'cargo --version',
+        expected: 'Rust toolchain version prints for future Pinecone SDK work.',
+        evidence_required: 'Actual command output and exit code; Pinecone API calls remain unverified until explicitly approved.',
+      },
+    ],
+    example_project: {
+      name: 'Wardley Mapping Knowledgebase Runbook',
+      objective:
+        'Design a no-mock implementation runbook that starts with source collection and only promotes Pinecone retrieval claims after real list/upsert/query evidence exists.',
+      acceptance: [
+        'Source URLs and local artifact paths are listed',
+        'Live network and secret-dependent steps are marked blocked or unverified until run',
+        'Pinecone test index policy is defined before any API mutation',
+        'Course publication remains review-stage until reviewer acceptance',
+      ],
+    },
+    aptitude_test: {
+      pass_threshold: 80,
+      questions: [
+        {
+          prompt: 'Which parts of the Wardley notebook were verified as source material for this lesson?',
+          answer:
+            'The reviewed notebook contains Google Drive setup, scrapetube collection, yt-dlp audio download, and pytube fallback cells for Part 1 data collection.',
+        },
+        {
+          prompt: 'Why is Pinecone runtime behavior still unverified in this lesson?',
+          answer:
+            'The SDK documentation was reviewed, but no real Pinecone list, create, upsert, query, or fetch command has been run against an approved test account and index.',
+        },
+      ],
+    },
+    multimodal_assets: {
+      gemini_voice_prompt:
+        'Teach the Wardley Mapping BOK pipeline as a source-backed knowledgebase design exercise, emphasizing where runtime evidence is still required.',
+      video_outline: [
+        'Review the notebook source manifest',
+        'Trace Google Drive and YouTube collection cells',
+        'Explain the Pinecone Rust SDK integration target',
+        'Build the no-mock verification checklist',
+      ],
+      visual_aids: [
+        'Wardley BOK source-to-index pipeline',
+        'Verified versus unverified evidence table',
+        'Pinecone Rust SDK environment and operation map',
+      ],
+      research_reports: [
+        {
+          title: 'Wardley Mapping Body Of Knowledge - Part 1 Source Notes',
+          uri: WARDLEY_BOK_KNOWLEDGE_REL_PATH,
+          notes: 'Review-stage local knowledge artifact converted from the source notebook and Pinecone Rust SDK references.',
+          verification_status: 'review_pending',
+        },
+      ],
+    },
   }),
 ];
 

@@ -1,0 +1,130 @@
+/**
+ * {{TITLE}} proxy.
+ * Verifies the AI OS operator token, then calls upstream APIs server-side.
+ *
+ * Source docs:
+ * - Cursor skills: https://cursor.sh/docs/skills
+ * - MCP server docs: https://modelcontextprotocol.io/docs/develop/build-server
+ *
+ * @license SPDX-License-Identifier: Apache-2.0
+ */
+
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { verifyOperatorToken } from './operatorAuthority';
+
+type AppProxyRequest = IncomingMessage & { body?: unknown };
+
+const endpointMap = {{ENDPOINT_MAP_JSON}} as const;
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(body));
+}
+
+function readBearer(req: IncomingMessage): string | undefined {
+  const header = req.headers.authorization;
+  if (typeof header !== 'string') return undefined;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match?.[1];
+}
+
+async function readJsonBody(req: AppProxyRequest): Promise<unknown> {
+  if (req.body !== undefined) return req.body;
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  if (!raw) return {};
+  return JSON.parse(raw) as unknown;
+}
+
+function apiPath(req: IncomingMessage): string {
+  const url = new URL(req.url ?? '/', 'http://local.invalid');
+  return url.pathname.replace(/^{{PROXY_BASE_REGEX}}/, '') || '/';
+}
+
+function upstreamBase(env: Record<string, string>): string {
+  return (env.{{BACKEND_BASE_ENV}} || '').replace(/\/$/, '');
+}
+
+function upstreamKey(env: Record<string, string>): string {
+  return (env.{{BACKEND_AUTH_ENV}} || '').trim();
+}
+
+function findEndpoint(method: string, path: string) {
+  return endpointMap.find((endpoint) => endpoint.method === method && endpoint.proxyPath === path);
+}
+
+export async function {{HANDLER_NAME}}(
+  env: Record<string, string>,
+  req: AppProxyRequest,
+  res: ServerResponse,
+): Promise<void> {
+  const token = verifyOperatorToken(env, readBearer(req));
+  if (!token.ok) {
+    sendJson(res, 403, { status: 'blocked', error: token.reason });
+    return;
+  }
+
+  const base = upstreamBase(env);
+  const key = upstreamKey(env);
+  if (!base || !key) {
+    sendJson(res, 503, {
+      status: 'blocked',
+      error: 'upstream_not_configured',
+      required_env: ['{{BACKEND_BASE_ENV}}', '{{BACKEND_AUTH_ENV}}'],
+    });
+    return;
+  }
+
+  const method = req.method ?? 'GET';
+  const path = apiPath(req);
+  const endpoint = findEndpoint(method, path);
+  if (!endpoint) {
+    sendJson(res, 404, { status: 'blocked', error: '{{APP_ID}}_proxy_endpoint_not_found', method, path });
+    return;
+  }
+
+  if (endpoint.status !== 'verified') {
+    sendJson(res, 501, {
+      status: endpoint.status,
+      error: 'endpoint_not_verified',
+      endpoint,
+    });
+    return;
+  }
+
+  try {
+    const init: RequestInit = {
+      method,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`,
+      },
+    };
+    if (!['GET', 'HEAD'].includes(method)) {
+      init.body = JSON.stringify(await readJsonBody(req));
+    }
+
+    const response = await fetch(`${base}${endpoint.upstreamPath}`, init);
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json')
+      ? ((await response.json().catch(() => ({}))) as unknown)
+      : { status: 'blocked', error: await response.text() };
+
+    sendJson(res, response.status, {
+      upstream: {
+        status: response.status,
+        ok: response.ok,
+        path: endpoint.upstreamPath,
+      },
+      data,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendJson(res, 502, { status: 'blocked', error: message });
+  }
+}

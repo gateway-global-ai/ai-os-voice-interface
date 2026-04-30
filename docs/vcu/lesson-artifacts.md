@@ -25,6 +25,7 @@ These global behavior artifacts seed into `vcu_behavior_artifacts` separately fr
 
 ## Per-Lesson Required Docs
 
+- `intro-vibe-coding-purpose-profit`: `docs/knowledge_base/research_studies/Deep Dive_ Vibe Coding Research Report.md`, `user_uploads/vibe_coding_research/infographic.html`, `user_uploads/vibe_coding_research/Vibe coding and the flow debt tradeoff.mp3`, https://cloud.google.com/discover/what-is-vibe-coding, https://arxiv.org/abs/2510.17842, https://arxiv.org/pdf/2512.11922
 - `mcp-rust-sdk`: https://github.com/modelcontextprotocol/rust-sdk
 - `mcp-typescript-schema-2025-11-25`: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts
 - `mcp-build-server`: https://modelcontextprotocol.io/docs/develop/build-server
@@ -39,12 +40,15 @@ These global behavior artifacts seed into `vcu_behavior_artifacts` separately fr
 - `say-server`: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/say-server
 - `qr-server`: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/qr-server
 - `map-server`: https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/map-server
+- `wardley-bok-source-ingestion`: `docs/knowledge_base/research_studies/wardley_mapping_bok_part_1.md`, https://colab.research.google.com/github/tractorjuice/Building_BoK/blob/main/Building_Wardley_Mapping_Body_of_Knowledge_Part_1.ipynb/, https://raw.githubusercontent.com/tractorjuice/Building_BoK/main/Building_Wardley_Mapping_Body_of_Knowledge_Part_1.ipynb, https://github.com/pinecone-io/pinecone-rust-client
 
 ## Acceptance
 
 The per-lesson paths seeded in Supabase are review targets. They must be created and reviewed before the lesson can move from `review` to `published`. Until then, the global VCU rules and skills apply to every lesson row.
 
 No lesson may use mock data, mock install logs, mock tests, or mock triangulation.
+
+Infographics, research reports, podcast audio, and other multimodal assets are curriculum artifacts, not acceptance evidence by themselves. Research reports and infographics seed as lesson artifacts; podcast audio stays in the podcast registry and lesson JSON until an `audio` lesson artifact type exists. Publish still requires real source/link review, install/test output where applicable, triangulation, and an explicit no-mock pass.
 
 ## Cursor Agent Operating Layer
 

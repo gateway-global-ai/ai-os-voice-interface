@@ -3,7 +3,10 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { visualizer } from 'rollup-plugin-visualizer';
 import {defineConfig, loadEnv} from 'vite';
-import {mergeGeminiEnvFromEnvLocal} from './server/mergeGeminiEnv';
+import {mergeGeminiEnvFromEnvLocal, mergeOtpCheckmeFromEnvLocal} from './server/mergeGeminiEnv';
+import {handleCourseCreatorApi} from './server/courseCreatorServe';
+import {handleCheckmeSaasAdminApi} from './server/checkmeSaasAdminServe';
+import {handleOperatorSessionApi} from './server/operatorSessionServe';
 import {localModelDevPlugin} from './vite/localModelPlugin';
 
 // Load `.env`, `.env.local`, etc. from this app folder (not the parent `Apps` directory).
@@ -31,8 +34,15 @@ function shouldGovernanceRewriteToV1(
 }
 
 export default defineConfig(({mode}) => {
-  const env = mergeGeminiEnvFromEnvLocal(envDir, loadEnv(mode, envDir, '') as Record<string, string>);
+  const env = mergeOtpCheckmeFromEnvLocal(
+    envDir,
+    mergeGeminiEnvFromEnvLocal(envDir, loadEnv(mode, envDir, '') as Record<string, string>),
+  );
+  /** Browser OTP (`checkmeClient`) reads `VITE_123CHECKME_KEY`; `.env` often uses server-style `123CHECKME_KEY` — merge for the bundle. */
+  const resolvedVite123CheckmeKey =
+    (env.VITE_123CHECKME_KEY ?? '').trim() || (env['123CHECKME_KEY'] ?? '').trim();
   const otpProxyTarget = env.VITE_OTP_PROXY_TARGET || 'http://127.0.0.1:3010';
+  const mcpShellPilotTarget = env.VITE_MCP_SHELL_PILOT_PROXY_TARGET || 'http://127.0.0.1:8765';
   const governanceProxyTarget = env.VITE_GOVERNANCE_PROXY_TARGET || otpProxyTarget;
   const rewriteApiToV1 = shouldGovernanceRewriteToV1(env, otpProxyTarget, governanceProxyTarget);
   const shouldAnalyzeBundle = mode === 'analyze';
@@ -41,6 +51,23 @@ export default defineConfig(({mode}) => {
     envDir,
     plugins: [
       localModelDevPlugin(env),
+      {
+        name: 'aios-course-creator-api',
+        configureServer(server) {
+          server.middlewares.use('/api/operator-session', (req, res) => {
+            req.url = '/api/operator-session';
+            void handleOperatorSessionApi(env, req, res);
+          });
+          server.middlewares.use('/__course_creator_api', (req, res) => {
+            req.url = `/__course_creator_api${req.url ?? ''}`;
+            void handleCourseCreatorApi(env, req, res);
+          });
+          server.middlewares.use('/__checkme_saas_admin_api', (req, res) => {
+            req.url = `/__checkme_saas_admin_api${req.url ?? ''}`;
+            void handleCheckmeSaasAdminApi(env, req, res);
+          });
+        },
+      },
       react(),
       tailwindcss(),
       ...(shouldAnalyzeBundle
@@ -69,6 +96,8 @@ export default defineConfig(({mode}) => {
       'process.env.TWILIO_PHONE_NUMBER': JSON.stringify(env.TWILIO_PHONE_NUMBER ?? ''),
       'import.meta.env.AI_OS_SUPABASE_URL': JSON.stringify(env.AI_OS_SUPABASE_URL ?? ''),
       'import.meta.env.AI_OS_SUPABASE_PUBLIC_KEY': JSON.stringify(env.AI_OS_SUPABASE_PUBLIC_KEY ?? ''),
+      // Ensures `getOptionalBearer()` sees a key when only `123CHECKME_KEY` is set in `.env.local`.
+      'import.meta.env.VITE_123CHECKME_KEY': JSON.stringify(resolvedVite123CheckmeKey),
     },
     resolve: {
       dedupe: ['react', 'react-dom'],
@@ -107,6 +136,12 @@ export default defineConfig(({mode}) => {
           changeOrigin: true,
           rewrite: (path) =>
             rewriteApiToV1 ? '/v1' + path.slice('/api'.length) : path,
+        },
+        /** Tier B MCP shell pilot — same-origin Streamable HTTP for @mcp-ui/client (browser). */
+        '/mcp/core': {
+          target: mcpShellPilotTarget,
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/mcp\/core/, '/mcp'),
         },
         /** Same-origin proxy for Workspace MCP (browser CORS). Override target: VITE_WORKSPACE_MCP_PROXY_TARGET. Disable: VITE_WORKSPACE_MCP_PROXY=false */
         ...(env.VITE_WORKSPACE_MCP_PROXY === 'false'

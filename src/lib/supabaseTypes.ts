@@ -635,6 +635,24 @@ export interface Database {
         Insert: Omit<Database['public']['Tables']['skill_authority_evidence']['Row'], 'evidence_id' | 'recorded_at'> & { evidence_id?: string };
         Update: Partial<Database['public']['Tables']['skill_authority_evidence']['Insert']>;
       };
+      university_course_drafts: {
+        Row: {
+          draft_id: string;
+          program_slug: string;
+          working_title: string;
+          knowledge_text: string;
+          guidance: Record<string, unknown>;
+          blueprint: Record<string, unknown>;
+          professor_user_id: string | null;
+          author_user_id: string | null;
+          linked_course_id: string | null;
+          status: 'draft' | 'review' | 'archived';
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['university_course_drafts']['Row'], 'draft_id' | 'created_at' | 'updated_at'> & { draft_id?: string };
+        Update: Partial<Database['public']['Tables']['university_course_drafts']['Insert']>;
+      };
       university_courses: {
         Row: {
           course_id: string;

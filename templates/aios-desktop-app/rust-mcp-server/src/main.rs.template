@@ -1,0 +1,43 @@
+//! {{TITLE}} MCP server skeleton.
+//!
+//! Source docs:
+//! - MCP Rust SDK: https://github.com/modelcontextprotocol/rust-sdk
+//! - MCP build server docs: https://modelcontextprotocol.io/docs/develop/build-server
+//! - Cursor skills: https://cursor.sh/docs/skills
+//!
+//! This template intentionally returns blocked/unverified metadata until wired to real
+//! upstream endpoint calls. Do not replace these states with mock success data.
+
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AppTool {
+    name: &'static str,
+    endpoint_id: &'static str,
+    status: &'static str,
+}
+
+const APP_ID: &str = "{{APP_ID}}";
+const APP_TITLE: &str = "{{TITLE}}";
+const TOOLS: &[AppTool] = &[
+{{RUST_MCP_TOOLS}}
+];
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let payload = serde_json::json!({
+        "status": "unverified",
+        "app_id": APP_ID,
+        "title": APP_TITLE,
+        "message": "Generated MCP skeleton. Wire to the MCP Rust SDK transport and real upstream endpoints before accepting.",
+        "tools": TOOLS,
+        "required_evidence": [
+            "cargo check",
+            "real MCP initialize/tools-list check",
+            "real upstream endpoint smoke check"
+        ]
+    });
+    println!("{}", serde_json::to_string_pretty(&payload)?);
+    Ok(())
+}

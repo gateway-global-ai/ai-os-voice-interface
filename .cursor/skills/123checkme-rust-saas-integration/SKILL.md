@@ -1,6 +1,35 @@
 ---
 name: 123checkme-rust-saas-integration
 description: Integrates 123CheckMe (identity, OTP, optional SaaS subscription webhooks) with the Rust `skills` CLI, AI OS `checkmeClient` / Supabase, and customer verification flows. Use when wiring vibe-coder SaaS apps, verification, or a Rust-managed skill for CheckMe + DB logic.
+allowed-tools:
+  - create_customer
+  - get_customer
+  - send_verification
+  - send_magic_link
+  - request_id_upload
+  - request_signature
+  - verify_code
+  - resend_verification
+  - upload_document
+  - sign_document
+  - generate_document
+  - list_verifications
+  - get_verification_status
+  - create_plans
+  - list_plans
+  - upsert_subscription
+  - get_subscription
+  - get_subscription_status
+  - list_subscription_events
+  - process_subscription_webhook
+  - generate_saas_env
+  - generate_cursor_mcp_config
+  - create_sandbox_account
+  - get_sandbox_credentials
+  - sandbox_send_verification
+  - sandbox_complete_verification
+  - sandbox_list_verifications
+  - sandbox_reset
 ---
 
 # 123CheckMe + Rust skills + AI OS
@@ -22,7 +51,7 @@ End users complete **123CheckMe SaaS** signup and operator flows in the **browse
 
 ### Verified reachability note (no-mock)
 
-As of **2026-04-26**, **`https://www.123checkme.com/mcp`** serves the SPA (`GET` → `text/html`); **`POST /mcp`** returns **`Cannot POST /mcp`**. So the **marketing site path `/mcp` is not an MCP listener** until nginx/your Node stack mounts the MCP transport there or you use another dashboard-issued base URL. Do not claim “MCP deployed on root `/mcp`” without a successful **`initialize`** POST and **`tools/list`**.
+As of **2026-04-26**, **`https://www.123checkme.com/mcp`** is mounted as a Streamable HTTP MCP endpoint. Unauthenticated requests return JSON-RPC **`401 Unauthorized`**; authenticated **`initialize`** succeeds and **`tools/list`** returns the `allowed-tools` names above, including SaaS plan, subscription, webhook, and config-generation tools. Keep **`CHECKME_MCP_TOKEN`** on the Cursor/agent side aligned with server-side **`MCP_HTTP_BEARER_TOKEN`**.
 
 ## Product context (source of truth: your deployment + repo code)
 
