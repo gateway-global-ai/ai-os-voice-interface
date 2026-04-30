@@ -28,6 +28,7 @@ import { forwardOtpJson, getOtpUpstreamBaseForLog } from './otpProxyForward';
 import { handleCourseCreatorApi } from './courseCreatorServe';
 import { handleCheckmeSaasAdminApi } from './checkmeSaasAdminServe';
 import { handleOperatorSessionApi } from './operatorSessionServe';
+import { handleAdminKnowledgebaseApi } from './adminKnowledgebaseServe';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -61,6 +62,10 @@ app.all('/__course_creator_api/*', (req, res) => {
 
 app.all('/__checkme_saas_admin_api/*', (req, res) => {
   void handleCheckmeSaasAdminApi(env, req, res);
+});
+
+app.all('/__admin_knowledgebase_api/*', (req, res) => {
+  void handleAdminKnowledgebaseApi(env, req, res);
 });
 
 app.get('/api/local-model/readiness', async (_req, res) => {

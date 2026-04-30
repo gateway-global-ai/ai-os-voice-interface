@@ -7,6 +7,7 @@ import {mergeGeminiEnvFromEnvLocal, mergeOtpCheckmeFromEnvLocal} from './server/
 import {handleCourseCreatorApi} from './server/courseCreatorServe';
 import {handleCheckmeSaasAdminApi} from './server/checkmeSaasAdminServe';
 import {handleOperatorSessionApi} from './server/operatorSessionServe';
+import {handleAdminKnowledgebaseApi} from './server/adminKnowledgebaseServe';
 import {localModelDevPlugin} from './vite/localModelPlugin';
 
 // Load `.env`, `.env.local`, etc. from this app folder (not the parent `Apps` directory).
@@ -65,6 +66,10 @@ export default defineConfig(({mode}) => {
           server.middlewares.use('/__checkme_saas_admin_api', (req, res) => {
             req.url = `/__checkme_saas_admin_api${req.url ?? ''}`;
             void handleCheckmeSaasAdminApi(env, req, res);
+          });
+          server.middlewares.use('/__admin_knowledgebase_api', (req, res) => {
+            req.url = `/__admin_knowledgebase_api${req.url ?? ''}`;
+            void handleAdminKnowledgebaseApi(env, req, res);
           });
         },
       },
