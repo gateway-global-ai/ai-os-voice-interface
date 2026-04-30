@@ -6,7 +6,7 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ChangeEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { aiOsSupabase, supabase } from '../../lib/supabaseClient';
 import { geminiGenerateText } from '../../api/geminiGateway';
@@ -390,7 +390,7 @@ export function CourseCreatorPanel() {
           body: JSON.stringify(payload),
         });
       } else if (dataClient) {
-        const { error } = await dataClient.from('university_course_drafts').update(payload).eq('draft_id', draftId);
+        const { error } = await dataClient.from('university_course_drafts').update(payload as never).eq('draft_id', draftId);
         if (error) throw error;
       }
     } catch (error) {
@@ -439,7 +439,7 @@ export function CourseCreatorPanel() {
       } else if (dataClient) {
         const { data, error } = await dataClient
           .from('university_course_drafts')
-          .insert(payload)
+          .insert(payload as never)
           .select('*')
           .single();
         if (error) throw error;
@@ -477,7 +477,7 @@ export function CourseCreatorPanel() {
     setBlueprint(defaultCourseBlueprint());
   }, [dataClient, admin, draftId, operatorToken]);
 
-  const onFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
     const r = new FileReader();
@@ -507,7 +507,6 @@ export function CourseCreatorPanel() {
 }
 Source material:\n\n${slice}`,
       });
-      const g = tryParseModelJson<Record<string, unknown>>(raw);
       setGuidance(parseCourseGuidanceJson(tryParseModelJsonString(raw)));
     } catch (c) {
       setSaveMsg(c instanceof Error ? c.message : String(c));

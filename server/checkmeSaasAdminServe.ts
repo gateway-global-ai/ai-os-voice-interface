@@ -111,7 +111,7 @@ export async function handleCheckmeSaasAdminApi(
   res: ServerResponse,
 ): Promise<void> {
   const token = verifyOperatorToken(env, readBearer(req));
-  if (!token.ok) {
+  if (token.ok !== true) {
     sendJson(res, 403, { status: 'blocked', error: token.reason });
     return;
   }

@@ -55,7 +55,7 @@ function phonesMatch(a: string | undefined, b: string): boolean {
   }
 }
 
-function hasAdminClaim(user: { app_metadata?: { is_admin?: unknown } } | null | undefined): boolean {
+function hasAdminClaim(user: { app_metadata?: Record<string, unknown> | null } | null | undefined): boolean {
   const claim = user?.app_metadata?.is_admin;
   return claim === true || claim === 'true';
 }

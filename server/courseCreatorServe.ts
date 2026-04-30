@@ -56,7 +56,7 @@ export async function handleCourseCreatorApi(
   res: ServerResponse,
 ): Promise<void> {
   const token = verifyOperatorToken(env, readBearer(req));
-  if (!token.ok) {
+  if (token.ok !== true) {
     sendJson(res, 403, { error: token.reason });
     return;
   }

@@ -231,8 +231,8 @@ function PreviewTable({ value }: { value: unknown }) {
   if (rows.length === 0) {
     return <p style={mutedStyle}>No rows returned from this endpoint.</p>;
   }
-  const keys = Array.from(
-    rows.reduce((set, row) => {
+  const keys: string[] = Array.from(
+    rows.reduce<Set<string>>((set, row) => {
       if (row && typeof row === 'object') {
         Object.keys(row as Record<string, unknown>)
           .slice(0, 8)
